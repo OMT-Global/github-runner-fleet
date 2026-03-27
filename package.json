@@ -14,6 +14,7 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "render-compose": "tsx src/cli.ts render-compose",
     "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
+    "smoke-test": "bash scripts/smoke-test.sh",
     "test": "vitest run",
     "validate-config": "tsx src/cli.ts validate-config"
   },

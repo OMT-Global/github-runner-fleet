@@ -78,6 +78,30 @@ pnpm validate-config -- --config config/pools.yaml --env .env
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
+pnpm smoke-test
+```
+
+## Local Smoke Test
+
+Run this from a machine with a live Docker daemon and Buildx support:
+
+```bash
+pnpm smoke-test
+```
+
+The smoke test:
+
+- builds the local runner image
+- starts a mock GitHub token API on an isolated Docker network
+- mounts stubbed `config.sh` and `run.sh` files into `/actions-runner`
+- verifies registration token fetch, runner config flags, run invocation, remove token fetch, and cleanup
+
+Useful overrides:
+
+```bash
+DOCKER_CONTEXT=colima pnpm smoke-test
+SMOKE_PLATFORM=linux/amd64 pnpm smoke-test
+SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 ```
 
 ## Manual Acceptance Checklist

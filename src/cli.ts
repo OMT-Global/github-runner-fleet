@@ -36,8 +36,8 @@ async function validateConfig(args: string[]): Promise<void> {
     envPath: getOption(args, "--env", ".env"),
     requirePat: false
   });
-  const configPath = getOption(args, "--config", "config/pools.yaml") ?? "config/pools.yaml";
-  const config = loadConfig(configPath, env);
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const config = loadConfig(configPath!, env);
 
   process.stdout.write(
     JSON.stringify(
@@ -66,8 +66,8 @@ async function renderComposeCommand(args: string[]): Promise<void> {
     envPath: getOption(args, "--env", ".env"),
     requirePat: false
   });
-  const configPath = getOption(args, "--config", "config/pools.yaml") ?? "config/pools.yaml";
-  const config = loadConfig(configPath, env);
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const config = loadConfig(configPath!, env);
   const compose = renderCompose(config, env);
 
   if (output) {

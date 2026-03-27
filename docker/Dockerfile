@@ -42,4 +42,7 @@ COPY docker/runner-entrypoint.sh /usr/local/bin/runner-entrypoint.sh
 
 RUN chmod 0755 /usr/local/bin/runner-entrypoint.sh
 
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+  CMD pgrep -f "Runner.Listener" > /dev/null || exit 1
+
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/runner-entrypoint.sh"]

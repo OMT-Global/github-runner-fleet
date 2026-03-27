@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
+import { normalizeRunnerVersion } from "./runner-version.js";
 
 export interface DeploymentEnv {
   githubPat?: string;
@@ -59,8 +60,4 @@ export function loadDeploymentEnv(
 
 function normalizeUrl(value: string): string {
   return value.replace(/\/+$/, "");
-}
-
-function normalizeRunnerVersion(value: string): string {
-  return value.replace(/^v/i, "");
 }
