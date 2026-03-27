@@ -54,10 +54,20 @@ describe("loadDeploymentEnv", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "synology-env-"));
     tempPaths.push(directory);
     const envPath = path.join(directory, ".env");
+    const previousGithubApiUrl = process.env.GITHUB_API_URL;
 
     fs.writeFileSync(envPath, "GITHUB_API_URL=https://ghe.example.com/api/v3///\n", "utf8");
+    delete process.env.GITHUB_API_URL;
 
-    const env = loadDeploymentEnv({ envPath, requirePat: false });
-    expect(env.githubApiUrl).toBe("https://ghe.example.com/api/v3");
+    try {
+      const env = loadDeploymentEnv({ envPath, requirePat: false });
+      expect(env.githubApiUrl).toBe("https://ghe.example.com/api/v3");
+    } finally {
+      if (previousGithubApiUrl === undefined) {
+        delete process.env.GITHUB_API_URL;
+      } else {
+        process.env.GITHUB_API_URL = previousGithubApiUrl;
+      }
+    }
   });
 });
