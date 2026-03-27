@@ -16,11 +16,11 @@ run_runner_bash() {
   shift || true
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
-    env RUNNER_ALLOW_RUNASROOT=1 "$@" bash -lc "${command}"
+    env RUNNER_ALLOW_RUNASROOT=1 RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" bash -lc "${command}"
     return
   fi
 
-  env "$@" gosu runner bash -lc "${command}"
+  env RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" gosu runner bash -lc "${command}"
 }
 
 require_env() {
@@ -99,7 +99,7 @@ prepare_runner_home() {
 
   rm -rf "${RUNNER_HOME}"
   mkdir -p "${RUNNER_HOME}"
-  tar -C "${RUNNER_SOURCE_HOME}" -cf - . | tar -C "${RUNNER_HOME}" -xf -
+  tar -C "${RUNNER_SOURCE_HOME}" -cf - . | tar --no-same-owner --no-same-permissions -C "${RUNNER_HOME}" -xf -
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
     chmod -R u+rwX "${RUNNER_HOME}"
@@ -159,6 +159,7 @@ require_env RUNNER_WORK_DIR
 : "${RUNNER_DISABLE_UPDATE:=true}"
 : "${RUNNER_REPOSITORY_ACCESS:=selected}"
 : "${RUNNER_HOME:=${RUNNER_STATE_DIR%/}/runner-home}"
+: "${RUNNER_EXEC_MODE_OVERRIDE:=}"
 
 if [[ "${RUNNER_SCOPE}" != "organization" ]]; then
   log "RUNNER_SCOPE=${RUNNER_SCOPE} is unsupported in v1; only organization runners are implemented"
@@ -169,6 +170,20 @@ prepare_state_dir() {
   local probe_file
 
   mkdir -p "${RUNNER_STATE_DIR}" "${RUNNER_LOG_DIR}" "${RUNNER_WORK_DIR}"
+
+  if [[ -n "${RUNNER_EXEC_MODE_OVERRIDE}" ]]; then
+    case "${RUNNER_EXEC_MODE_OVERRIDE}" in
+      root|runner)
+        runner_exec_mode="${RUNNER_EXEC_MODE_OVERRIDE}"
+        log "runner execution mode override: ${runner_exec_mode}"
+        return
+        ;;
+      *)
+        log "invalid RUNNER_EXEC_MODE_OVERRIDE=${RUNNER_EXEC_MODE_OVERRIDE}; expected root or runner"
+        exit 1
+        ;;
+    esac
+  fi
 
   if ! chown -R runner:runner "${RUNNER_STATE_DIR}" 2>/dev/null; then
     log "state directory ownership update failed for ${RUNNER_STATE_DIR}; falling back to root runner execution for Synology-compatible bind mounts"

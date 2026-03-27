@@ -53,7 +53,7 @@ function configFixture(): ResolvedConfig {
     version: 1,
     image: {
       repository: "ghcr.io/example/synology-github-runner",
-      tag: "0.1.2"
+      tag: "0.1.3"
     },
     pools: [
       {
@@ -70,7 +70,7 @@ function configFixture(): ResolvedConfig {
         resources: {
           memory: "2g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.2"
+        imageRef: "ghcr.io/example/synology-github-runner:0.1.3"
       },
       {
         key: "synology-public",
@@ -86,7 +86,7 @@ function configFixture(): ResolvedConfig {
         resources: {
           memory: "1g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.2"
+        imageRef: "ghcr.io/example/synology-github-runner:0.1.3"
       }
     ]
   };

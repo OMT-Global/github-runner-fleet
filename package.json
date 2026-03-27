@@ -1,6 +1,6 @@
 {
   "name": "synology-github-runner",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "license": "MIT",
   "description": "Shell-only GitHub self-hosted runner pools for Synology NAS deployments.",

@@ -12,10 +12,8 @@ RUNNER_CONTAINER="sgr-smoke-runner-${RANDOM}${RANDOM}"
 
 mkdir -p "${TEMP_PARENT}"
 TEMP_DIR="$(mktemp -d "${TEMP_PARENT}/smoke-test.XXXXXX")"
-STATE_DIR="${TEMP_DIR}/state"
 LOG_DIR="${TEMP_DIR}/logs"
 ACTIONS_RUNNER_DIR="${TEMP_DIR}/actions-runner"
-RUNNER_STDOUT="${TEMP_DIR}/runner.stdout.log"
 
 docker_cmd() {
   if [[ -n "${DOCKER_CONTEXT}" ]]; then
@@ -32,7 +30,8 @@ log() {
 cleanup() {
   local exit_code=$?
 
-  docker_cmd rm -f "${RUNNER_CONTAINER}" >/dev/null 2>&1 || true
+  docker_cmd rm -f "${RUNNER_CONTAINER}-runner" >/dev/null 2>&1 || true
+  docker_cmd rm -f "${RUNNER_CONTAINER}-root" >/dev/null 2>&1 || true
   docker_cmd rm -f "${API_CONTAINER}" >/dev/null 2>&1 || true
   docker_cmd network rm "${NETWORK}" >/dev/null 2>&1 || true
 
@@ -65,7 +64,7 @@ default_platform() {
 
 SMOKE_PLATFORM="${SMOKE_PLATFORM:-$(default_platform)}"
 
-mkdir -p "${STATE_DIR}" "${LOG_DIR}" "${ACTIONS_RUNNER_DIR}"
+mkdir -p "${LOG_DIR}" "${ACTIONS_RUNNER_DIR}"
 cp "${ROOT_DIR}/scripts/smoke/actions-runner/config.sh" "${ACTIONS_RUNNER_DIR}/config.sh"
 cp "${ROOT_DIR}/scripts/smoke/actions-runner/run.sh" "${ACTIONS_RUNNER_DIR}/run.sh"
 chmod +x "${ACTIONS_RUNNER_DIR}/config.sh" "${ACTIONS_RUNNER_DIR}/run.sh"
@@ -99,33 +98,66 @@ if [[ ! -f "${LOG_DIR}/mock-api.log" ]] || ! grep -q "listening 0.0.0.0:8080" "$
   exit 1
 fi
 
-log "running runner image smoke flow"
-docker_cmd run --rm \
-  --name "${RUNNER_CONTAINER}" \
-  --network "${NETWORK}" \
-  -e GITHUB_PAT=fake-pat \
-  -e GITHUB_API_URL=http://mock-api:8080 \
-  -e GITHUB_ORG=test-org \
-  -e RUNNER_NAME=smoke-runner-01 \
-  -e RUNNER_GROUP=synology-private \
-  -e RUNNER_LABELS=synology,shell-only,private \
-  -e RUNNER_ALLOWED_REPOSITORIES=test-org/private-app \
-  -e RUNNER_STATE_DIR=/tmp/runner-state \
-  -e RUNNER_LOG_DIR=/tmp/runner-state/logs \
-  -e RUNNER_WORK_DIR=/tmp/runner-state/_work \
-  -v "${STATE_DIR}:/tmp/runner-state" \
-  -v "${ACTIONS_RUNNER_DIR}:/actions-runner:ro" \
-  "${IMAGE_REF}" | tee "${RUNNER_STDOUT}"
+run_smoke_case() {
+  local mode="$1"
+  local state_dir="${TEMP_DIR}/state-${mode}"
+  local runner_stdout="${TEMP_DIR}/runner.${mode}.stdout.log"
+  local runner_name="smoke-runner-${mode}"
 
-grep -q "POST /orgs/test-org/actions/runners/registration-token" "${LOG_DIR}/mock-api.log"
-grep -q "POST /orgs/test-org/actions/runners/remove-token" "${LOG_DIR}/mock-api.log"
-grep -q -- "--runnergroup synology-private --ephemeral --disableupdate" "${STATE_DIR}/config-invocations.log"
-grep -q "config path: /tmp/runner-state/runner-home" "${STATE_DIR}/config-context.log"
-grep -q "run path: /tmp/runner-state/runner-home" "${STATE_DIR}/run-context.log"
-grep -q "runner writable home: /tmp/runner-state/runner-home" "${RUNNER_STDOUT}"
-grep -q "^job output$" "${STATE_DIR}/logs/runner.log"
-grep -q "run.sh stub executed" "${STATE_DIR}/run.log"
-grep -q "runner registration removed cleanly" "${RUNNER_STDOUT}"
+  rm -rf "${state_dir}"
+  mkdir -p "${state_dir}"
+
+  log "running runner image smoke flow (${mode})"
+
+  local -a env_args=(
+    -e GITHUB_PAT=fake-pat
+    -e GITHUB_API_URL=http://mock-api:8080
+    -e GITHUB_ORG=test-org
+    -e RUNNER_NAME="${runner_name}"
+    -e RUNNER_GROUP=synology-private
+    -e RUNNER_LABELS=synology,shell-only,private
+    -e RUNNER_ALLOWED_REPOSITORIES=test-org/private-app
+    -e RUNNER_STATE_DIR=/tmp/runner-state
+    -e RUNNER_LOG_DIR=/tmp/runner-state/logs
+    -e RUNNER_WORK_DIR=/tmp/runner-state/_work
+  )
+
+  if [[ "${mode}" == "root" ]]; then
+    env_args+=(-e RUNNER_EXEC_MODE_OVERRIDE=root)
+  fi
+
+  docker_cmd run --rm \
+    --name "${RUNNER_CONTAINER}-${mode}" \
+    --network "${NETWORK}" \
+    "${env_args[@]}" \
+    -v "${state_dir}:/tmp/runner-state" \
+    -v "${ACTIONS_RUNNER_DIR}:/actions-runner:ro" \
+    "${IMAGE_REF}" | tee "${runner_stdout}"
+
+  grep -q "POST /orgs/test-org/actions/runners/registration-token" "${LOG_DIR}/mock-api.log"
+  grep -q "POST /orgs/test-org/actions/runners/remove-token" "${LOG_DIR}/mock-api.log"
+  grep -q -- "--runnergroup synology-private --ephemeral --disableupdate" "${state_dir}/config-invocations.log"
+  grep -q "config path: /tmp/runner-state/runner-home" "${state_dir}/config-context.log"
+  grep -q "run path: /tmp/runner-state/runner-home" "${state_dir}/run-context.log"
+  grep -q "runner writable home: /tmp/runner-state/runner-home" "${runner_stdout}"
+  grep -q "^job output$" "${state_dir}/logs/runner.log"
+  grep -q "run.sh stub executed" "${state_dir}/run.log"
+  grep -q "runner registration removed cleanly" "${runner_stdout}"
+
+  if [[ "${mode}" == "root" ]]; then
+    grep -q "runner execution mode override: root" "${runner_stdout}"
+    grep -q "runner execution mode: root fallback" "${runner_stdout}"
+    grep -q "config mode: root" "${state_dir}/config-context.log"
+    grep -q "run mode: root" "${state_dir}/run-context.log"
+  else
+    grep -q "runner execution mode: runner user" "${runner_stdout}"
+    grep -q "config mode: runner" "${state_dir}/config-context.log"
+    grep -q "run mode: runner" "${state_dir}/run-context.log"
+  fi
+}
+
+run_smoke_case runner
+run_smoke_case root
 
 log "smoke test passed"
 log "image=${IMAGE_REF}"
