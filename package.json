@@ -1,0 +1,31 @@
+{
+  "name": "synology-github-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shell-only GitHub self-hosted runner pools for Synology NAS deployments.",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-runner-version": "tsx src/cli.ts check-runner-version",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "render-compose": "tsx src/cli.ts render-compose",
+    "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
+    "test": "vitest run",
+    "validate-config": "tsx src/cli.ts validate-config"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "yaml": "^2.8.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

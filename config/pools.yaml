@@ -1,0 +1,40 @@
+version: 1
+image:
+  repository: ghcr.io/your-org/synology-github-runner
+  tag: 0.1.0
+pools:
+  - key: synology-private
+    visibility: private
+    organization: your-org
+    runnerGroup: synology-private
+    allowedRepositories:
+      - your-org/private-app
+      - your-org/internal-tools
+    labels:
+      - synology
+      - shell-only
+      - private
+    size: 2
+    architecture: arm64
+    runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-private
+    resources:
+      cpus: "2.0"
+      memory: 2g
+      pidsLimit: 256
+  - key: synology-public
+    visibility: public
+    organization: your-org
+    runnerGroup: synology-public
+    allowedRepositories:
+      - your-org/public-demo
+    labels:
+      - synology
+      - shell-only
+      - public
+    size: 1
+    architecture: arm64
+    runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-public
+    resources:
+      cpus: "1.0"
+      memory: 1g
+      pidsLimit: 192

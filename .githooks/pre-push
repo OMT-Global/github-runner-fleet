@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="$(git branch --show-current)"
+case "$branch" in
+  main|master)
+    echo "pushes to $branch are blocked; switch to a feature branch first" >&2
+    exit 1
+    ;;
+esac
