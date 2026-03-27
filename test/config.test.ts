@@ -82,6 +82,46 @@ pools:
       /outside organization example/
     );
   });
+
+  test("rejects duplicate pool keys", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "pools.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/synology-github-runner
+  tag: 0.1.0
+pools:
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    allowedRepositories:
+      - example/private-app
+    labels: []
+    size: 1
+    architecture: arm64
+    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    allowedRepositories:
+      - example/other-app
+    labels: []
+    size: 1
+    architecture: arm64
+    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private-2
+`,
+      "utf8"
+    );
+
+    expect(() => loadConfig(configPath, deploymentEnv())).toThrow(
+      /duplicate pool key/
+    );
+  });
 });
 
 function deploymentEnv(): DeploymentEnv {

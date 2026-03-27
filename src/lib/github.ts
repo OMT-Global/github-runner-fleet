@@ -43,10 +43,6 @@ export function buildGitHubApiHeaders(
   return headers;
 }
 
-export function buildOrganizationRunnerUrl(organization: string): string {
-  return `https://github.com/${organization}`;
-}
-
 export function buildRegistrationTokenRequest(
   apiUrl: string,
   organization: string,

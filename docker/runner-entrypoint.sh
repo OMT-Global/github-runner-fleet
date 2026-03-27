@@ -90,7 +90,7 @@ cleanup_runner() {
     return 0
   fi
 
-  if ! gosu runner bash -lc "cd '${RUNNER_HOME}' && ./config.sh remove --token '${remove_token}'"; then
+  if ! RUNNER_TOKEN="${remove_token}" gosu runner bash -lc 'cd "${RUNNER_HOME}" && ./config.sh remove --token "${RUNNER_TOKEN}"'; then
     log "runner removal command failed; check GitHub runner inventory for stale registrations"
     return 0
   fi

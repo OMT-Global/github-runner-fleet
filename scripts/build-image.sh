@@ -47,5 +47,5 @@ docker buildx build \
   --build-arg "RUNNER_VERSION=${RUNNER_VERSION}" \
   -f docker/Dockerfile \
   -t "${IMAGE_REF}" \
-  ${PUSH_FLAG} \
+  ${PUSH_FLAG:+"${PUSH_FLAG}"} \
   .
