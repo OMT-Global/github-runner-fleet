@@ -82,6 +82,7 @@ Use [release-image.yml](/Users/johnteneyckjr./src/synology-github-runner/.github
 
 The release workflow:
 
+- enforces that `package.json` version matches `config/pools.yaml` image tag
 - validates `config/pools.yaml`
 - runs the local `pnpm smoke-test` contract on `linux/amd64`
 - publishes the configured tag from `config/pools.yaml`
@@ -89,8 +90,11 @@ The release workflow:
 - confirms both `linux/amd64` and `linux/arm64` are present
 - retries `pnpm validate-image` until the GitHub Packages API sees the new tag
 - runs post-publish toolchain checks for both `linux/amd64` and `linux/arm64`
+- can create the matching GitHub release tag `v<version>` when dispatched from `main` with `publish_project_release=true`
 
 Only point [config/pools.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/pools.yaml) at a tag that this workflow has already published and verified.
+
+If you want the repository release and GHCR image tag to stay aligned, merge the version bump to `main` first and then run the release workflow from `main` with `publish_project_release=true`. That will create the repo tag and GitHub Release after the image publish/verify steps succeed.
 
 ## Runtime Contract
 

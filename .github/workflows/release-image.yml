@@ -2,9 +2,15 @@ name: Release Image
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_project_release:
+        description: Create the matching Git tag and GitHub Release after image verification
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
@@ -48,15 +54,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: image
+      - id: release_meta
         run: |
           node --input-type=module <<'EOF'
           import fs from "node:fs";
           import YAML from "yaml";
 
           const config = YAML.parse(fs.readFileSync("config/pools.yaml", "utf8"));
+          const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
           if (!config?.image?.repository || !config?.image?.tag) {
             throw new Error("config/pools.yaml must define image.repository and image.tag");
+          }
+          if (!packageJson?.version) {
+            throw new Error("package.json must define version");
+          }
+          if (packageJson.version !== config.image.tag) {
+            throw new Error(
+              `package.json version ${packageJson.version} must match config image tag ${config.image.tag}`
+            );
           }
 
           fs.appendFileSync(
@@ -67,12 +82,23 @@ jobs:
             process.env.GITHUB_OUTPUT,
             `image_tag=${config.image.tag}\n`
           );
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `release_tag=v${packageJson.version}\n`
+          );
           EOF
 
-      - run: ./scripts/build-image.sh "${{ steps.image.outputs.image_ref }}" --push
+      - if: ${{ inputs.publish_project_release }}
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+            echo "publish_project_release may only run from main" >&2
+            exit 1
+          fi
+
+      - run: ./scripts/build-image.sh "${{ steps.release_meta.outputs.image_ref }}" --push
 
       - run: |
-          docker buildx imagetools inspect "${{ steps.image.outputs.image_ref }}" | tee /tmp/imagetools.txt
+          docker buildx imagetools inspect "${{ steps.release_meta.outputs.image_ref }}" | tee /tmp/imagetools.txt
           grep -q "linux/amd64" /tmp/imagetools.txt
           grep -q "linux/arm64" /tmp/imagetools.txt
 
@@ -90,9 +116,23 @@ jobs:
           done
 
       - run: |
-          docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${{ steps.image.outputs.image_ref }}" -lc \
+          docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
             'command -v pgrep && pgrep --version | head -n 1 && node --version && python3 --version && terraform version | head -n 1'
 
       - run: |
-          docker run --rm --platform linux/arm64 --entrypoint /bin/sh "${{ steps.image.outputs.image_ref }}" -lc \
+          docker run --rm --platform linux/arm64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
             'command -v pgrep && pgrep --version | head -n 1 && node --version && python3 --version && terraform version | head -n 1'
+
+      - if: ${{ inputs.publish_project_release }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.release_meta.outputs.release_tag }}" >/dev/null 2>&1; then
+            echo "release ${{ steps.release_meta.outputs.release_tag }} already exists" >&2
+            exit 1
+          fi
+
+          gh release create "${{ steps.release_meta.outputs.release_tag }}" \
+            --target "${GITHUB_SHA}" \
+            --title "${{ steps.release_meta.outputs.release_tag }}" \
+            --generate-notes
