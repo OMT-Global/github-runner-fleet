@@ -16,6 +16,7 @@ RUN apt-get update \
       git \
       gosu \
       jq \
+      procps \
       tini \
       unzip \
       xz-utils \

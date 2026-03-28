@@ -13,6 +13,19 @@ export interface GitHubRelease {
   htmlUrl?: string;
 }
 
+export interface GitHubRunnerGroup {
+  id: number;
+  name: string;
+  visibility?: string;
+  isDefault?: boolean;
+}
+
+export interface RunnerGroupExpectation {
+  poolKey: string;
+  organization: string;
+  runnerGroup: string;
+}
+
 export interface FetchLikeResponse {
   ok: boolean;
   status: number;
@@ -127,6 +140,109 @@ export async function fetchLatestRunnerRelease(
     publishedAt: payload.published_at,
     htmlUrl: payload.html_url
   };
+}
+
+export async function fetchOrganizationRunnerGroups(
+  apiUrl: string,
+  organization: string,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<GitHubRunnerGroup[]> {
+  const response = await fetchImpl(
+    `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups?per_page=100`,
+    {
+      method: "GET",
+      headers: buildGitHubApiHeaders(token)
+    }
+  );
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `GitHub runner group lookup failed for ${organization} with ${response.status}: ${body}`
+    );
+  }
+
+  const payload = JSON.parse(body) as {
+    runner_groups?: Array<{
+      id?: number;
+      name?: string;
+      visibility?: string;
+      default?: boolean;
+    }>;
+  };
+
+  if (!Array.isArray(payload.runner_groups)) {
+    throw new Error(
+      `GitHub runner group response for ${organization} did not include runner_groups`
+    );
+  }
+
+  return payload.runner_groups.map((group) => {
+    if (typeof group.id !== "number" || !group.name) {
+      throw new Error(
+        `GitHub runner group response for ${organization} included an invalid group entry`
+      );
+    }
+
+    return {
+      id: group.id,
+      name: group.name,
+      visibility: group.visibility,
+      isDefault: group.default
+    };
+  });
+}
+
+export async function verifyRunnerGroups(
+  apiUrl: string,
+  token: string,
+  expectations: RunnerGroupExpectation[],
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<
+  Array<{
+    poolKey: string;
+    organization: string;
+    runnerGroup: string;
+    visibility?: string;
+    isDefault?: boolean;
+  }>
+> {
+  const groupsByOrganization = new Map<string, GitHubRunnerGroup[]>();
+
+  for (const expectation of expectations) {
+    if (!groupsByOrganization.has(expectation.organization)) {
+      groupsByOrganization.set(
+        expectation.organization,
+        await fetchOrganizationRunnerGroups(
+          apiUrl,
+          expectation.organization,
+          token,
+          fetchImpl
+        )
+      );
+    }
+  }
+
+  return expectations.map((expectation) => {
+    const groups = groupsByOrganization.get(expectation.organization) ?? [];
+    const match = groups.find((group) => group.name === expectation.runnerGroup);
+
+    if (!match) {
+      const available = groups.map((group) => group.name).sort().join(", ") || "none";
+      throw new Error(
+        `pool ${expectation.poolKey} expects runner group ${expectation.runnerGroup} in organization ${expectation.organization}, but GitHub returned: ${available}`
+      );
+    }
+
+    return {
+      poolKey: expectation.poolKey,
+      organization: expectation.organization,
+      runnerGroup: match.name,
+      visibility: match.visibility,
+      isDefault: match.isDefault
+    };
+  });
 }
 
 function trimApiUrl(value: string): string {

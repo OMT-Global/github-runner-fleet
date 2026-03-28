@@ -3,7 +3,7 @@ import path from "node:path";
 import { collectConfigWarnings, loadConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
 import { loadDeploymentEnv } from "./lib/env.js";
-import { fetchLatestRunnerRelease } from "./lib/github.js";
+import { fetchLatestRunnerRelease, verifyRunnerGroups } from "./lib/github.js";
 import {
   buildRunnerDownloadUrl,
   summarizeRunnerVersion
@@ -15,6 +15,9 @@ async function main(): Promise<void> {
   switch (command) {
     case "validate-config":
       await validateConfig(args);
+      break;
+    case "validate-github":
+      await validateGitHub(args);
       break;
     case "render-compose":
       await renderComposeCommand(args);
@@ -79,6 +82,37 @@ async function renderComposeCommand(args: string[]): Promise<void> {
   }
 
   process.stdout.write(`${compose}\n`);
+}
+
+async function validateGitHub(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const config = loadConfig(configPath!, env);
+  emitWarnings(config);
+
+  const matches = await verifyRunnerGroups(
+    env.githubApiUrl,
+    env.githubPat!,
+    config.pools.map((pool) => ({
+      poolKey: pool.key,
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup
+    }))
+  );
+
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        ok: true,
+        pools: matches
+      },
+      null,
+      2
+    )}\n`
+  );
 }
 
 async function checkRunnerVersion(args: string[]): Promise<void> {
@@ -148,6 +182,7 @@ function getOption(
 function printUsage(): void {
   process.stderr.write(`Usage:
   pnpm validate-config [--config config/pools.yaml] [--env .env]
+  pnpm validate-github [--config config/pools.yaml] [--env .env]
   pnpm render-compose [--config config/pools.yaml] [--env .env] [--output docker-compose.generated.yml]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
   pnpm runner-release-manifest [--current 2.333.0] [--env .env]

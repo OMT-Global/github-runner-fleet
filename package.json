@@ -17,7 +17,8 @@
     "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
     "smoke-test": "bash scripts/smoke-test.sh",
     "test": "vitest run",
-    "validate-config": "tsx src/cli.ts validate-config"
+    "validate-config": "tsx src/cli.ts validate-config",
+    "validate-github": "tsx src/cli.ts validate-github"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
