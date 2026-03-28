@@ -129,7 +129,17 @@ For Node projects on shell-only runners, use the bundled action instead of `acti
 
 Use that action on self-hosted Synology runners where `actions/setup-node` would otherwise fail while extracting tool archives. Keep `actions/setup-node` on GitHub-hosted jobs.
 
+The shell-only runner image directly supports these job profiles without Docker or service containers:
+
+- Node `18` plus `npm` with `actions/cache`
+- Node `24` when bootstrapped through `OMT-Global/synology-github-runner/actions/setup-shell-safe-node`
+- Python `3.12` plus `pip` with `actions/cache`
+- Terraform `1.6.6` plus plugin-cache directories under `RUNNER_TEMP`
+- Bash/docs validation jobs that only need the standard CLI toolchain
+
 For Python projects, the runner image already carries Python `3.12`. Repos that only need `3.12` can run directly on the shell-only pool. Repos with Python version matrices should keep the non-`3.12` lanes on GitHub-hosted runners and only route the `3.12` lane to self-hosted runners.
+
+For OpenClaw Ouro style workflows, the compatible jobs are the Node/npm validators, docs checks, Python `3.12` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain. Keep workflow-parser jobs that rely on extra distro packages, plus any `container:`, `services:`, browser, or Docker-daemon jobs, on GitHub-hosted runners.
 
 ## Security Notes
 

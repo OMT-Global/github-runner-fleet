@@ -44,6 +44,66 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  shell_safe_contract_trusted:
+    name: shell-safe contract
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on:
+      - self-hosted
+      - synology
+      - shell-only
+      - public
+    env:
+      RUNNER_TEMP: /tmp/github-runner-temp
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+      TF_PLUGIN_CACHE_DIR: /tmp/github-runner-temp/terraform-plugin-cache
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare shell-safe cache directories
+        run: |
+          mkdir -p \
+            "$RUNNER_TEMP" \
+            "$RUNNER_TOOL_CACHE" \
+            "$TF_PLUGIN_CACHE_DIR" \
+            .tmp/ci-shell-safe/npm \
+            .tmp/ci-shell-safe/pip \
+            .tmp/ci-shell-safe/terraform
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .tmp/ci-shell-safe/npm
+            .tmp/ci-shell-safe/pip
+            ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: ${{ runner.os }}-shell-safe-contract-${{ hashFiles('docker/Dockerfile', '.github/workflows/ci.yml') }}
+      - name: Verify built-in shell-safe toolchain
+        run: |
+          bash --version | head -n 1
+          git --version
+          tar --version | head -n 1
+          zstd --version | head -n 1
+          node --version
+          npm --version
+          python3.12 --version
+          python --version
+          terraform version
+      - name: Verify cache-aware commands
+        env:
+          npm_config_cache: ${{ github.workspace }}/.tmp/ci-shell-safe/npm
+          PIP_CACHE_DIR: ${{ github.workspace }}/.tmp/ci-shell-safe/pip
+        run: |
+          python3.12 -m venv .venv-contract
+          source .venv-contract/bin/activate
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip cache dir
+          npm config get cache
+          cat > .tmp/ci-shell-safe/terraform/main.tf <<'EOF'
+          terraform {
+            required_version = "= 1.6.6"
+          }
+          EOF
+          terraform -chdir=.tmp/ci-shell-safe/terraform init -backend=false
+
   test_public_fork_pr:
     name: test
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository

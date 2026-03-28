@@ -47,6 +47,53 @@ describe("CI workflow", () => {
     });
   });
 
+  test("verifies the broader shell-safe toolchain contract on self-hosted runners", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const contractJob = workflow.jobs.shell_safe_contract_trusted;
+    const steps = contractJob.steps as Array<Record<string, unknown>>;
+    const cacheStep = steps.find((step) => step.uses === "actions/cache@v4");
+    const verifyToolchainStep = steps.find(
+      (step) => step.name === "Verify built-in shell-safe toolchain"
+    );
+    const verifyCacheStep = steps.find(
+      (step) => step.name === "Verify cache-aware commands"
+    );
+
+    expect(contractJob["runs-on"]).toEqual([
+      "self-hosted",
+      "synology",
+      "shell-only",
+      "public"
+    ]);
+    expect(contractJob.env).toMatchObject({
+      RUNNER_TEMP: "/tmp/github-runner-temp",
+      RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
+      AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache",
+      TF_PLUGIN_CACHE_DIR: "/tmp/github-runner-temp/terraform-plugin-cache"
+    });
+    expect(cacheStep?.with).toMatchObject({
+      key: "${{ runner.os }}-shell-safe-contract-${{ hashFiles('docker/Dockerfile', '.github/workflows/ci.yml') }}"
+    });
+    expect(String(cacheStep?.with?.path)).toContain(".tmp/ci-shell-safe/npm");
+    expect(String(cacheStep?.with?.path)).toContain(".tmp/ci-shell-safe/pip");
+    expect(String(cacheStep?.with?.path)).toContain(
+      "${{ env.TF_PLUGIN_CACHE_DIR }}"
+    );
+    expect(String(verifyToolchainStep?.run)).toContain("node --version");
+    expect(String(verifyToolchainStep?.run)).toContain("python3.12 --version");
+    expect(String(verifyToolchainStep?.run)).toContain("terraform version");
+    expect(String(verifyCacheStep?.run)).toContain("python3.12 -m venv .venv-contract");
+    expect(String(verifyCacheStep?.run)).toContain("npm config get cache");
+    expect(String(verifyCacheStep?.run)).toContain(
+      "terraform -chdir=.tmp/ci-shell-safe/terraform init -backend=false"
+    );
+  });
+
   test("keeps fork pull requests on GitHub-hosted runners", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
