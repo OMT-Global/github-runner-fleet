@@ -17,14 +17,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test_private:
+  test_self_hosted_trusted:
     name: test
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
       - synology
       - shell-only
-      - private
+      - public
     env:
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /tmp/github-runner-tool-cache
