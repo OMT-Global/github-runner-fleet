@@ -35,6 +35,9 @@ describe("renderCompose", () => {
     expect(privateService.volumes).toEqual([
       "/volume1/docker/synology-github-runner/pools/synology-private/runner-01:/volume1/docker/synology-github-runner/pools/synology-private/runner-01"
     ]);
+    expect(privateService.security_opt).toEqual(["no-new-privileges:true"]);
+    expect(privateService.cap_drop).toEqual(["ALL"]);
+    expect(privateService.cap_add).toEqual(["CHOWN"]);
     expect(privateService).not.toHaveProperty("init");
     expect(privateService).not.toHaveProperty("platform");
     expect(privateService).not.toHaveProperty("cpus");
