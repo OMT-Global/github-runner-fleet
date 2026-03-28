@@ -28,7 +28,7 @@ pools:
       - synology
       - shell-only
       - public
-    size: 1
+    size: 2
     architecture: auto
     runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-public
     resources:

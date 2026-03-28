@@ -14,7 +14,8 @@ describe("renderCompose", () => {
     expect(Object.keys(payload.services)).toEqual([
       "synology-private-runner-01",
       "synology-private-runner-02",
-      "synology-public-runner-01"
+      "synology-public-runner-01",
+      "synology-public-runner-02"
     ]);
 
     const privateService = payload.services["synology-private-runner-01"];
@@ -84,7 +85,7 @@ function configFixture(): ResolvedConfig {
         repositoryAccess: "selected",
         allowedRepositories: ["example/public-demo"],
         labels: ["synology", "shell-only", "public"],
-        size: 1,
+        size: 2,
         architecture: "auto",
         runnerRoot: "/volume1/docker/synology-github-runner/pools/synology-public",
         resources: {
