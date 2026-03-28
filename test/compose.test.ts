@@ -22,7 +22,10 @@ describe("renderCompose", () => {
       RUNNER_GROUP: "synology-private",
       RUNNER_LABELS: "synology,shell-only,private",
       RUNNER_SCOPE: "organization",
-      RUNNER_REPOSITORY_ACCESS: "all"
+      RUNNER_REPOSITORY_ACCESS: "all",
+      RUNNER_TEMP: "/tmp/github-runner-temp",
+      RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
+      AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
     });
     expect(privateService.environment).not.toHaveProperty(
       "RUNNER_ALLOWED_REPOSITORIES"
@@ -53,7 +56,7 @@ function configFixture(): ResolvedConfig {
     version: 1,
     image: {
       repository: "ghcr.io/example/synology-github-runner",
-      tag: "0.1.4"
+      tag: "0.1.5"
     },
     pools: [
       {
@@ -70,7 +73,7 @@ function configFixture(): ResolvedConfig {
         resources: {
           memory: "2g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.4"
+        imageRef: "ghcr.io/example/synology-github-runner:0.1.5"
       },
       {
         key: "synology-public",
@@ -86,7 +89,7 @@ function configFixture(): ResolvedConfig {
         resources: {
           memory: "1g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.4"
+        imageRef: "ghcr.io/example/synology-github-runner:0.1.5"
       }
     ]
   };

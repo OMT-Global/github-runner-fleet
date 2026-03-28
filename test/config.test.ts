@@ -23,7 +23,7 @@ describe("loadConfig", () => {
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-private
     visibility: private
@@ -63,7 +63,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-public
     visibility: public
@@ -94,7 +94,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-private
     visibility: private
@@ -136,7 +136,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-public
     visibility: public
@@ -165,7 +165,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-private
     visibility: private
@@ -196,7 +196,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-private
     visibility: private
@@ -233,7 +233,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-private
     visibility: private
@@ -269,7 +269,7 @@ pools:
       `version: 1
 image:
   repository: ghcr.io/example/synology-github-runner
-  tag: 0.1.4
+  tag: 0.1.5
 pools:
   - key: synology-private
     visibility: private

@@ -23,6 +23,7 @@ PUBLISH_PLATFORM="linux/amd64,linux/arm64"
 PLATFORM="${DEFAULT_PLATFORM}"
 PUSH_FLAG=""
 PLATFORM_WAS_SET=0
+LOAD_FLAG="--load"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,9 +44,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 : "${RUNNER_VERSION:=2.333.0}"
+: "${NODE_VERSION:=18.20.8}"
+: "${TERRAFORM_VERSION:=1.6.6}"
 
 if [[ -n "${PUSH_FLAG}" && "${PLATFORM_WAS_SET}" -eq 0 ]]; then
   PLATFORM="${PUBLISH_PLATFORM}"
+fi
+
+if [[ -n "${PUSH_FLAG}" ]]; then
+  LOAD_FLAG=""
+elif [[ "${PLATFORM}" == *,* ]]; then
+  echo "multi-platform builds require --push; local non-pushed builds must target a single platform" >&2
+  exit 1
 fi
 
 cd "${ROOT_DIR}"
@@ -53,7 +63,10 @@ cd "${ROOT_DIR}"
 docker buildx build \
   --platform "${PLATFORM}" \
   --build-arg "RUNNER_VERSION=${RUNNER_VERSION}" \
+  --build-arg "NODE_VERSION=${NODE_VERSION}" \
+  --build-arg "TERRAFORM_VERSION=${TERRAFORM_VERSION}" \
   -f docker/Dockerfile \
   -t "${IMAGE_REF}" \
+  ${LOAD_FLAG:+"${LOAD_FLAG}"} \
   ${PUSH_FLAG:+"${PUSH_FLAG}"} \
   .

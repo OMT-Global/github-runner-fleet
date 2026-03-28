@@ -84,7 +84,9 @@ cleanup_local_state() {
     "${RUNNER_HOME}/.credentials" \
     "${RUNNER_HOME}/.credentials_rsaparams"
   mkdir -p "${RUNNER_WORK_DIR}"
+  mkdir -p "${RUNNER_TEMP}"
   find "${RUNNER_WORK_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  find "${RUNNER_TEMP}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 }
 
 prepare_runner_home() {
@@ -136,6 +138,17 @@ cleanup_runner() {
   log "runner registration removed cleanly"
 }
 
+prepare_runtime_dirs() {
+  mkdir -p "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+
+  if [[ "${runner_exec_mode}" == "root" ]]; then
+    chmod -R u+rwX "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+    return
+  fi
+
+  chown -R runner:runner "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+}
+
 on_exit() {
   runner_exit_code=$?
   cleanup_runner
@@ -159,6 +172,9 @@ require_env RUNNER_WORK_DIR
 : "${RUNNER_DISABLE_UPDATE:=true}"
 : "${RUNNER_REPOSITORY_ACCESS:=selected}"
 : "${RUNNER_HOME:=${RUNNER_STATE_DIR%/}/runner-home}"
+: "${RUNNER_TEMP:=/tmp/github-runner-temp}"
+: "${RUNNER_TOOL_CACHE:=/opt/hostedtoolcache}"
+: "${AGENT_TOOLSDIRECTORY:=${RUNNER_TOOL_CACHE}}"
 : "${RUNNER_EXEC_MODE_OVERRIDE:=}"
 
 if [[ "${RUNNER_SCOPE}" != "organization" ]]; then
@@ -199,6 +215,7 @@ prepare_state_dir() {
 }
 
 prepare_state_dir
+prepare_runtime_dirs
 prepare_runner_home
 
 registration_token="$(request_runner_token registration)"

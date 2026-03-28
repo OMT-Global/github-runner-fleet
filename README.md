@@ -5,6 +5,11 @@ Shell-only, ephemeral GitHub self-hosted runner pools for Synology NAS deploymen
 ## What This Repo Builds
 
 - A custom multi-arch runner image based on the official `actions/runner` tarballs
+- Built-in shell-job baseline tooling:
+  - Node.js `18.20.8`
+  - Python `3.12`
+  - Terraform `1.6.6`
+  - `git`, `bash`, `tar`, `zstd`, and `procps`
 - No Docker socket mounts
 - No privileged containers
 - No host-network mode
@@ -12,7 +17,7 @@ Shell-only, ephemeral GitHub self-hosted runner pools for Synology NAS deploymen
   - `synology-private`
   - `synology-public`
 
-This v1 runner class supports shell jobs, JavaScript actions, and composite actions. It does not support Docker-based actions, `container:` jobs, or service containers.
+This v1 runner class supports shell jobs, JavaScript actions, composite actions, standard `actions/setup-node` flows, and Terraform CLI workflows. It does not support Docker-based actions, `container:` jobs, or service containers.
 
 ## Repo Layout
 
@@ -58,7 +63,7 @@ If you set `resources.cpus` or `resources.pidsLimit`, `validate-config` and `ren
 7. Build the runner image:
 
 ```bash
-./scripts/build-image.sh ghcr.io/your-org/synology-github-runner:0.1.4 --push
+./scripts/build-image.sh ghcr.io/your-org/synology-github-runner:0.1.5 --push
 ```
 
 When `--push` is used without an explicit `--platform`, the helper now defaults to `linux/amd64,linux/arm64` so the same tag works across Intel and ARM Synology models. A single-arch tag combined with the wrong `platform` or `architecture` setting will fail at startup with `Exec format error`.
@@ -75,6 +80,7 @@ When `--push` is used without an explicit `--platform`, the helper now defaults 
 - Public repos must not receive long-lived secrets from this runner class.
 - GitHub enforces repo access on the runner group side; this repo carries that policy into validation, metadata, and rendered compose output.
 - The image keeps the official runner bundle under `/actions-runner` as a read-only source and copies it into a writable per-runner home under `RUNNER_STATE_DIR` before startup.
+- The image exposes a dedicated container-local Actions temp directory at `RUNNER_TEMP=/tmp/github-runner-temp` and a hosted tool cache at `RUNNER_TOOL_CACHE=/opt/hostedtoolcache` so `actions/setup-node` and cache-aware shell workflows do not depend on Synology bind-mount ownership semantics.
 - On Synology bind mounts that reject `chown`, the entrypoint falls back to root runner execution with `RUNNER_ALLOW_RUNASROOT=1` so the service can still start cleanly from that writable runner home.
 - The writable-home copy intentionally extracts without restoring archive ownership, so Synology mounts do not emit a `tar: Cannot change ownership ... Operation not permitted` line for every runner file.
 
@@ -135,5 +141,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - Verify the generated compose file does not pin `platform:` unless you intentionally forced `architecture`
 - Run a private-repo shell workflow with secrets
 - Run a public-repo shell workflow without secrets
+- Run a self-hosted workflow that uses `actions/setup-node` with `cache: pnpm`
+- Verify `python3 --version` reports `3.12.x` and `terraform version` reports `1.6.6`
 - Confirm each job de-registers the runner and the service restarts cleanly
 - Confirm there is no Docker socket mount in the rendered compose file

@@ -3,7 +3,7 @@
 name: synology-github-runner
 services:
   synology-private-runner-01:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.4
+    image: ghcr.io/omt-global/synology-github-runner:0.1.5
     container_name: synology-private-runner-01
     hostname: synology-private-runner-01
     restart: unless-stopped
@@ -21,6 +21,9 @@ services:
       RUNNER_STATE_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-01
       RUNNER_LOG_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-01/logs
       RUNNER_WORK_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-01/_work
+      RUNNER_TEMP: /tmp/github-runner-temp
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
     volumes:
@@ -37,7 +40,7 @@ services:
       com.synology-gh-runner.shell-only: "true"
     mem_limit: 2g
   synology-private-runner-02:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.4
+    image: ghcr.io/omt-global/synology-github-runner:0.1.5
     container_name: synology-private-runner-02
     hostname: synology-private-runner-02
     restart: unless-stopped
@@ -55,6 +58,9 @@ services:
       RUNNER_STATE_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-02
       RUNNER_LOG_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-02/logs
       RUNNER_WORK_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-02/_work
+      RUNNER_TEMP: /tmp/github-runner-temp
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
     volumes:
@@ -71,7 +77,7 @@ services:
       com.synology-gh-runner.shell-only: "true"
     mem_limit: 2g
   synology-public-runner-01:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.4
+    image: ghcr.io/omt-global/synology-github-runner:0.1.5
     container_name: synology-public-runner-01
     hostname: synology-public-runner-01
     restart: unless-stopped
@@ -89,6 +95,9 @@ services:
       RUNNER_STATE_DIR: /volume2/docker/synology-github-runner/pools/synology-public/runner-01
       RUNNER_LOG_DIR: /volume2/docker/synology-github-runner/pools/synology-public/runner-01/logs
       RUNNER_WORK_DIR: /volume2/docker/synology-github-runner/pools/synology-public/runner-01/_work
+      RUNNER_TEMP: /tmp/github-runner-temp
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_ALLOWED_REPOSITORIES: omt-global/synology-github-runner
