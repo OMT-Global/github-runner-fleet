@@ -139,14 +139,14 @@ cleanup_runner() {
 }
 
 prepare_runtime_dirs() {
-  mkdir -p "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+  mkdir -p "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
-    chmod -R u+rwX "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+    chmod -R u+rwX "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
     return
   fi
 
-  chown -R runner:runner "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+  chown -R runner:runner "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
 }
 
 on_exit() {

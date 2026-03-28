@@ -20,7 +20,7 @@ services:
       RUNNER_REPOSITORY_ACCESS: all
       RUNNER_STATE_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-01
       RUNNER_LOG_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-01/logs
-      RUNNER_WORK_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-01/_work
+      RUNNER_WORK_DIR: /tmp/github-runner-work
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
@@ -57,7 +57,7 @@ services:
       RUNNER_REPOSITORY_ACCESS: all
       RUNNER_STATE_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-02
       RUNNER_LOG_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-02/logs
-      RUNNER_WORK_DIR: /volume2/docker/synology-github-runner/pools/synology-private/runner-02/_work
+      RUNNER_WORK_DIR: /tmp/github-runner-work
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
@@ -94,7 +94,7 @@ services:
       RUNNER_REPOSITORY_ACCESS: selected
       RUNNER_STATE_DIR: /volume2/docker/synology-github-runner/pools/synology-public/runner-01
       RUNNER_LOG_DIR: /volume2/docker/synology-github-runner/pools/synology-public/runner-01/logs
-      RUNNER_WORK_DIR: /volume2/docker/synology-github-runner/pools/synology-public/runner-01/_work
+      RUNNER_WORK_DIR: /tmp/github-runner-work
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache

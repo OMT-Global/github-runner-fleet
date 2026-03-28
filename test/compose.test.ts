@@ -23,6 +23,7 @@ describe("renderCompose", () => {
       RUNNER_LABELS: "synology,shell-only,private",
       RUNNER_SCOPE: "organization",
       RUNNER_REPOSITORY_ACCESS: "all",
+      RUNNER_WORK_DIR: "/tmp/github-runner-work",
       RUNNER_TEMP: "/tmp/github-runner-temp",
       RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
       AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
