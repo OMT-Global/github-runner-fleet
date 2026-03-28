@@ -1,7 +1,7 @@
 version: 1
 image:
   repository: ghcr.io/omt-global/synology-github-runner
-  tag: 0.1.1
+  tag: 0.1.3
 pools:
   - key: synology-private
     visibility: private
@@ -23,7 +23,7 @@ pools:
     runnerGroup: synology-public
     repositoryAccess: selected
     allowedRepositories:
-      - omt-global/public-demo
+      - omt-global/synology-github-runner
     labels:
       - synology
       - shell-only

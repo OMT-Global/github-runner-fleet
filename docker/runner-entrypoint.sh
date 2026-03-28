@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-RUNNER_HOME="${RUNNER_HOME:-/actions-runner}"
+RUNNER_SOURCE_HOME="${RUNNER_SOURCE_HOME:-${RUNNER_HOME:-/actions-runner}}"
+RUNNER_HOME="${RUNNER_HOME:-}"
 runner_configured="false"
 runner_exit_code=0
 runner_exec_mode="runner"
@@ -15,11 +16,11 @@ run_runner_bash() {
   shift || true
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
-    env RUNNER_ALLOW_RUNASROOT=1 "$@" bash -lc "${command}"
+    env RUNNER_ALLOW_RUNASROOT=1 RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" bash -lc "${command}"
     return
   fi
 
-  env "$@" gosu runner bash -lc "${command}"
+  env RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" gosu runner bash -lc "${command}"
 }
 
 require_env() {
@@ -86,6 +87,27 @@ cleanup_local_state() {
   find "${RUNNER_WORK_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 }
 
+prepare_runner_home() {
+  if [[ -z "${RUNNER_HOME}" ]]; then
+    RUNNER_HOME="${RUNNER_STATE_DIR%/}/runner-home"
+  fi
+
+  if [[ "${RUNNER_HOME}" == "${RUNNER_SOURCE_HOME}" ]]; then
+    log "runner home is using image source directory ${RUNNER_SOURCE_HOME}"
+    return
+  fi
+
+  rm -rf "${RUNNER_HOME}"
+  mkdir -p "${RUNNER_HOME}"
+  tar -C "${RUNNER_SOURCE_HOME}" -cf - . | tar --no-same-owner --no-same-permissions -C "${RUNNER_HOME}" -xf -
+
+  if [[ "${runner_exec_mode}" == "root" ]]; then
+    chmod -R u+rwX "${RUNNER_HOME}"
+  else
+    chown -R runner:runner "${RUNNER_HOME}"
+  fi
+}
+
 cleanup_runner() {
   if [[ "${runner_configured}" != "true" ]]; then
     return 0
@@ -104,7 +126,7 @@ cleanup_runner() {
   fi
 
   if ! run_runner_bash \
-    'cd "${RUNNER_HOME}" && ./config.sh remove --token "${RUNNER_TOKEN}"' \
+    "cd '${RUNNER_HOME}' && ./config.sh remove --token \"\${RUNNER_TOKEN}\"" \
     "RUNNER_TOKEN=${remove_token}"; then
     log "runner removal command failed; check GitHub runner inventory for stale registrations"
     return 0
@@ -136,6 +158,8 @@ require_env RUNNER_WORK_DIR
 : "${RUNNER_EPHEMERAL:=true}"
 : "${RUNNER_DISABLE_UPDATE:=true}"
 : "${RUNNER_REPOSITORY_ACCESS:=selected}"
+: "${RUNNER_HOME:=${RUNNER_STATE_DIR%/}/runner-home}"
+: "${RUNNER_EXEC_MODE_OVERRIDE:=}"
 
 if [[ "${RUNNER_SCOPE}" != "organization" ]]; then
   log "RUNNER_SCOPE=${RUNNER_SCOPE} is unsupported in v1; only organization runners are implemented"
@@ -146,6 +170,20 @@ prepare_state_dir() {
   local probe_file
 
   mkdir -p "${RUNNER_STATE_DIR}" "${RUNNER_LOG_DIR}" "${RUNNER_WORK_DIR}"
+
+  if [[ -n "${RUNNER_EXEC_MODE_OVERRIDE}" ]]; then
+    case "${RUNNER_EXEC_MODE_OVERRIDE}" in
+      root|runner)
+        runner_exec_mode="${RUNNER_EXEC_MODE_OVERRIDE}"
+        log "runner execution mode override: ${runner_exec_mode}"
+        return
+        ;;
+      *)
+        log "invalid RUNNER_EXEC_MODE_OVERRIDE=${RUNNER_EXEC_MODE_OVERRIDE}; expected root or runner"
+        exit 1
+        ;;
+    esac
+  fi
 
   if ! chown -R runner:runner "${RUNNER_STATE_DIR}" 2>/dev/null; then
     log "state directory ownership update failed for ${RUNNER_STATE_DIR}; falling back to root runner execution for Synology-compatible bind mounts"
@@ -161,6 +199,7 @@ prepare_state_dir() {
 }
 
 prepare_state_dir
+prepare_runner_home
 
 registration_token="$(request_runner_token registration)"
 if [[ -z "${registration_token}" ]]; then
@@ -204,6 +243,8 @@ if [[ "${runner_exec_mode}" == "root" ]]; then
 else
   log "runner execution mode: runner user"
 fi
+log "runner source home: ${RUNNER_SOURCE_HOME}"
+log "runner writable home: ${RUNNER_HOME}"
 run_runner_bash "cd '${RUNNER_HOME}' && ./config.sh ${config_args[*]@Q}"
 runner_configured="true"
 

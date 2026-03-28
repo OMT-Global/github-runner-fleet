@@ -2,8 +2,10 @@ import { describe, expect, test, vi } from "vitest";
 import {
   buildRegistrationTokenRequest,
   buildRemoveTokenRequest,
+  fetchOrganizationRunnerGroups,
   fetchLatestRunnerRelease,
-  fetchRunnerToken
+  fetchRunnerToken,
+  verifyRunnerGroups
 } from "../src/lib/github.js";
 
 describe("github runner API helpers", () => {
@@ -64,6 +66,139 @@ describe("github runner API helpers", () => {
         version: "2.327.1",
         publishedAt: "2026-03-25T00:00:00Z"
       });
+  });
+
+  test("parses organization runner groups", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          total_count: 2,
+          runner_groups: [
+            {
+              id: 1,
+              name: "Default",
+              visibility: "all",
+              default: true
+            },
+            {
+              id: 2,
+              name: "synology-private",
+              visibility: "all",
+              default: false
+            }
+          ]
+        })
+    });
+
+    await expect(
+      fetchOrganizationRunnerGroups(
+        "https://api.github.com",
+        "example",
+        "secret",
+        fetchMock
+      )
+    ).resolves.toEqual([
+      {
+        id: 1,
+        name: "Default",
+        visibility: "all",
+        isDefault: true
+      },
+      {
+        id: 2,
+        name: "synology-private",
+        visibility: "all",
+        isDefault: false
+      }
+    ]);
+  });
+
+  test("verifies expected runner groups", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          runner_groups: [
+            {
+              id: 2,
+              name: "synology-private",
+              visibility: "all",
+              default: false
+            },
+            {
+              id: 3,
+              name: "synology-public",
+              visibility: "selected",
+              default: false
+            }
+          ]
+        })
+    });
+
+    await expect(
+      verifyRunnerGroups("https://api.github.com", "secret", [
+        {
+          poolKey: "synology-private",
+          organization: "example",
+          runnerGroup: "synology-private"
+        },
+        {
+          poolKey: "synology-public",
+          organization: "example",
+          runnerGroup: "synology-public"
+        }
+      ], fetchMock)
+    ).resolves.toEqual([
+      {
+        poolKey: "synology-private",
+        organization: "example",
+        runnerGroup: "synology-private",
+        visibility: "all",
+        isDefault: false
+      },
+      {
+        poolKey: "synology-public",
+        organization: "example",
+        runnerGroup: "synology-public",
+        visibility: "selected",
+        isDefault: false
+      }
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails when an expected runner group is missing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          runner_groups: [
+            {
+              id: 1,
+              name: "Default",
+              visibility: "all",
+              default: true
+            }
+          ]
+        })
+    });
+
+    await expect(
+      verifyRunnerGroups("https://api.github.com", "secret", [
+        {
+          poolKey: "synology-private",
+          organization: "example",
+          runnerGroup: "synology-private"
+        }
+      ], fetchMock)
+    ).rejects.toThrow(
+      /pool synology-private expects runner group synology-private in organization example/
+    );
   });
 
   test("throws on non-ok token response", async () => {

@@ -37,7 +37,15 @@ pnpm install
 pnpm validate-config -- --config config/pools.yaml --env .env
 ```
 
-5. Render the compose file:
+5. Validate that the configured GitHub runner groups already exist in the target organization:
+
+```bash
+pnpm validate-github -- --config config/pools.yaml --env .env
+```
+
+This catches mismatched or missing `runnerGroup` values before Synology starts containers that would otherwise enter a restart loop.
+
+6. Render the compose file:
 
 ```bash
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
@@ -47,15 +55,15 @@ The sample config uses `architecture: auto`, which lets Docker pull the native i
 
 If you set `resources.cpus` or `resources.pidsLimit`, `validate-config` and `render-compose` will warn because many Synology kernels reject Docker NanoCPUs, CPU CFS quotas, and PID cgroup limits. The sample config omits both limits for that reason.
 
-6. Build the runner image:
+7. Build the runner image:
 
 ```bash
-./scripts/build-image.sh ghcr.io/your-org/synology-github-runner:0.1.1 --push
+./scripts/build-image.sh ghcr.io/your-org/synology-github-runner:0.1.3 --push
 ```
 
 When `--push` is used without an explicit `--platform`, the helper now defaults to `linux/amd64,linux/arm64` so the same tag works across Intel and ARM Synology models. A single-arch tag combined with the wrong `platform` or `architecture` setting will fail at startup with `Exec format error`.
 
-7. Deploy the generated compose file to Synology Container Manager and start the stack.
+8. Deploy the generated compose file to Synology Container Manager and start the stack.
 
 ## Runtime Contract
 
@@ -66,7 +74,9 @@ When `--push` is used without an explicit `--platform`, the helper now defaults 
 - `repositoryAccess: selected` requires `allowedRepositories` and documents the intended selected-repo set for that pool.
 - Public repos must not receive long-lived secrets from this runner class.
 - GitHub enforces repo access on the runner group side; this repo carries that policy into validation, metadata, and rendered compose output.
-- On Synology bind mounts that reject `chown`, the entrypoint falls back to root runner execution with `RUNNER_ALLOW_RUNASROOT=1` so the service can still start cleanly.
+- The image keeps the official runner bundle under `/actions-runner` as a read-only source and copies it into a writable per-runner home under `RUNNER_STATE_DIR` before startup.
+- On Synology bind mounts that reject `chown`, the entrypoint falls back to root runner execution with `RUNNER_ALLOW_RUNASROOT=1` so the service can still start cleanly from that writable runner home.
+- The writable-home copy intentionally extracts without restoring archive ownership, so Synology mounts do not emit a `tar: Cannot change ownership ... Operation not permitted` line for every runner file.
 
 Recommended workflow labels:
 
@@ -87,6 +97,7 @@ Recommended workflow labels:
 
 ```bash
 pnpm validate-config -- --config config/pools.yaml --env .env
+pnpm validate-github -- --config config/pools.yaml --env .env
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
@@ -105,8 +116,8 @@ The smoke test:
 
 - builds the local runner image
 - starts a mock GitHub token API on an isolated Docker network
-- mounts stubbed `config.sh` and `run.sh` files into `/actions-runner`
-- verifies registration token fetch, runner config flags, run invocation, remove token fetch, and cleanup
+- mounts stubbed `config.sh` and `run.sh` files into `/actions-runner` as the read-only runner source
+- verifies registration token fetch, runner config flags, run invocation, remove token fetch, and cleanup for both the normal runner-user mode and the Synology-style root-fallback mode
 
 Useful overrides:
 
