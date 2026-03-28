@@ -3,7 +3,7 @@
 name: synology-github-runner
 services:
   synology-private-runner-01:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.5
+    image: ghcr.io/omt-global/synology-github-runner:0.1.6
     container_name: synology-private-runner-01
     hostname: synology-private-runner-01
     restart: unless-stopped
@@ -40,7 +40,7 @@ services:
       com.synology-gh-runner.shell-only: "true"
     mem_limit: 2g
   synology-private-runner-02:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.5
+    image: ghcr.io/omt-global/synology-github-runner:0.1.6
     container_name: synology-private-runner-02
     hostname: synology-private-runner-02
     restart: unless-stopped
@@ -77,7 +77,7 @@ services:
       com.synology-gh-runner.shell-only: "true"
     mem_limit: 2g
   synology-public-runner-01:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.5
+    image: ghcr.io/omt-global/synology-github-runner:0.1.6
     container_name: synology-public-runner-01
     hostname: synology-public-runner-01
     restart: unless-stopped
@@ -115,7 +115,7 @@ services:
       com.synology-gh-runner.shell-only: "true"
     mem_limit: 1g
   synology-public-runner-02:
-    image: ghcr.io/omt-global/synology-github-runner:0.1.5
+    image: ghcr.io/omt-global/synology-github-runner:0.1.6
     container_name: synology-public-runner-02
     hostname: synology-public-runner-02
     restart: unless-stopped
