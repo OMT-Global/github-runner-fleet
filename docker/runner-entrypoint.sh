@@ -142,11 +142,26 @@ prepare_runtime_dirs() {
   mkdir -p "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
-    chmod -R u+rwX "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+    ensure_root_runtime_dir "${RUNNER_WORK_DIR}"
+    ensure_root_runtime_dir "${RUNNER_TEMP}"
+    ensure_root_runtime_dir "${RUNNER_TOOL_CACHE}"
     return
   fi
 
   chown -R runner:runner "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
+}
+
+ensure_root_runtime_dir() {
+  local dir="$1"
+
+  if chmod -R u+rwX "${dir}" 2>/dev/null; then
+    return
+  fi
+
+  log "runtime directory permission update failed for ${dir}; recreating it for root runner execution"
+  rm -rf "${dir}"
+  mkdir -p "${dir}"
+  chmod -R u+rwX "${dir}"
 }
 
 on_exit() {
