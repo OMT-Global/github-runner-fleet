@@ -32,8 +32,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
     labels:
       com.synology-gh-runner.pool: synology-private
       com.synology-gh-runner.visibility: private
@@ -71,8 +69,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
     labels:
       com.synology-gh-runner.pool: synology-private
       com.synology-gh-runner.visibility: private
@@ -111,8 +107,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
     labels:
       com.synology-gh-runner.pool: synology-public
       com.synology-gh-runner.visibility: public
@@ -151,8 +145,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
     labels:
       com.synology-gh-runner.pool: synology-public
       com.synology-gh-runner.visibility: public

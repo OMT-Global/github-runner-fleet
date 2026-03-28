@@ -36,10 +36,27 @@ jobs:
       - uses: pnpm/action-setup@v5
         with:
           version: 10.32.1
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: pnpm
+      - name: Install Node.js
+        run: |
+          case "$(uname -m)" in
+            x86_64) node_arch="x64" ;;
+            aarch64|arm64) node_arch="arm64" ;;
+            *)
+              echo "Unsupported runner architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          node_version="24.14.1"
+          archive="node-v${node_version}-linux-${node_arch}.tar.xz"
+          install_dir="${RUNNER_TEMP}/node-${node_version}-${node_arch}"
+
+          curl -fsSL "https://nodejs.org/dist/v${node_version}/${archive}" -o "${RUNNER_TEMP}/${archive}"
+          rm -rf "${install_dir}"
+          mkdir -p "${install_dir}"
+          tar -xJf "${RUNNER_TEMP}/${archive}" --strip-components=1 --no-same-owner -C "${install_dir}"
+          echo "${install_dir}/bin" >> "$GITHUB_PATH"
+          "${install_dir}/bin/node" --version
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test

@@ -75,7 +75,6 @@ function renderService(pool: PoolConfig, index: number): Record<string, unknown>
     volumes: [`${runnerStateDir}:${runnerStateDir}`],
     security_opt: ["no-new-privileges:true"],
     cap_drop: ["ALL"],
-    cap_add: ["CHOWN"],
     labels: {
       "com.synology-gh-runner.pool": pool.key,
       "com.synology-gh-runner.visibility": pool.visibility,
