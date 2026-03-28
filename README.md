@@ -17,7 +17,7 @@ Shell-only, ephemeral GitHub self-hosted runner pools for Synology NAS deploymen
   - `synology-private`
   - `synology-public`
 
-This v1 runner class supports shell jobs, JavaScript actions, composite actions, standard `actions/setup-node` flows, and Terraform CLI workflows. It does not support Docker-based actions, `container:` jobs, or service containers.
+This v1 runner class supports shell jobs, JavaScript actions, composite actions, the bundled shell-safe Node setup action, built-in Python `3.12` workflows, and Terraform CLI workflows. It does not support Docker-based actions, `container:` jobs, or service containers.
 
 ## Repo Layout
 
@@ -107,7 +107,7 @@ If you want the repository release and GHCR image tag to stay aligned, merge the
 - GitHub enforces repo access on the runner group side; this repo carries that policy into validation, metadata, and rendered compose output.
 - The image keeps the official runner bundle under `/actions-runner` as a read-only source and copies it into a writable per-runner home under `RUNNER_STATE_DIR` before startup.
 - The runner work tree is container-local at `RUNNER_WORK_DIR=/tmp/github-runner-work` so Actions temp extraction does not inherit Synology bind-mount ownership restrictions.
-- The image exposes a dedicated container-local Actions temp directory at `RUNNER_TEMP=/tmp/github-runner-temp` and a hosted tool cache at `RUNNER_TOOL_CACHE=/opt/hostedtoolcache` so `actions/setup-node` and cache-aware shell workflows do not depend on Synology bind-mount ownership semantics.
+- The image exposes a dedicated container-local Actions temp directory at `RUNNER_TEMP=/tmp/github-runner-temp` and a hosted tool cache at `RUNNER_TOOL_CACHE=/opt/hostedtoolcache` so shell-safe tool bootstrap actions do not depend on Synology bind-mount ownership semantics.
 - In root-fallback mode, the entrypoint will recreate those container-local runtime directories if Synology rejects an in-place permission refresh, instead of crashing the container during startup.
 - On Synology bind mounts that reject `chown`, the entrypoint falls back to root runner execution with `RUNNER_ALLOW_RUNASROOT=1` so the service can still start cleanly from that writable runner home.
 - The writable-home copy intentionally extracts without restoring archive ownership, so Synology mounts do not emit a `tar: Cannot change ownership ... Operation not permitted` line for every runner file.
@@ -116,6 +116,20 @@ Recommended workflow labels:
 
 - Private repos: `runs-on: [self-hosted, synology, shell-only, private]`
 - Public repos: `runs-on: [self-hosted, synology, shell-only, public]`
+
+## Reusable Setup Actions
+
+For Node projects on shell-only runners, use the bundled action instead of `actions/setup-node`:
+
+```yaml
+- uses: OMT-Global/synology-github-runner/actions/setup-shell-safe-node@main
+  with:
+    node-version: 24.14.1
+```
+
+Use that action on self-hosted Synology runners where `actions/setup-node` would otherwise fail while extracting tool archives. Keep `actions/setup-node` on GitHub-hosted jobs.
+
+For Python projects, the runner image already carries Python `3.12`. Repos that only need `3.12` can run directly on the shell-only pool. Repos with Python version matrices should keep the non-`3.12` lanes on GitHub-hosted runners and only route the `3.12` lane to self-hosted runners.
 
 ## Security Notes
 
@@ -170,7 +184,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - Verify the generated compose file does not pin `platform:` unless you intentionally forced `architecture`
 - Run a private-repo shell workflow with secrets
 - Run a public-repo shell workflow without secrets
-- Run a self-hosted workflow that uses `actions/setup-node` with `cache: pnpm`
+- Run a self-hosted workflow that uses `OMT-Global/synology-github-runner/actions/setup-shell-safe-node@<ref>`
 - Verify `python3 --version` reports `3.12.x` and `terraform version` reports `1.6.6`
 - Confirm each job de-registers the runner and the service restarts cleanly
 - Confirm there is no Docker socket mount in the rendered compose file

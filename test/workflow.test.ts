@@ -13,7 +13,9 @@ describe("CI workflow", () => {
 
     const trustedJob = workflow.jobs.test_self_hosted_trusted;
     const steps = trustedJob.steps as Array<Record<string, unknown>>;
-    const installNodeStep = steps.find((step) => step.name === "Install Node.js");
+    const installNodeStep = steps.find(
+      (step) => step.uses === "./actions/setup-shell-safe-node"
+    );
     const forkSteps = workflow.jobs.test_public_fork_pr.steps as Array<
       Record<string, unknown>
     >;
@@ -33,11 +35,9 @@ describe("CI workflow", () => {
       AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
     });
     expect(installNodeStep).toBeDefined();
-    expect(String(installNodeStep?.run)).toContain('node_version="24.14.1"');
-    expect(String(installNodeStep?.run)).toContain("--no-same-owner");
-    expect(
-      String(installNodeStep?.run)
-    ).toContain('echo "${install_dir}/bin" >> "$GITHUB_PATH"');
+    expect(installNodeStep?.with).toMatchObject({
+      "node-version": "24.14.1"
+    });
     expect(steps.some((step) => step.uses === "actions/setup-node@v6")).toBe(
       false
     );
@@ -45,7 +45,6 @@ describe("CI workflow", () => {
       "node-version": "24",
       cache: "pnpm"
     });
-    expect(String(installNodeStep?.run)).toContain("https://nodejs.org/dist/");
   });
 
   test("keeps fork pull requests on GitHub-hosted runners", () => {

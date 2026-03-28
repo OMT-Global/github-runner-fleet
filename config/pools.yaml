@@ -23,6 +23,7 @@ pools:
     runnerGroup: synology-public
     repositoryAccess: selected
     allowedRepositories:
+      - omt-global/axiom
       - omt-global/synology-github-runner
     labels:
       - synology

@@ -1,0 +1,46 @@
+name: Setup Shell-Safe Node
+description: Install Node.js on shell-only Linux runners without restoring archive ownership.
+
+inputs:
+  node-version:
+    description: Exact Node.js version to install.
+    required: false
+    default: 24.14.1
+
+runs:
+  using: composite
+  steps:
+    - name: Install Node.js
+      shell: bash
+      env:
+        INPUT_NODE_VERSION: ${{ inputs.node-version }}
+      run: |
+        case "$(uname -s)" in
+          Linux) ;;
+          *)
+            echo "Unsupported runner OS: $(uname -s)" >&2
+            exit 1
+            ;;
+        esac
+
+        case "$(uname -m)" in
+          x86_64) node_arch="x64" ;;
+          aarch64|arm64) node_arch="arm64" ;;
+          *)
+            echo "Unsupported runner architecture: $(uname -m)" >&2
+            exit 1
+            ;;
+        esac
+
+        runner_temp="${RUNNER_TEMP:-/tmp/github-runner-temp}"
+        node_version="${INPUT_NODE_VERSION}"
+        archive="node-v${node_version}-linux-${node_arch}.tar.xz"
+        install_dir="${runner_temp}/node-${node_version}-${node_arch}"
+
+        mkdir -p "${runner_temp}"
+        curl -fsSL "https://nodejs.org/dist/v${node_version}/${archive}" -o "${runner_temp}/${archive}"
+        rm -rf "${install_dir}"
+        mkdir -p "${install_dir}"
+        tar -xJf "${runner_temp}/${archive}" --strip-components=1 --no-same-owner -C "${install_dir}"
+        echo "${install_dir}/bin" >> "$GITHUB_PATH"
+        "${install_dir}/bin/node" --version
