@@ -1,0 +1,89 @@
+version: 1
+project:
+  name: synology-github-runner
+  description: Shell-only GitHub self-hosted runner pools for Synology NAS deployments.
+  visibility: public
+  owner: OMT-Global
+  defaultBranch: main
+repo:
+  managedPaths:
+    - project.bootstrap.yaml
+    - AGENTS.md
+    - CLAUDE.md
+    - CODEOWNERS
+    - .devcontainer/**
+    - .github/workflows/pr-fast-ci.yml
+    - .github/workflows/extended-validation.yml
+    - .github/workflows/claude.yml
+    - scripts/check-detect-secrets.sh
+    - scripts/ci/**
+    - scripts/codex-cloud/**
+    - scripts/claude-cloud/**
+    - scripts/claude/**
+    - docs/bootstrap/**
+archetype:
+  kind: generic-empty
+  packageManager: npm
+  moduleName: synology_github_runner
+github:
+  createRepo: false
+  reviewers:
+    - jmcte
+  codeowners:
+    - pattern: "*"
+      owners:
+        - "@jmcte"
+  autoMerge: true
+  deleteBranchOnMerge: true
+  requiredApprovals: 1
+  requiredStatusChecks:
+    - CI Gate
+  dismissStaleReviews: true
+  requireCodeOwnerReviews: true
+  requireLastPushApproval: false
+  enforceLinearHistory: true
+  allowMergeCommit: true
+  allowSquashMerge: true
+  allowRebaseMerge: true
+  repoFeatures:
+    hasIssues: true
+    hasProjects: false
+    hasWiki: false
+    hasDiscussions: false
+ci:
+  runnerPolicy: hybrid-safe
+  nodeVersion: "20"
+  pythonVersion: "3.12"
+  fastChecks:
+    - secrets
+  extendedChecks:
+    - template-review
+  nightlyCron: 0 7 * * *
+agents:
+  manageCodexHome: true
+  manageClaudeHome: true
+  codexProfile: default
+  claudeProfile: default
+  enableClaudeWebEnvironment: true
+  enableClaudeDevcontainer: true
+  enableClaudeGitHubAction: true
+  sharedSkills: []
+environments:
+  dev:
+    reviewers: []
+    requireApproval: false
+    preventSelfReview: false
+    branches: []
+  stage:
+    reviewers:
+      - jmcte
+    requireApproval: true
+    preventSelfReview: true
+    branches: []
+  prod:
+    reviewers:
+      - jmcte
+    requireApproval: true
+    preventSelfReview: true
+    branches:
+      - main
