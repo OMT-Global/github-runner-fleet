@@ -122,3 +122,32 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+  ci_gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - test_self_hosted_trusted
+      - shell_safe_contract_trusted
+      - test_public_fork_pr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required CI jobs
+        env:
+          RESULTS: >-
+            test_self_hosted_trusted=${{ needs.test_self_hosted_trusted.result }}
+            shell_safe_contract_trusted=${{ needs.shell_safe_contract_trusted.result }}
+            test_public_fork_pr=${{ needs.test_public_fork_pr.result }}
+        run: |
+          failed=0
+          for entry in $RESULTS; do
+            job="${entry%%=*}"
+            status="${entry##*=}"
+            if [[ "$status" == "success" || "$status" == "skipped" ]]; then
+              echo "OK   $job => $status"
+            else
+              echo "FAIL $job => $status"
+              failed=1
+            fi
+          done
+          exit "$failed"

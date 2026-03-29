@@ -36,7 +36,8 @@ describe("release workflow", () => {
     });
     expect(job["runs-on"]).toBe("ubuntu-latest");
     expect(job.env).toMatchObject({
-      GITHUB_PAT: "${{ secrets.GITHUB_TOKEN }}",
+      GHCR_TOKEN: "${{ secrets.GHCR_PAT || secrets.UPSTREAM_PAT || secrets.GITHUB_TOKEN }}",
+      GITHUB_PAT: "${{ secrets.GHCR_PAT || secrets.UPSTREAM_PAT || secrets.GITHUB_TOKEN }}",
       SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/synology-github-runner"
     });
     expect(dispatch.inputs?.publish_project_release).toMatchObject({
@@ -50,7 +51,15 @@ describe("release workflow", () => {
     expect(steps.some((step) => step.uses === "docker/setup-buildx-action@v3")).toBe(
       true
     );
-    expect(steps.some((step) => step.uses === "docker/login-action@v4")).toBe(true);
+    const dockerLoginStep = steps.find(
+      (step) => step.uses === "docker/login-action@v4"
+    );
+    expect(dockerLoginStep).toBeDefined();
+    expect(dockerLoginStep?.with).toMatchObject({
+      registry: "ghcr.io",
+      username: "${{ github.actor }}",
+      password: "${{ env.GHCR_TOKEN }}"
+    });
     expect(
       steps.some(
         (step) =>

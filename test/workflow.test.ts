@@ -103,4 +103,35 @@ describe("CI workflow", () => {
 
     expect(workflow.jobs.test_public_fork_pr["runs-on"]).toBe("ubuntu-latest");
   });
+
+  test("emits a CI Gate status that accepts success or skipped upstream jobs", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const gateJob = workflow.jobs.ci_gate;
+    const steps = gateJob.steps as Array<Record<string, unknown>>;
+    const checkStep = steps.find((step) => step.name === "Check required CI jobs");
+
+    expect(gateJob.name).toBe("CI Gate");
+    expect(gateJob.if).toBe("always()");
+    expect(gateJob.needs).toEqual([
+      "test_self_hosted_trusted",
+      "shell_safe_contract_trusted",
+      "test_public_fork_pr"
+    ]);
+    expect(gateJob["runs-on"]).toBe("ubuntu-latest");
+    expect(String(checkStep?.env?.RESULTS)).toContain(
+      "test_self_hosted_trusted=${{ needs.test_self_hosted_trusted.result }}"
+    );
+    expect(String(checkStep?.env?.RESULTS)).toContain(
+      "shell_safe_contract_trusted=${{ needs.shell_safe_contract_trusted.result }}"
+    );
+    expect(String(checkStep?.env?.RESULTS)).toContain(
+      "test_public_fork_pr=${{ needs.test_public_fork_pr.result }}"
+    );
+    expect(String(checkStep?.run)).toContain('$status" == "success" || "$status" == "skipped"');
+  });
 });

@@ -80,6 +80,8 @@ pnpm validate-image -- --config config/pools.yaml --env .env
 
 Use [release-image.yml](/Users/johnteneyckjr./src/synology-github-runner/.github/workflows/release-image.yml) for published tags instead of relying on an ad hoc local push. The workflow runs on GitHub-hosted runners, not the Synology shell-only pool, because it needs multi-arch Buildx, QEMU, and registry publish support.
 
+If your org GHCR policy rejects workflow `GITHUB_TOKEN` package pushes, set a repo or org secret named `GHCR_PAT` with a classic PAT that has `repo`, `read:org`, `workflow`, `write:packages`, and `delete:packages`, and authorize it for SSO against `OMT-Global`. The workflow prefers `GHCR_PAT`, then `UPSTREAM_PAT`, and only falls back to `GITHUB_TOKEN` when neither PAT secret is available.
+
 The release workflow:
 
 - enforces that `package.json` version matches `config/pools.yaml` image tag
