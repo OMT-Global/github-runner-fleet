@@ -1,0 +1,113 @@
+name: PR Fast CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-fast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.12'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  changes:
+    name: Detect Relevant Changes
+    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'project.bootstrap.yaml'
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - '.devcontainer/**'
+              - '.githooks/**'
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - 'docs/bootstrap/**'
+              - 'README.md'
+              - 'docs/**'
+            ci:
+              - 'project.bootstrap.yaml'
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - '.devcontainer/**'
+              - '.githooks/**'
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - 'docs/bootstrap/**'
+              - '.env.example'
+              - 'CODEOWNERS'
+
+  fast-checks:
+    name: Fast Checks
+    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    timeout-minutes: 15
+    needs: changes
+    if: >-
+      github.event.pull_request.draft == false &&
+      (needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run fast checks
+        run: bash scripts/ci/run-fast-checks.sh
+
+  validate-secrets:
+    name: Validate Secrets
+    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    timeout-minutes: 10
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Scan repository for secret patterns
+        run: bash scripts/check-detect-secrets.sh --all-files
+
+  ci-gate:
+    name: CI Gate
+    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    if: always()
+    needs:
+      - changes
+      - fast-checks
+      - validate-secrets
+    steps:
+      - name: Check required PR jobs
+        env:
+          RESULTS: >-
+            changes=${{ needs.changes.result }}
+            fast-checks=${{ needs.fast-checks.result }}
+            validate-secrets=${{ needs.validate-secrets.result }}
+        run: |
+          failed=0
+          for entry in $RESULTS; do
+            job="${entry%%=*}"
+            status="${entry##*=}"
+            if [[ "$status" == "success" || "$status" == "skipped" ]]; then
+              echo "OK   $job => $status"
+            else
+              echo "FAIL $job => $status"
+              failed=1
+            fi
+          done
+          exit "$failed"

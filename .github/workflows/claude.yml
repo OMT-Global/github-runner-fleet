@@ -1,0 +1,74 @@
+name: Claude Code
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Task for Claude to run in this repository'
+        required: true
+        default: 'Review the current branch changes for bugs, CI regressions, and missing tests.'
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: claude-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  claude:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Require Claude auth
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [[ -z "${ANTHROPIC_API_KEY}" ]]; then
+            echo "Missing repository secret ANTHROPIC_API_KEY. Run /install-github-app in Claude Code or add the secret before using this workflow." >&2
+            exit 1
+          fi
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          use_sticky_comment: true
+          additional_permissions: "actions: read"
+          prompt: |
+            REPO: ${{ github.repository }}
+            DEFAULT BRANCH: main
+
+            Use CLAUDE.md and docs/bootstrap/onboarding.md as repo policy context.
+            Keep required PR status checks aligned with CI Gate.
+            Preserve the split fast and extended validation model.
+            Shell-safe jobs may use `[self-hosted, synology, shell-only, public]`.
+            Docker, service-container, browser, and `container:` jobs stay on GitHub-hosted runners.
+            Prefer the smallest safe change and add tests for behavior changes.
+
+            MANUAL TASK: ${{ github.event.inputs.prompt }}
+            If this is not a manual run, ignore the MANUAL TASK line and respond to the current `@claude` request instead.
