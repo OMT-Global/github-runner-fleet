@@ -47,7 +47,7 @@ describe("release workflow", () => {
     expect(steps.some((step) => step.uses === "docker/setup-qemu-action@v4")).toBe(
       true
     );
-    expect(steps.some((step) => step.uses === "docker/setup-buildx-action@v3")).toBe(
+    expect(steps.some((step) => step.uses === "docker/setup-buildx-action@v4")).toBe(
       true
     );
     expect(steps.some((step) => step.uses === "docker/login-action@v4")).toBe(true);
