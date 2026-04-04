@@ -56,7 +56,7 @@ describe("CI workflow", () => {
 
     const contractJob = workflow.jobs.shell_safe_contract_trusted;
     const steps = contractJob.steps as Array<Record<string, unknown>>;
-    const cacheStep = steps.find((step) => step.uses === "actions/cache@v4");
+    const cacheStep = steps.find((step) => step.uses === "actions/cache@v5");
     const verifyToolchainStep = steps.find(
       (step) => step.name === "Verify built-in shell-safe toolchain"
     );
