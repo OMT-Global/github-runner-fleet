@@ -31,7 +31,7 @@ jobs:
       ci: ${{ steps.preset.outputs.ci || steps.filter.outputs.ci || 'false' }}
       extended: ${{ steps.preset.outputs.extended || steps.filter.outputs.extended || 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: github.event_name == 'push'
         with:
           fetch-depth: 0
@@ -84,7 +84,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
@@ -96,7 +96,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.app == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run extended validation
         run: bash scripts/ci/run-extended-validation.sh
@@ -106,7 +106,7 @@ jobs:
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Scan repository for secret patterns
         run: bash scripts/check-detect-secrets.sh --all-files
 
