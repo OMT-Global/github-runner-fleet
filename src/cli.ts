@@ -13,6 +13,7 @@ import {
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./lib/github.js";
+import { formatDoctorText, runDoctor } from "./lib/doctor.js";
 import {
   buildRunnerDownloadUrl,
   summarizeRunnerVersion
@@ -52,6 +53,9 @@ async function main(): Promise<void> {
       break;
     case "runner-release-manifest":
       await runnerReleaseManifest(args);
+      break;
+    case "doctor":
+      await doctor(args);
       break;
     case "validate-lume-config":
       await validateLumeConfig(args);
@@ -319,6 +323,47 @@ async function runnerReleaseManifest(args: string[]): Promise<void> {
   );
 }
 
+async function doctor(args: string[]): Promise<void> {
+  const requestedMode = args[0] && !args[0]?.startsWith("--") ? args[0] : undefined;
+  const mode = (requestedMode ?? getOption(args, "--mode", "all")) as
+    | "synology"
+    | "lume"
+    | "all";
+  const format = getOption(args, "--format", "text");
+
+  if (!["synology", "lume", "all"].includes(mode)) {
+    throw new Error(`doctor mode must be one of synology, lume, or all; received ${mode}`);
+  }
+
+  if (!["text", "json"].includes(format!)) {
+    throw new Error(`doctor format must be text or json; received ${format}`);
+  }
+
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const report = await runDoctor({
+    mode,
+    env,
+    synologyConfigPath: getOption(args, "--config", "config/pools.yaml"),
+    lumeConfigPath: getOption(args, "--lume-config", "config/lume-runners.yaml")
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    if (!report.ok) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  process.stdout.write(formatDoctorText(report));
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
+}
+
 async function validateLumeConfig(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
@@ -458,6 +503,7 @@ function printUsage(): void {
   pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
   pnpm runner-release-manifest [--current 2.333.0] [--env .env]
+  pnpm doctor [synology|lume|all] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]
   pnpm validate-lume-github [--config config/lume-runners.yaml] [--env .env]
   pnpm render-lume-runner-manifest [--config config/lume-runners.yaml] [--env .env] [--slot 1] [--format json|shell]

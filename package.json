@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-runner-version": "tsx src/cli.ts check-runner-version",
+    "doctor": "tsx src/cli.ts doctor",
     "install-synology-project": "tsx src/cli.ts install-synology-project",
     "lint": "tsc --noEmit -p tsconfig.json",
     "render-lume-runner-manifest": "tsx src/cli.ts render-lume-runner-manifest",

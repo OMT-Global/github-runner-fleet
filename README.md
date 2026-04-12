@@ -43,7 +43,17 @@ pnpm install
 pnpm validate-config -- --config config/pools.yaml --env .env
 ```
 
-5. Validate that the configured GitHub runner groups already exist in the target organization:
+5. Run the unified fleet doctor before deployment changes:
+
+```bash
+pnpm doctor -- all --env .env --config config/pools.yaml --lume-config config/lume-runners.yaml
+pnpm doctor -- synology --env .env --config config/pools.yaml --format json
+pnpm doctor -- lume --env .env --lume-config config/lume-runners.yaml
+```
+
+`doctor` gives one operator-facing preflight for the whole fleet or for a targeted surface. It reuses the existing Synology and Lume validators, checks that the configured runner groups still exist, confirms the Synology image tag is present in GHCR, verifies shared GitHub API reachability, and emits either human-readable text or stable JSON for automation.
+
+6. Validate that the configured GitHub runner groups already exist in the target organization:
 
 ```bash
 pnpm validate-github -- --config config/pools.yaml --env .env
@@ -51,7 +61,7 @@ pnpm validate-github -- --config config/pools.yaml --env .env
 
 This catches mismatched or missing `runnerGroup` values before Synology starts containers that would otherwise enter a restart loop.
 
-6. Render the compose file:
+7. Render the compose file:
 
 ```bash
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
@@ -61,7 +71,7 @@ The sample config uses `architecture: auto`, which lets Docker pull the native i
 
 If you set `resources.cpus` or `resources.pidsLimit`, `validate-config` and `render-compose` will warn because many Synology kernels reject Docker NanoCPUs, CPU CFS quotas, and PID cgroup limits. The sample config omits both limits for that reason.
 
-7. Build the runner image:
+8. Build the runner image:
 
 ```bash
 ./scripts/build-image.sh ghcr.io/your-org/synology-github-runner:0.1.9 --push
@@ -200,6 +210,9 @@ Keep the Lume runner env file outside git and locked down with `chmod 600`. The 
 ## Useful Commands
 
 ```bash
+pnpm doctor -- all --env .env --config config/pools.yaml --lume-config config/lume-runners.yaml
+pnpm doctor -- synology --env .env --config config/pools.yaml --format json
+pnpm doctor -- lume --env .env --lume-config config/lume-runners.yaml
 pnpm validate-config -- --config config/pools.yaml --env .env
 pnpm validate-github -- --config config/pools.yaml --env .env
 pnpm validate-image -- --config config/pools.yaml --env .env
