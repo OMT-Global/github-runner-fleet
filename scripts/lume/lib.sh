@@ -89,3 +89,7 @@ upload_env_file() {
 vm_exists() {
   lume get "${LUME_VM_NAME}" --format json $(storage_args) >/dev/null 2>&1
 }
+
+base_vm_exists() {
+  lume get "${LUME_VM_BASE_NAME}" --format json $(storage_args) >/dev/null 2>&1
+}
