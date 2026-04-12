@@ -8,6 +8,7 @@ describe("Lume pool scripts", () => {
     const destroySlot = read("scripts/lume/destroy-slot.sh");
     const runSlot = read("scripts/lume/run-slot.sh");
     const reconcile = read("scripts/lume/reconcile-pool.sh");
+    const status = read("scripts/lume/status.sh");
 
     expect(createSlot).toContain('lume clone "${LUME_VM_BASE_NAME}" "${LUME_VM_NAME}"');
     expect(createSlot).toContain('lume set "${LUME_VM_NAME}" --cpu "${LUME_VM_CPU}"');
@@ -17,6 +18,16 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain("uploading guest bootstrap assets");
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
     expect(reconcile).toContain('nohup "${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
+    expect(reconcile).toContain('--dry-run');
+    expect(reconcile).toContain('--once');
+    expect(reconcile).toContain('base VM ${LUME_VM_BASE_NAME} does not exist');
+    expect(reconcile).toContain('action="create-slot"');
+    expect(reconcile).toContain('action="restart-worker"');
+    expect(reconcile).toContain('action="healthy"');
+    expect(destroySlot).toContain('rm -f "${LUME_SLOT_VM_PID_FILE}"');
+    expect(status).toContain('--format');
+    expect(status).toContain('"baseVm": {"name": "%s", "status": "%s"}');
+    expect(status).toContain('base_vm=%s status=%s');
   });
 
   test("bootstraps ephemeral macOS runners inside guest VMs", () => {
