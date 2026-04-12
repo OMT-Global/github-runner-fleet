@@ -206,10 +206,40 @@ pnpm validate-lume-github -- --config config/lume-runners.yaml --env .env
 pnpm render-lume-runner-manifest -- --config config/lume-runners.yaml --env .env --slot 1
 bash scripts/lume/create-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env
+bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env --dry-run
+bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env --once
 bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env
+bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env --format json
 ```
 
 Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image.
+
+### Lume host layout and lifecycle playbook
+
+Treat the Lume host data as three separate layers:
+
+- base image state: the sealed base VM named by `vmBaseName`
+- host control-plane state: `LUME_RUNNER_BASE_DIR`, slot metadata under `slots/`, and logs under `logs/`
+- per-slot ephemeral state: cloned VMs named from `vmSlotPrefix`, transient guest bootstrap assets, and the copied runner env file
+
+A safe operator workflow looks like this:
+
+1. Validate the config and GitHub runner-group mapping.
+2. Create the base VM with `scripts/lume/create-base-vm.sh`.
+3. Boot the base VM manually, install Xcode and any pinned host-side prerequisites, verify the guest user can run CI workloads, then shut the VM down cleanly.
+4. Keep credentials out of the base image. Store them only in the host-side env file referenced by `LUME_RUNNER_ENV_FILE`.
+5. Run `scripts/lume/reconcile-pool.sh --dry-run` before starting or resizing the pool so you can see whether each slot will be created or have its worker restarted.
+6. Start the pool with `scripts/lume/reconcile-pool.sh`.
+7. Use `scripts/lume/status.sh --format json` for machine-readable status checks, and the default text output for quick terminal inspection.
+
+### Recovering and rotating Lume capacity
+
+- If one slot is unhealthy, stop its worker and recycle only that slot:
+  - inspect `logs/slot-XX.log` and `logs/slot-XX-vm.log`
+  - run `bash scripts/lume/destroy-slot.sh --slot <n> --config config/lume-runners.yaml --env .env`
+  - rerun `bash scripts/lume/reconcile-pool.sh --once --config config/lume-runners.yaml --env .env`
+- If the base image needs updates, shut down the pool, update and reseal the base VM, then rerun `reconcile-pool.sh` so fresh clones inherit the new image state.
+- `reconcile-pool.sh` now fails fast when the configured base VM is missing, which helps catch accidental host cleanup before the controller loops forever.
 
 ## Security Notes
 
