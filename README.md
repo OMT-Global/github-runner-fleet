@@ -81,8 +81,9 @@ For a fully programmatic install from your workstation, this repo can also reuse
 
 ```bash
 pnpm render-synology-project-manifest -- --config config/pools.yaml --env .env
-pnpm install-synology-project -- --config config/pools.yaml --env .env
-pnpm teardown-synology-project -- --config config/pools.yaml --env .env
+pnpm install-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
+pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
+pnpm synology-status -- --config config/pools.yaml --env .env --result .tmp/synology-status.json
 ```
 
 That installer path:
@@ -95,6 +96,29 @@ That installer path:
 `install-synology-project` is the recreate/resize path. If you change [config/pools.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/pools.yaml) from four private runners to two, or from two public runners to six, rerun `pnpm install-synology-project ...` and the generated compose project will reconcile to the new slot counts. `--force-recreate` refreshes existing services, and `--remove-orphans` removes slots that no longer exist in the rendered compose file.
 
 Use `pnpm teardown-synology-project ...` when you want an explicit `docker compose down` on the NAS before reinstalling or when you want the runner project fully stopped.
+
+Use `pnpm synology-status ...` after an install or teardown attempt to inspect the saved DSM task result, the last known compose project state returned by `synology-api`, the expected remote log path, and the next troubleshooting steps. `install-synology-project` and `teardown-synology-project` now support `--status-output` so operators can persist the latest result for that command surface.
+
+### Synology operator runbook
+
+Recommended flow:
+
+1. `pnpm validate-config -- --config config/pools.yaml --env .env`
+2. `pnpm validate-github -- --config config/pools.yaml --env .env`
+3. `pnpm validate-image -- --config config/pools.yaml --env .env`
+4. `pnpm install-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json`
+5. `pnpm synology-status -- --config config/pools.yaml --env .env --result .tmp/synology-status.json`
+6. If recovery is needed, run `pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json` and inspect status again before reinstalling.
+
+### Synology troubleshooting guide
+
+| Symptom | Next step |
+| --- | --- |
+| GitHub registration/auth failures | Run `pnpm validate-github -- --config config/pools.yaml --env .env` and confirm `GITHUB_PAT` plus runner groups are still valid. |
+| Image tag drift or pull failures | Run `pnpm validate-image -- --config config/pools.yaml --env .env` before reinstalling. |
+| Synology path permission failures | Inspect the remote `install-project.log` path reported by `pnpm synology-status` and verify `SYNOLOGY_PROJECT_DIR` plus runner state directories are writable. |
+| DSM task failure or timeout | Review the saved task result via `pnpm synology-status -- --result .tmp/synology-status.json`, then inspect the remote log path it prints. |
+| Need a clean rollback/recovery cycle | Run `pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json`, confirm the saved result, then reinstall. |
 
 It intentionally avoids undocumented `SYNO.Docker.Project create/import` calls. If the Synology Docker daemon can see the compose project normally, Container Manager should still surface it as a compose project after the install task runs.
 
@@ -205,8 +229,9 @@ pnpm validate-github -- --config config/pools.yaml --env .env
 pnpm validate-image -- --config config/pools.yaml --env .env
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
 pnpm render-synology-project-manifest -- --config config/pools.yaml --env .env
-pnpm install-synology-project -- --config config/pools.yaml --env .env
-pnpm teardown-synology-project -- --config config/pools.yaml --env .env
+pnpm install-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
+pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
+pnpm synology-status -- --config config/pools.yaml --env .env --result .tmp/synology-status.json
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
 pnpm smoke-test

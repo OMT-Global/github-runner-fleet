@@ -20,6 +20,7 @@
     "teardown-synology-project": "tsx src/cli.ts teardown-synology-project",
     "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
     "smoke-test": "bash scripts/smoke-test.sh",
+    "synology-status": "tsx src/cli.ts synology-status",
     "test": "vitest run",
     "validate-config": "tsx src/cli.ts validate-config",
     "validate-lume-config": "tsx src/cli.ts validate-lume-config",
