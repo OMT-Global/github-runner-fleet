@@ -164,6 +164,8 @@ For Python projects, the runner image already carries Python `3.12` and exposes 
 
 For OpenClaw Ouro style workflows, the compatible jobs are the Node/npm validators, docs checks, Python `3.12` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain. Keep workflow-parser jobs that rely on extra distro packages, plus any `container:`, `services:`, browser, or Docker-daemon jobs, on GitHub-hosted runners.
 
+For a copy-paste-ready compatibility matrix and downstream workflow recipes, see [docs/workflow-cookbook.md](docs/workflow-cookbook.md).
+
 ## Lume macOS Pool
 
 This repo now also carries a separate host-side control plane for pooled macOS runner VMs under [config/lume-runners.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/lume-runners.yaml). This is not a macOS container path. `lume` runs full macOS VMs, and the host scripts recycle per-slot VM clones from a sealed base VM so the job host itself is ephemeral.
