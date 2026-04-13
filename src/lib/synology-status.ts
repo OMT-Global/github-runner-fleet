@@ -161,6 +161,7 @@ function buildChecks(
   savedResultPath?: string
 ): SynologyStatusCheck[] {
   const connection = plan.connection;
+  const githubPatConfigured = !plan.envFileContent.includes('GITHUB_PAT=""');
   return [
     {
       key: "synology_env",
@@ -172,10 +173,10 @@ function buildChecks(
     },
     {
       key: "github_pat",
-      ok: connection.password.length > 0 || plan.envFileContent.includes("GITHUB_PAT=\"") === false,
-      summary: plan.envFileContent.includes('GITHUB_PAT=""')
-        ? "GITHUB_PAT is missing from the deployment env"
-        : "GITHUB_PAT is configured for remote runner registration"
+      ok: githubPatConfigured,
+      summary: githubPatConfigured
+        ? "GITHUB_PAT is configured for remote runner registration"
+        : "GITHUB_PAT is missing from the deployment env"
     },
     {
       key: "synology_api_repo",

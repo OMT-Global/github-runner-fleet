@@ -97,6 +97,36 @@ describe("synology status", () => {
       ])
     );
   });
+
+  test("fails github_pat when GitHub auth is missing but Synology auth is configured", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "synology-status-github-pat-"));
+    tempDirs.push(dir);
+    const apiRepo = path.join(dir, "synology-api");
+    fs.mkdirSync(apiRepo, { recursive: true });
+    const env = envFixture(apiRepo);
+    env.githubPat = undefined;
+
+    const report = buildSynologyStatusReport({
+      config: configFixture(),
+      env,
+      composeContent: renderCompose(configFixture(), env)
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "synology_env",
+          ok: true
+        }),
+        expect.objectContaining({
+          key: "github_pat",
+          ok: false,
+          summary: "GITHUB_PAT is missing from the deployment env"
+        })
+      ])
+    );
+  });
 });
 
 function configFixture(): ResolvedConfig {
