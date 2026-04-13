@@ -26,6 +26,7 @@ This v1 runner class supports shell jobs, JavaScript actions, composite actions,
 - [docker/Dockerfile](/Users/johnteneyckjr./src/synology-github-runner/docker/Dockerfile): runner image build
 - [docker/runner-entrypoint.sh](/Users/johnteneyckjr./src/synology-github-runner/docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
 - [src/cli.ts](/Users/johnteneyckjr./src/synology-github-runner/src/cli.ts): config validation, compose rendering, and runner release helpers
+- [docs/private-repo-parity.md](docs/private-repo-parity.md): workload routing and GitHub-hosted parity gaps for private repos
 
 ## Quick Start
 
