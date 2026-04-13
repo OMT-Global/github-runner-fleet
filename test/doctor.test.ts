@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { loadDeploymentEnv } from "../src/lib/env.js";
 import { formatDoctorText, runDoctor } from "../src/lib/doctor.js";
 import type { FetchLike } from "../src/lib/github.js";
@@ -12,6 +12,7 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+  vi.unstubAllEnvs();
 });
 
 describe("doctor", () => {
@@ -41,6 +42,7 @@ describe("doctor", () => {
   });
 
   test("fails Synology mode clearly when GitHub credentials are missing", async () => {
+    vi.stubEnv("GITHUB_PAT", "");
     const fixture = createFixture({ withPat: false });
     const report = await runDoctor({
       mode: "synology",
@@ -88,6 +90,7 @@ describe("doctor", () => {
   });
 
   test("fails Lume mode clearly when GitHub credentials are missing", async () => {
+    vi.stubEnv("GITHUB_PAT", "");
     const fixture = createFixture({ withPat: false });
     const report = await runDoctor({
       mode: "lume",
