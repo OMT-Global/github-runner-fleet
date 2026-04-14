@@ -22,6 +22,11 @@ import {
   buildSynologyInstallPlan,
   summarizeSynologyInstallPlan
 } from "./lib/synology-install.js";
+import {
+  buildSynologyStatusReport,
+  formatSynologyStatusText,
+  saveSynologyResult
+} from "./lib/synology-status.js";
 
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
@@ -47,6 +52,9 @@ async function main(): Promise<void> {
       break;
     case "teardown-synology-project":
       await teardownSynologyProject(args);
+      break;
+    case "synology-status":
+      await synologyStatus(args);
       break;
     case "check-runner-version":
       await checkRunnerVersion(args);
@@ -173,6 +181,7 @@ async function renderSynologyProjectManifest(args: string[]): Promise<void> {
 
 async function installSynologyProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const statusOutput = getOption(args, "--status-output", ".tmp/synology-status.json");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
     requirePat: !dryRun
@@ -207,11 +216,13 @@ async function installSynologyProject(args: string[]): Promise<void> {
     throw new Error(stderr || stdout || `installer exited with status ${result.status}`);
   }
 
+  saveSynologyResult(statusOutput!, "up", result.stdout);
   process.stdout.write(result.stdout);
 }
 
 async function teardownSynologyProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const statusOutput = getOption(args, "--status-output", ".tmp/synology-status.json");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
     requirePat: !dryRun
@@ -246,7 +257,40 @@ async function teardownSynologyProject(args: string[]): Promise<void> {
     throw new Error(stderr || stdout || `installer exited with status ${result.status}`);
   }
 
+  saveSynologyResult(statusOutput!, "down", result.stdout);
   process.stdout.write(result.stdout);
+}
+
+async function synologyStatus(args: string[]): Promise<void> {
+  const format = getOption(args, "--format", "text");
+  if (!["text", "json"].includes(format!)) {
+    throw new Error(`synology-status format must be text or json; received ${format}`);
+  }
+
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const config = loadConfig(configPath!, env);
+  emitWarnings(config);
+  const compose = renderCompose(config, env);
+  const report = buildSynologyStatusReport({
+    config,
+    env,
+    composeContent: compose,
+    savedResultPath: getOption(args, "--result", ".tmp/synology-status.json")
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    process.stdout.write(formatSynologyStatusText(report));
+  }
+
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
 }
 
 async function validateImage(args: string[]): Promise<void> {
@@ -499,8 +543,9 @@ function printUsage(): void {
   pnpm validate-image [--config config/pools.yaml] [--env .env]
   pnpm render-compose [--config config/pools.yaml] [--env .env] [--output docker-compose.generated.yml]
   pnpm render-synology-project-manifest [--config config/pools.yaml] [--env .env]
-  pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
-  pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
+  pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3] [--status-output .tmp/synology-status.json]
+  pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3] [--status-output .tmp/synology-status.json]
+  pnpm synology-status [--config config/pools.yaml] [--env .env] [--result .tmp/synology-status.json] [--format text|json]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
   pnpm runner-release-manifest [--current 2.333.0] [--env .env]
   pnpm doctor [synology|lume|all] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
