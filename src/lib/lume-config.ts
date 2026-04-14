@@ -47,6 +47,7 @@ export interface ResolvedLumeConfig {
   host: {
     baseDir: string;
     envFile: string;
+    ipswPath?: string;
     configPath: string;
   };
   pool: LumePoolConfig;
@@ -106,6 +107,7 @@ export function loadLumeConfig(
   const host = {
     baseDir: env.lumeRunnerBaseDir,
     envFile: env.lumeRunnerEnvFile,
+    ipswPath: env.lumeRunnerIpswPath,
     configPath: absolutePath
   };
 
@@ -139,6 +141,7 @@ export function renderLumeShellExports(
     LUME_IMAGE_TAG: config.pool.imageTag ?? "",
     LUME_HOST_BASE_DIR: config.host.baseDir,
     LUME_HOST_ENV_FILE: config.host.envFile,
+    LUME_HOST_IPSW_PATH: config.host.ipswPath ?? "",
     LUME_CONFIG_PATH: config.host.configPath,
     GITHUB_ORG: config.pool.organization,
     RUNNER_GROUP: config.pool.runnerGroup,
@@ -176,7 +179,7 @@ function buildSlots(pool: LumePoolConfig, baseDir: string): LumeSlotManifest[] {
     const slotKey = `slot-${String(index).padStart(2, "0")}`;
     const hostDir = path.join(slotsDir, slotKey);
     const vmName = `${pool.vmSlotPrefix}-${String(index).padStart(2, "0")}`;
-    const guestStageDir = "/tmp/synology-github-runner";
+    const guestStageDir = "/tmp/github-runner-fleet";
     return {
       index,
       slotKey,

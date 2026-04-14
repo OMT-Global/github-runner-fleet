@@ -22,7 +22,7 @@ describe("loadConfig", () => {
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-private
@@ -42,7 +42,7 @@ pools:
 
     const config = loadConfig(configPath, deploymentEnv());
     expect(config.pools[0].runnerRoot).toBe(
-      "/volume1/docker/synology-github-runner/pools/synology-private"
+      "/volume1/docker/github-runner-fleet/pools/synology-private"
     );
     expect(config.pools[0].labels).toEqual([
       "synology",
@@ -62,7 +62,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-public
@@ -75,7 +75,7 @@ pools:
     labels: []
     size: 1
     architecture: amd64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-public
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-public
 `,
       "utf8"
     );
@@ -93,7 +93,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-private
@@ -106,7 +106,7 @@ pools:
     labels: []
     size: 1
     architecture: arm64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
   - key: synology-private
     visibility: private
     organization: example
@@ -117,7 +117,7 @@ pools:
     labels: []
     size: 1
     architecture: arm64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private-2
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private-2
 `,
       "utf8"
     );
@@ -135,7 +135,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-public
@@ -146,7 +146,7 @@ pools:
     labels: []
     size: 1
     architecture: amd64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-public
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-public
 `,
       "utf8"
     );
@@ -164,7 +164,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-private
@@ -177,7 +177,7 @@ pools:
     labels: []
     size: 1
     architecture: arm64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
 `,
       "utf8"
     );
@@ -195,7 +195,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-private
@@ -206,7 +206,7 @@ pools:
     labels: []
     size: 1
     architecture: arm64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
     resources:
       cpus: "2.0"
       memory: 2g
@@ -232,7 +232,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-private
@@ -243,7 +243,7 @@ pools:
     labels: []
     size: 1
     architecture: auto
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
     resources:
       memory: 2g
       pidsLimit: 256
@@ -268,7 +268,7 @@ pools:
       configPath,
       `version: 1
 image:
-  repository: ghcr.io/example/synology-github-runner
+  repository: ghcr.io/example/github-runner-fleet
   tag: 0.1.5
 pools:
   - key: synology-private
@@ -279,7 +279,7 @@ pools:
     labels: []
     size: 1
     architecture: arm64
-    runnerRoot: /volume1/docker/synology-github-runner/pools/synology-private
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
 `,
       "utf8"
     );
@@ -293,7 +293,7 @@ pools:
 function deploymentEnv(): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
-    synologyRunnerBaseDir: "/volume1/docker/synology-github-runner",
+    synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
     synologyHost: "nas.example.com",
     synologyPort: "5001",
     synologyUsername: "admin",
@@ -302,20 +302,31 @@ function deploymentEnv(): DeploymentEnv {
     synologyCertVerify: false,
     synologyDsmVersion: 7,
     synologyApiRepo: "/Users/tester/src/synology-api",
-    synologyProjectDir: "/volume1/docker/synology-github-runner",
+    synologyProjectDir: "/volume1/docker/github-runner-fleet",
     synologyProjectComposeFile: "compose.yaml",
     synologyProjectEnvFile: ".env",
     synologyInstallPullImages: true,
     synologyInstallForceRecreate: true,
     synologyInstallRemoveOrphans: true,
+    linuxDockerRunnerBaseDir: "/srv/github-runner-fleet/linux-docker",
+    linuxDockerHost: "docker-host.example.com",
+    linuxDockerPort: "22",
+    linuxDockerUsername: "runner",
+    linuxDockerProjectDir: "/srv/github-runner-fleet/linux-docker",
+    linuxDockerProjectComposeFile: "compose.yaml",
+    linuxDockerProjectEnvFile: ".env",
+    linuxDockerInstallPullImages: true,
+    linuxDockerInstallForceRecreate: true,
+    linuxDockerInstallRemoveOrphans: true,
     lumeRunnerBaseDir:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume",
     lumeRunnerEnvFile:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume/runner.env",
-    composeProjectName: "synology-github-runner",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
+    composeProjectName: "github-runner-fleet",
     runnerVersion: "2.327.1",
     raw: {
-      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/synology-github-runner"
+      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet",
+      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker"
     }
   };
 }

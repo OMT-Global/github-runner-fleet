@@ -266,13 +266,13 @@ describe("github runner API helpers", () => {
       verifyContainerImageTag(
         "https://api.github.com",
         "secret",
-        "ghcr.io/omt-global/synology-github-runner:0.1.5",
+        "ghcr.io/omt-global/github-runner-fleet:0.1.5",
         fetchMock
       )
     ).resolves.toEqual({
-      imageRef: "ghcr.io/omt-global/synology-github-runner:0.1.5",
+      imageRef: "ghcr.io/omt-global/github-runner-fleet:0.1.5",
       owner: "omt-global",
-      packageName: "synology-github-runner",
+      packageName: "github-runner-fleet",
       tag: "0.1.5",
       versionId: 101,
       updatedAt: "2026-03-28T16:29:47Z",
@@ -308,7 +308,7 @@ describe("github runner API helpers", () => {
       verifyContainerImageTag(
         "https://api.github.com",
         "secret",
-        "ghcr.io/jmcte/synology-github-runner:0.1.5",
+        "ghcr.io/jmcte/github-runner-fleet:0.1.5",
         fetchMock
       )
     ).resolves.toMatchObject({
@@ -339,7 +339,7 @@ describe("github runner API helpers", () => {
       verifyContainerImageTag(
         "https://api.github.com",
         "secret",
-        "ghcr.io/omt-global/synology-github-runner:0.1.5",
+        "ghcr.io/omt-global/github-runner-fleet:0.1.5",
         fetchMock
       )
     ).rejects.toThrow(/does not include tag 0\.1\.5; available tags: 0\.1\.4, latest/);

@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOCKER_CONTEXT="${DOCKER_CONTEXT:-$(docker context show 2>/dev/null || true)}"
-IMAGE_REF="${SMOKE_IMAGE_REF:-synology-github-runner:smoke}"
+IMAGE_REF="${SMOKE_IMAGE_REF:-github-runner-fleet:smoke}"
 KEEP_ARTIFACTS="${SMOKE_KEEP_ARTIFACTS:-0}"
 TEMP_PARENT="${ROOT_DIR}/.tmp"
 NETWORK="sgr-smoke-${RANDOM}${RANDOM}"
@@ -129,6 +129,15 @@ verify_python_toolcache() {
     '
 }
 
+verify_docker_cli() {
+  log "verifying Docker CLI is present for the linux-docker plane"
+
+  docker_cmd run --rm \
+    --entrypoint /bin/bash \
+    "${IMAGE_REF}" \
+    -lc 'set -Eeuo pipefail && docker --version'
+}
+
 run_smoke_case() {
   local mode="$1"
   local state_dir="${TEMP_DIR}/state-${mode}"
@@ -190,6 +199,7 @@ run_smoke_case() {
 run_smoke_case runner
 run_smoke_case root
 verify_python_toolcache
+verify_docker_cli
 
 log "smoke test passed"
 log "image=${IMAGE_REF}"

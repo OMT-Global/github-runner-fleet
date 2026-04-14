@@ -55,7 +55,7 @@ export function buildGitHubApiHeaders(
 ): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
-    "User-Agent": "synology-github-runner",
+    "User-Agent": "github-runner-fleet",
     "X-GitHub-Api-Version": "2022-11-28"
   };
 

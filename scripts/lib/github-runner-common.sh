@@ -42,7 +42,7 @@ github_api_post() {
       -X POST \
       -H "Authorization: Bearer ${GITHUB_PAT}" \
       -H "Accept: application/vnd.github+json" \
-      -H "User-Agent: synology-github-runner" \
+      -H "User-Agent: github-runner-fleet" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
       "${GITHUB_API_URL%/}${endpoint}"
   )"

@@ -35,7 +35,7 @@ describe("renderCompose", () => {
       "RUNNER_ALLOWED_REPOSITORIES"
     );
     expect(privateService.volumes).toEqual([
-      "/volume1/docker/synology-github-runner/pools/synology-private/runner-01:/volume1/docker/synology-github-runner/pools/synology-private/runner-01"
+      "/volume1/docker/github-runner-fleet/pools/synology-private/runner-01:/volume1/docker/github-runner-fleet/pools/synology-private/runner-01"
     ]);
     expect(privateService.security_opt).toEqual(["no-new-privileges:true"]);
     expect(privateService.cap_drop).toEqual(["ALL"]);
@@ -61,7 +61,7 @@ function configFixture(): ResolvedConfig {
   return {
     version: 1,
     image: {
-      repository: "ghcr.io/example/synology-github-runner",
+      repository: "ghcr.io/example/github-runner-fleet",
       tag: "0.1.5"
     },
     pools: [
@@ -75,11 +75,11 @@ function configFixture(): ResolvedConfig {
         labels: ["synology", "shell-only", "private"],
         size: 4,
         architecture: "auto",
-        runnerRoot: "/volume1/docker/synology-github-runner/pools/synology-private",
+        runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-private",
         resources: {
           memory: "2g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.5"
+        imageRef: "ghcr.io/example/github-runner-fleet:0.1.5"
       },
       {
         key: "synology-public",
@@ -91,11 +91,11 @@ function configFixture(): ResolvedConfig {
         labels: ["synology", "shell-only", "public"],
         size: 2,
         architecture: "auto",
-        runnerRoot: "/volume1/docker/synology-github-runner/pools/synology-public",
+        runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-public",
         resources: {
           memory: "1g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.5"
+        imageRef: "ghcr.io/example/github-runner-fleet:0.1.5"
       }
     ]
   };
@@ -104,7 +104,7 @@ function configFixture(): ResolvedConfig {
 function envFixture(): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
-    synologyRunnerBaseDir: "/volume1/docker/synology-github-runner",
+    synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
     synologyHost: "nas.example.com",
     synologyPort: "5001",
     synologyUsername: "admin",
@@ -113,16 +113,26 @@ function envFixture(): DeploymentEnv {
     synologyCertVerify: false,
     synologyDsmVersion: 7,
     synologyApiRepo: "/Users/tester/src/synology-api",
-    synologyProjectDir: "/volume1/docker/synology-github-runner",
+    synologyProjectDir: "/volume1/docker/github-runner-fleet",
     synologyProjectComposeFile: "compose.yaml",
     synologyProjectEnvFile: ".env",
     synologyInstallPullImages: true,
     synologyInstallForceRecreate: true,
     synologyInstallRemoveOrphans: true,
-    lumeRunnerBaseDir: "/Users/tester/Library/Application Support/synology-github-runner/lume",
+    linuxDockerRunnerBaseDir: "/srv/github-runner-fleet/linux-docker",
+    linuxDockerHost: "docker-host.example.com",
+    linuxDockerPort: "22",
+    linuxDockerUsername: "runner",
+    linuxDockerProjectDir: "/srv/github-runner-fleet/linux-docker",
+    linuxDockerProjectComposeFile: "compose.yaml",
+    linuxDockerProjectEnvFile: ".env",
+    linuxDockerInstallPullImages: true,
+    linuxDockerInstallForceRecreate: true,
+    linuxDockerInstallRemoveOrphans: true,
+    lumeRunnerBaseDir: "/Users/tester/Library/Application Support/github-runner-fleet/lume",
     lumeRunnerEnvFile:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume/runner.env",
-    composeProjectName: "synology-github-runner",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
+    composeProjectName: "github-runner-fleet",
     runnerVersion: "2.327.1",
     raw: {}
   };

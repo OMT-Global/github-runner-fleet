@@ -22,8 +22,19 @@ export interface DeploymentEnv {
   synologyInstallPullImages: boolean;
   synologyInstallForceRecreate: boolean;
   synologyInstallRemoveOrphans: boolean;
+  linuxDockerRunnerBaseDir: string;
+  linuxDockerHost?: string;
+  linuxDockerPort: string;
+  linuxDockerUsername?: string;
+  linuxDockerProjectDir: string;
+  linuxDockerProjectComposeFile: string;
+  linuxDockerProjectEnvFile: string;
+  linuxDockerInstallPullImages: boolean;
+  linuxDockerInstallForceRecreate: boolean;
+  linuxDockerInstallRemoveOrphans: boolean;
   lumeRunnerBaseDir: string;
   lumeRunnerEnvFile: string;
+  lumeRunnerIpswPath?: string;
   composeProjectName: string;
   runnerVersion: string;
   raw: Record<string, string>;
@@ -65,7 +76,7 @@ export function loadDeploymentEnv(
   );
   const synologyRunnerBaseDir =
     merged.SYNOLOGY_RUNNER_BASE_DIR ||
-    "/volume1/docker/synology-github-runner";
+    "/volume1/docker/github-runner-fleet";
   const synologySecure = parseBoolean(merged.SYNOLOGY_SECURE, true);
   const synologyPort =
     merged.SYNOLOGY_PORT || (synologySecure ? "5001" : "5000");
@@ -95,16 +106,42 @@ export function loadDeploymentEnv(
     merged.SYNOLOGY_INSTALL_REMOVE_ORPHANS,
     true
   );
+  const linuxDockerRunnerBaseDir = expandHome(
+    merged.LINUX_DOCKER_RUNNER_BASE_DIR ||
+      "/srv/github-runner-fleet/linux-docker"
+  );
+  const linuxDockerPort = merged.LINUX_DOCKER_PORT || "22";
+  const linuxDockerProjectDir =
+    expandHome(merged.LINUX_DOCKER_PROJECT_DIR || linuxDockerRunnerBaseDir);
+  const linuxDockerProjectComposeFile =
+    merged.LINUX_DOCKER_PROJECT_COMPOSE_FILE || "compose.yaml";
+  const linuxDockerProjectEnvFile =
+    merged.LINUX_DOCKER_PROJECT_ENV_FILE || ".env";
+  const linuxDockerInstallPullImages = parseBoolean(
+    merged.LINUX_DOCKER_INSTALL_PULL_IMAGES,
+    true
+  );
+  const linuxDockerInstallForceRecreate = parseBoolean(
+    merged.LINUX_DOCKER_INSTALL_FORCE_RECREATE,
+    true
+  );
+  const linuxDockerInstallRemoveOrphans = parseBoolean(
+    merged.LINUX_DOCKER_INSTALL_REMOVE_ORPHANS,
+    true
+  );
   const lumeRunnerBaseDir = expandHome(
     merged.LUME_RUNNER_BASE_DIR ||
-      "~/Library/Application Support/synology-github-runner/lume"
+      "~/Library/Application Support/github-runner-fleet/lume"
   );
   const lumeRunnerEnvFile = expandHome(
     merged.LUME_RUNNER_ENV_FILE ||
       path.join(lumeRunnerBaseDir, "runner.env")
   );
+  const lumeRunnerIpswPath = merged.LUME_RUNNER_IPSW_PATH?.trim()
+    ? expandHome(merged.LUME_RUNNER_IPSW_PATH)
+    : undefined;
   const composeProjectName =
-    merged.COMPOSE_PROJECT_NAME || "synology-github-runner";
+    merged.COMPOSE_PROJECT_NAME || "github-runner-fleet";
   const runnerVersion = normalizeRunnerVersion(merged.RUNNER_VERSION || "2.333.0");
 
   return {
@@ -125,8 +162,19 @@ export function loadDeploymentEnv(
     synologyInstallPullImages,
     synologyInstallForceRecreate,
     synologyInstallRemoveOrphans,
+    linuxDockerRunnerBaseDir,
+    linuxDockerHost: merged.LINUX_DOCKER_HOST?.trim() || undefined,
+    linuxDockerPort,
+    linuxDockerUsername: merged.LINUX_DOCKER_USERNAME?.trim() || undefined,
+    linuxDockerProjectDir,
+    linuxDockerProjectComposeFile,
+    linuxDockerProjectEnvFile,
+    linuxDockerInstallPullImages,
+    linuxDockerInstallForceRecreate,
+    linuxDockerInstallRemoveOrphans,
     lumeRunnerBaseDir,
     lumeRunnerEnvFile,
+    lumeRunnerIpswPath,
     composeProjectName,
     runnerVersion,
     raw: {
@@ -144,8 +192,29 @@ export function loadDeploymentEnv(
       SYNOLOGY_INSTALL_PULL_IMAGES: String(synologyInstallPullImages),
       SYNOLOGY_INSTALL_FORCE_RECREATE: String(synologyInstallForceRecreate),
       SYNOLOGY_INSTALL_REMOVE_ORPHANS: String(synologyInstallRemoveOrphans),
+      LINUX_DOCKER_RUNNER_BASE_DIR: linuxDockerRunnerBaseDir,
+      LINUX_DOCKER_PORT: linuxDockerPort,
+      LINUX_DOCKER_PROJECT_DIR: linuxDockerProjectDir,
+      LINUX_DOCKER_PROJECT_COMPOSE_FILE: linuxDockerProjectComposeFile,
+      LINUX_DOCKER_PROJECT_ENV_FILE: linuxDockerProjectEnvFile,
+      LINUX_DOCKER_INSTALL_PULL_IMAGES: String(linuxDockerInstallPullImages),
+      LINUX_DOCKER_INSTALL_FORCE_RECREATE: String(
+        linuxDockerInstallForceRecreate
+      ),
+      LINUX_DOCKER_INSTALL_REMOVE_ORPHANS: String(
+        linuxDockerInstallRemoveOrphans
+      ),
+      ...(merged.LINUX_DOCKER_HOST?.trim()
+        ? { LINUX_DOCKER_HOST: merged.LINUX_DOCKER_HOST.trim() }
+        : {}),
+      ...(merged.LINUX_DOCKER_USERNAME?.trim()
+        ? { LINUX_DOCKER_USERNAME: merged.LINUX_DOCKER_USERNAME.trim() }
+        : {}),
       LUME_RUNNER_BASE_DIR: lumeRunnerBaseDir,
       LUME_RUNNER_ENV_FILE: lumeRunnerEnvFile,
+      ...(lumeRunnerIpswPath
+        ? { LUME_RUNNER_IPSW_PATH: lumeRunnerIpswPath }
+        : {}),
       COMPOSE_PROJECT_NAME: composeProjectName,
       RUNNER_VERSION: runnerVersion
     }

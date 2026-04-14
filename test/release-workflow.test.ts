@@ -37,7 +37,7 @@ describe("release workflow", () => {
     expect(job["runs-on"]).toBe("ubuntu-latest");
     expect(job.env).toMatchObject({
       GITHUB_PAT: "${{ secrets.GITHUB_TOKEN }}",
-      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/synology-github-runner"
+      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet"
     });
     expect(dispatch.inputs?.publish_project_release).toMatchObject({
       type: "boolean",
@@ -47,7 +47,7 @@ describe("release workflow", () => {
     expect(steps.some((step) => step.uses === "docker/setup-qemu-action@v4")).toBe(
       true
     );
-    expect(steps.some((step) => step.uses === "docker/setup-buildx-action@v4")).toBe(
+    expect(steps.some((step) => step.uses === "docker/setup-buildx-action@v3")).toBe(
       true
     );
     expect(steps.some((step) => step.uses === "docker/login-action@v4")).toBe(true);
@@ -97,6 +97,7 @@ describe("release workflow", () => {
         (step) =>
           typeof step.run === "string" &&
           step.run.includes("command -v pgrep") &&
+          step.run.includes("docker --version") &&
           step.run.includes("terraform version")
       )
     ).toHaveLength(2);

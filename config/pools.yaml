@@ -1,6 +1,6 @@
 version: 1
 image:
-  repository: ghcr.io/omt-global/synology-github-runner
+  repository: ghcr.io/omt-global/github-runner-fleet
   tag: 0.1.9
 pools:
   - key: synology-private
@@ -24,12 +24,12 @@ pools:
     repositoryAccess: selected
     allowedRepositories:
       - omt-global/axiom
-      - omt-global/synology-github-runner
+      - omt-global/github-runner-fleet
     labels:
       - synology
       - shell-only
       - public
-    size: 2
+    size: 4
     architecture: auto
     runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-public
     resources:
