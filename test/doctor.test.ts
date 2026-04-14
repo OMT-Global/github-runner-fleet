@@ -6,6 +6,34 @@ import { renderDoctorReport, runDoctor } from "../src/lib/doctor.js";
 
 const tempPaths: string[] = [];
 
+function withEnv<T>(
+  overrides: Record<string, string | undefined>,
+  callback: () => T
+): T {
+  const previous = new Map<string, string | undefined>();
+
+  for (const [key, value] of Object.entries(overrides)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    return callback();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 afterEach(() => {
   for (const tempPath of tempPaths.splice(0)) {
     fs.rmSync(tempPath, { recursive: true, force: true });
@@ -184,11 +212,19 @@ pools:
       "utf8"
     );
 
-    const report = await runDoctor({
-      mode: "synology",
-      envPath,
-      configPath: poolsPath
-    });
+    const report = await withEnv(
+      {
+        GITHUB_PAT: undefined,
+        GITHUB_TOKEN: undefined,
+        GH_TOKEN: undefined
+      },
+      () =>
+        runDoctor({
+          mode: "synology",
+          envPath,
+          configPath: poolsPath
+        })
+    );
 
     expect(report.ok).toBe(false);
     expect(report.checks).toEqual(
