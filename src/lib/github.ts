@@ -158,50 +158,60 @@ export async function fetchOrganizationRunnerGroups(
   token: string,
   fetchImpl: FetchLike = fetch as FetchLike
 ): Promise<GitHubRunnerGroup[]> {
-  const response = await fetchImpl(
-    `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups?per_page=100`,
-    {
-      method: "GET",
-      headers: buildGitHubApiHeaders(token)
-    }
-  );
+  const groups: GitHubRunnerGroup[] = [];
 
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      `GitHub runner group lookup failed for ${organization} with ${response.status}: ${body}`
+  for (let page = 1; ; page += 1) {
+    const response = await fetchImpl(
+      `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups?per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      }
     );
-  }
 
-  const payload = JSON.parse(body) as {
-    runner_groups?: Array<{
-      id?: number;
-      name?: string;
-      visibility?: string;
-      default?: boolean;
-    }>;
-  };
-
-  if (!Array.isArray(payload.runner_groups)) {
-    throw new Error(
-      `GitHub runner group response for ${organization} did not include runner_groups`
-    );
-  }
-
-  return payload.runner_groups.map((group) => {
-    if (typeof group.id !== "number" || !group.name) {
+    const body = await response.text();
+    if (!response.ok) {
       throw new Error(
-        `GitHub runner group response for ${organization} included an invalid group entry`
+        `GitHub runner group lookup failed for ${organization} with ${response.status}: ${body}`
       );
     }
 
-    return {
-      id: group.id,
-      name: group.name,
-      visibility: group.visibility,
-      isDefault: group.default
+    const payload = JSON.parse(body) as {
+      runner_groups?: Array<{
+        id?: number;
+        name?: string;
+        visibility?: string;
+        default?: boolean;
+      }>;
     };
-  });
+
+    if (!Array.isArray(payload.runner_groups)) {
+      throw new Error(
+        `GitHub runner group response for ${organization} did not include runner_groups`
+      );
+    }
+
+    groups.push(
+      ...payload.runner_groups.map((group) => {
+        if (typeof group.id !== "number" || !group.name) {
+          throw new Error(
+            `GitHub runner group response for ${organization} included an invalid group entry`
+          );
+        }
+
+        return {
+          id: group.id,
+          name: group.name,
+          visibility: group.visibility,
+          isDefault: group.default
+        };
+      })
+    );
+
+    if (payload.runner_groups.length < 100) {
+      return groups;
+    }
+  }
 }
 
 export async function verifyRunnerGroups(

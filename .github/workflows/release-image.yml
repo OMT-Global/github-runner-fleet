@@ -88,10 +88,10 @@ jobs:
           );
           EOF
 
-      - if: ${{ inputs.publish_project_release }}
+      - name: guard main branch before any publish
         run: |
           if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
-            echo "publish_project_release may only run from main" >&2
+            echo "release-image may only publish from main" >&2
             exit 1
           fi
 

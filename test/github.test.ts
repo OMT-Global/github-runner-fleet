@@ -114,6 +114,64 @@ describe("github runner API helpers", () => {
         isDefault: false
       }
     ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("paginates organization runner groups beyond the first page", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: Array.from({ length: 100 }, (_, index) => ({
+              id: index + 1,
+              name: `group-${index + 1}`,
+              visibility: "all",
+              default: false
+            }))
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 101,
+                name: "group-101",
+                visibility: "selected",
+                default: false
+              }
+            ]
+          })
+      });
+
+    await expect(
+      fetchOrganizationRunnerGroups(
+        "https://api.github.com",
+        "example",
+        "secret",
+        fetchMock
+      )
+    ).resolves.toHaveLength(101);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=2",
+      expect.objectContaining({ method: "GET" })
+    );
   });
 
   test("verifies expected runner groups", async () => {

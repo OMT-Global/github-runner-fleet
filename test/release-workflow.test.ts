@@ -86,10 +86,11 @@ describe("release workflow", () => {
     expect(
       steps.some(
         (step) =>
-          step.if === "${{ inputs.publish_project_release }}" &&
+          step.name === "guard main branch before any publish" &&
           typeof step.run === "string" &&
           step.run.includes('GITHUB_REF_NAME') &&
-          step.run.includes("main")
+          step.run.includes("main") &&
+          step.run.includes("release-image may only publish from main")
       )
     ).toBe(true);
     expect(
