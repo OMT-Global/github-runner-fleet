@@ -54,26 +54,34 @@ describe("loadDeploymentEnv", () => {
     );
 
     expect(env.githubApiUrl).toBe("https://api.github.com");
-    expect(env.composeProjectName).toBe("synology-github-runner");
+    expect(env.composeProjectName).toBe("github-runner-fleet");
     expect(env.runnerVersion).toBe("2.333.0");
     expect(env.githubPat).toBeUndefined();
     expect(env.raw).toMatchObject({
       GITHUB_API_URL: "https://api.github.com",
-      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/synology-github-runner",
+      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet",
       SYNOLOGY_PORT: "5001",
       SYNOLOGY_SECURE: "true",
       SYNOLOGY_CERT_VERIFY: "false",
       SYNOLOGY_DSM_VERSION: "7",
       SYNOLOGY_API_REPO: `${os.homedir()}/src/synology-api`,
-      SYNOLOGY_PROJECT_DIR: "/volume1/docker/synology-github-runner",
+      SYNOLOGY_PROJECT_DIR: "/volume1/docker/github-runner-fleet",
       SYNOLOGY_PROJECT_COMPOSE_FILE: "compose.yaml",
       SYNOLOGY_PROJECT_ENV_FILE: ".env",
       SYNOLOGY_INSTALL_PULL_IMAGES: "true",
       SYNOLOGY_INSTALL_FORCE_RECREATE: "true",
       SYNOLOGY_INSTALL_REMOVE_ORPHANS: "true",
-      LUME_RUNNER_BASE_DIR: `${os.homedir()}/Library/Application Support/synology-github-runner/lume`,
-      LUME_RUNNER_ENV_FILE: `${os.homedir()}/Library/Application Support/synology-github-runner/lume/runner.env`,
-      COMPOSE_PROJECT_NAME: "synology-github-runner",
+      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker",
+      LINUX_DOCKER_PORT: "22",
+      LINUX_DOCKER_PROJECT_DIR: "/srv/github-runner-fleet/linux-docker",
+      LINUX_DOCKER_PROJECT_COMPOSE_FILE: "compose.yaml",
+      LINUX_DOCKER_PROJECT_ENV_FILE: ".env",
+      LINUX_DOCKER_INSTALL_PULL_IMAGES: "true",
+      LINUX_DOCKER_INSTALL_FORCE_RECREATE: "true",
+      LINUX_DOCKER_INSTALL_REMOVE_ORPHANS: "true",
+      LUME_RUNNER_BASE_DIR: `${os.homedir()}/Library/Application Support/github-runner-fleet/lume`,
+      LUME_RUNNER_ENV_FILE: `${os.homedir()}/Library/Application Support/github-runner-fleet/lume/runner.env`,
+      COMPOSE_PROJECT_NAME: "github-runner-fleet",
       RUNNER_VERSION: "2.333.0"
     });
   });

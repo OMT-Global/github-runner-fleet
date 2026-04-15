@@ -51,7 +51,10 @@ pool:
       runnerName: "macos-runner-slot-01"
     });
     expect(config.host.envFile).toBe(
-      "/Users/tester/Library/Application Support/synology-github-runner/lume/runner.env"
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env"
+    );
+    expect(config.host.ipswPath).toBe(
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw"
     );
   });
 
@@ -77,6 +80,9 @@ pool:
     expect(shellExports).toContain("export LUME_VM_NAME='macos-runner-slot-01'");
     expect(shellExports).toContain("export RUNNER_NAME='macos-runner-slot-01'");
     expect(shellExports).toContain(
+      "export LUME_HOST_IPSW_PATH='/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw'"
+    );
+    expect(shellExports).toContain(
       "export RUNNER_LABELS='self-hosted,macos,arm64,private'"
     );
   });
@@ -86,7 +92,7 @@ function deploymentEnv(): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
     githubPat: undefined,
-    synologyRunnerBaseDir: "/volume1/docker/synology-github-runner",
+    synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
     synologyHost: "nas.example.com",
     synologyPort: "5001",
     synologyUsername: "admin",
@@ -95,26 +101,41 @@ function deploymentEnv(): DeploymentEnv {
     synologyCertVerify: false,
     synologyDsmVersion: 7,
     synologyApiRepo: "/Users/tester/src/synology-api",
-    synologyProjectDir: "/volume1/docker/synology-github-runner",
+    synologyProjectDir: "/volume1/docker/github-runner-fleet",
     synologyProjectComposeFile: "compose.yaml",
     synologyProjectEnvFile: ".env",
     synologyInstallPullImages: true,
     synologyInstallForceRecreate: true,
     synologyInstallRemoveOrphans: true,
+    linuxDockerRunnerBaseDir: "/srv/github-runner-fleet/linux-docker",
+    linuxDockerHost: "docker-host.example.com",
+    linuxDockerPort: "22",
+    linuxDockerUsername: "runner",
+    linuxDockerProjectDir: "/srv/github-runner-fleet/linux-docker",
+    linuxDockerProjectComposeFile: "compose.yaml",
+    linuxDockerProjectEnvFile: ".env",
+    linuxDockerInstallPullImages: true,
+    linuxDockerInstallForceRecreate: true,
+    linuxDockerInstallRemoveOrphans: true,
     lumeRunnerBaseDir:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume",
     lumeRunnerEnvFile:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume/runner.env",
-    composeProjectName: "synology-github-runner",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
+    lumeRunnerIpswPath:
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw",
+    composeProjectName: "github-runner-fleet",
     runnerVersion: "2.333.0",
     raw: {
       GITHUB_API_URL: "https://api.github.com",
-      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/synology-github-runner",
+      SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet",
+      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker",
       LUME_RUNNER_BASE_DIR:
-        "/Users/tester/Library/Application Support/synology-github-runner/lume",
+        "/Users/tester/Library/Application Support/github-runner-fleet/lume",
       LUME_RUNNER_ENV_FILE:
-        "/Users/tester/Library/Application Support/synology-github-runner/lume/runner.env",
-      COMPOSE_PROJECT_NAME: "synology-github-runner",
+        "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
+      LUME_RUNNER_IPSW_PATH:
+        "/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw",
+      COMPOSE_PROJECT_NAME: "github-runner-fleet",
       RUNNER_VERSION: "2.333.0"
     }
   };

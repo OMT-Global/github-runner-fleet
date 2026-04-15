@@ -6,9 +6,10 @@ pool:
   labels:
     - macos
     - arm64
+    - xcode
     - private
   size: 2
-  vmBaseName: macos-runner-base
+  vmBaseName: macos-runner-base-v2
   vmSlotPrefix: macos-runner-slot
   imageTag: sequoia-xcode-16
   cpu: 6

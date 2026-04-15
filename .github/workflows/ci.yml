@@ -69,7 +69,7 @@ jobs:
             .tmp/ci-shell-safe/npm \
             .tmp/ci-shell-safe/pip \
             .tmp/ci-shell-safe/terraform
-      - uses: actions/cache@v5
+      - uses: actions/cache@v4
         with:
           path: |
             .tmp/ci-shell-safe/npm
@@ -103,6 +103,28 @@ jobs:
           }
           EOF
           terraform -chdir=.tmp/ci-shell-safe/terraform init -backend=false
+
+  linux_docker_contract_trusted:
+    name: linux docker contract
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Render Linux Docker runner manifests
+        run: |
+          cp .env.example /tmp/linux-docker.env
+          pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
+          pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
+          pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
 
   lume_macos_contract_trusted:
     name: lume macos contract

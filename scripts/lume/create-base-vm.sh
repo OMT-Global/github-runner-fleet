@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/lib.sh"
 config_path="$(default_lume_config_path)"
 env_path="$(default_lume_env_path)"
 ipsw="latest"
-unattended="sequoia"
+unattended="$(default_lume_unattended_path)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +41,10 @@ if lume get "${LUME_VM_BASE_NAME}" --format json $(storage_args) >/dev/null 2>&1
   exit 1
 fi
 
+if [[ "${ipsw}" == "latest" ]]; then
+  ipsw="$(ensure_cached_lume_ipsw "$(resolve_lume_ipsw_path)")"
+fi
+
 log "creating base VM ${LUME_VM_BASE_NAME}"
 lume create "${LUME_VM_BASE_NAME}" \
   --os macOS \
@@ -55,9 +59,11 @@ lume create "${LUME_VM_BASE_NAME}" \
 
 cat <<EOF
 Base VM ${LUME_VM_BASE_NAME} created.
+IPSW cache: ${ipsw}
 Next steps:
-1. Boot it and install Xcode/toolchain prerequisites.
-2. Verify the default guest user (${GUEST_USER}) can run CI workloads.
-3. Shut it down cleanly.
-4. Start the pool with scripts/lume/reconcile-pool.sh.
+1. If unattended setup did not complete, rerun scripts/lume/setup-base-vm.sh.
+2. Boot it and install Xcode/toolchain prerequisites.
+3. Verify the default guest user (${GUEST_USER}) can run CI workloads.
+4. Shut it down cleanly.
+5. Start the pool with scripts/lume/reconcile-pool.sh.
 EOF

@@ -56,7 +56,7 @@ describe("CI workflow", () => {
 
     const contractJob = workflow.jobs.shell_safe_contract_trusted;
     const steps = contractJob.steps as Array<Record<string, unknown>>;
-    const cacheStep = steps.find((step) => step.uses === "actions/cache@v5");
+    const cacheStep = steps.find((step) => step.uses === "actions/cache@v4");
     const verifyToolchainStep = steps.find(
       (step) => step.name === "Verify built-in shell-safe toolchain"
     );
@@ -102,6 +102,27 @@ describe("CI workflow", () => {
     };
 
     expect(workflow.jobs.test_public_fork_pr["runs-on"]).toBe("ubuntu-latest");
+  });
+
+  test("renders the Linux Docker contract on hosted Linux before operators provision the pool", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const dockerJob = workflow.jobs.linux_docker_contract_trusted;
+    const steps = dockerJob.steps as Array<Record<string, unknown>>;
+    const renderStep = steps.find(
+      (step) => step.name === "Render Linux Docker runner manifests"
+    );
+
+    expect(dockerJob["runs-on"]).toBe("ubuntu-latest");
+    expect(String(renderStep?.run)).toContain("pnpm validate-linux-docker-config");
+    expect(String(renderStep?.run)).toContain("pnpm render-linux-docker-compose");
+    expect(String(renderStep?.run)).toContain(
+      "pnpm render-linux-docker-project-manifest"
+    );
   });
 
   test("keeps the Lume macOS pool contract on hosted macOS runners", () => {

@@ -1,34 +1,110 @@
-# Synology GitHub Runner
+# GitHub Runner Fleet
 
-Shell-only, ephemeral GitHub self-hosted runner pools for Synology NAS deployments.
+Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Docker hosts, and ephemeral Lume macOS VMs.
 
-## What This Repo Builds
+> Shell-only by design on Synology, ephemeral by default across the fleet, and explicit about what belongs on self-hosted capacity versus GitHub-hosted runners.
+
+## Quick Links
+
+- [Synology quick start](#synology-quick-start)
+- [Linux Docker pool](#linux-docker-pool)
+- [Lume macOS pool](#lume-macos-pool)
+- [Supported workload matrix](#supported-workload-matrix)
+- [Workflow cookbook](docs/workflow-cookbook.md)
+- [Linux Docker examples](docs/linux-docker-pool.md)
+- [Private-repo parity guide](docs/private-repo-parity.md)
+- [Release image flow](#publishing-a-release-image)
+- [Roadmap](ROADMAP.md)
+
+## Roadmap Snapshot
+
+| Status | Focus | Tracking |
+| --- | --- | --- |
+| Next | Unified preflight and health diagnostics for the whole fleet | [#26](https://github.com/OMT-Global/github-runner-fleet/issues/26) |
+| Next | Synology deployment status and troubleshooting surfaces | [#29](https://github.com/OMT-Global/github-runner-fleet/issues/29) |
+| Next | Shell-safe workflow cookbook and compatibility matrix follow-through | [#28](https://github.com/OMT-Global/github-runner-fleet/issues/28) |
+| Later | Stronger Lume base-VM lifecycle and pool operations playbook | [#27](https://github.com/OMT-Global/github-runner-fleet/issues/27) |
+
+The roadmap doc keeps the operator view short; the GitHub issues are the execution-level source of truth.
+
+## Why This Exists
+
+- Keep Synology runner capacity locked to shell-safe workloads instead of gradually drifting into privileged Docker-host territory.
+- Give private repos a dedicated Linux Docker execution plane for `container:` jobs, service containers, and Buildx-style workflows.
+- Give the org a second execution plane for macOS-native jobs through pooled Lume VMs without baking long-lived GitHub credentials into the base image.
+- Make runner policy explicit in config and docs so downstream repos can tell, up front, which jobs belong on this fleet and which jobs should stay on GitHub-hosted runners.
+
+## Fleet At A Glance
+
+| Plane | Runtime | Best For | Explicitly Not For |
+| --- | --- | --- | --- |
+| Synology Linux pools | Ephemeral containers built from a multi-arch runner image | shell jobs, JS actions, Python `3.12`, Terraform, docs and validation work | Docker socket jobs, `container:` jobs, service containers, privileged workloads |
+| Linux Docker pool | Ephemeral runner containers on a dedicated Linux Docker host | `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native jobs, turning Synology into a Docker host |
+| Lume macOS pool | Ephemeral VM clones from a sealed macOS base image | macOS-native build and test lanes that need a real macOS host | long-lived snowflake VMs, secrets baked into the base image, ad hoc manual drift |
+
+## Topology
+
+```mermaid
+flowchart LR
+  Dev["Operator / CI maintainer"] --> CLI["github-runner-fleet CLI"]
+  CLI --> CFG["config/pools.yaml, config/linux-docker-runners.yaml, or config/lume-runners.yaml"]
+  CLI --> GH["GitHub Actions API"]
+  CLI --> SYN["Synology DSM via synology-api"]
+  CLI --> LDH["Linux Docker host via ssh"]
+  CLI --> LUME["Lume on a host Mac"]
+  SYN --> SLOTS["Ephemeral Linux runner slots"]
+  LDH --> DOCKER["Docker-capable Linux runner slots"]
+  LUME --> MACS["Ephemeral macOS runner VMs"]
+  SLOTS --> JOBS["One job per runner"]
+  DOCKER --> JOBS
+  MACS --> JOBS
+```
+
+## Supported Workload Matrix
+
+| Job Type | Synology shell-only pool | Linux Docker pool | Lume macOS pool | GitHub-hosted still recommended |
+| --- | --- | --- | --- | --- |
+| Node/npm validation | Yes | Yes | Yes | Optional |
+| Python `3.12` workflows | Yes | Yes | Yes | Optional |
+| Terraform CLI validation | Yes | Yes | Yes | Optional |
+| Docs and shell scripts | Yes | Yes | Yes | Optional |
+| macOS-native build/test lanes | No | No | Yes | Optional |
+| Multi-arch image publishing | No | Yes | No | Optional |
+| `container:` jobs or service containers | No | Yes | No | Optional |
+| Docker daemon workflows | No | Yes | No | Optional |
+| Browser stacks and heavy system deps | Usually no | Case-by-case | Case-by-case | Often |
+
+## What You Get
 
 - A custom multi-arch runner image based on the official `actions/runner` tarballs
 - Built-in shell-job baseline tooling:
   - Node.js `18.20.8`
   - Python `3.12`
   - Terraform `1.6.6`
+  - Docker CLI for the dedicated Linux Docker plane
   - `git`, `bash`, `tar`, `zstd`, and `procps`
-- No Docker socket mounts
+- No Docker socket mounts on the Synology shell-only plane
 - No privileged containers
 - No host-network mode
 - Two organization runner pools by default:
   - `synology-private`
   - `synology-public`
+- One Linux Docker pool by default:
+  - `linux-docker-private`
 - The sample config starts with four private runner slots and two public runner slots.
 
-This v1 runner class supports shell jobs, JavaScript actions, composite actions, the bundled shell-safe Node setup action, built-in Python `3.12` workflows, local `actions/setup-python@v6` resolution for Python `3.12`, and Terraform CLI workflows. It does not support Docker-based actions, `container:` jobs, or service containers.
+The Synology shell-only class supports shell jobs, JavaScript actions, composite actions, the bundled shell-safe Node setup action, built-in Python `3.12` workflows, local `actions/setup-python@v6` resolution for Python `3.12`, and Terraform CLI workflows. Docker-based actions, `container:` jobs, and service containers belong on the dedicated Linux Docker plane instead.
 
 ## Repo Layout
 
-- [config/pools.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/pools.yaml): non-secret pool config
-- [docker/Dockerfile](/Users/johnteneyckjr./src/synology-github-runner/docker/Dockerfile): runner image build
-- [docker/runner-entrypoint.sh](/Users/johnteneyckjr./src/synology-github-runner/docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
-- [src/cli.ts](/Users/johnteneyckjr./src/synology-github-runner/src/cli.ts): config validation, compose rendering, and runner release helpers
-- [docs/private-repo-parity.md](docs/private-repo-parity.md): workload routing and GitHub-hosted parity gaps for private repos
+- [config/pools.yaml](config/pools.yaml): non-secret pool config
+- [config/linux-docker-runners.yaml](config/linux-docker-runners.yaml): Docker-capable Linux pool config
+- [docs/linux-docker-pool.md](docs/linux-docker-pool.md): examples for `container:`, `services:`, and Docker daemon workflows
+- [docker/Dockerfile](docker/Dockerfile): runner image build
+- [docker/runner-entrypoint.sh](docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
+- [src/cli.ts](src/cli.ts): config validation, compose rendering, and runner release helpers
 
-## Quick Start
+## Synology Quick Start
 
 1. Copy `.env.example` to `.env` and set `GITHUB_PAT`.
 2. Edit `config/pools.yaml` for your organization, runner groups, and repository access policy.
@@ -44,17 +120,7 @@ pnpm install
 pnpm validate-config -- --config config/pools.yaml --env .env
 ```
 
-5. Run the unified fleet doctor before deployment changes:
-
-```bash
-pnpm doctor -- all --env .env --config config/pools.yaml --lume-config config/lume-runners.yaml
-pnpm doctor -- synology --env .env --config config/pools.yaml --format json
-pnpm doctor -- lume --env .env --lume-config config/lume-runners.yaml
-```
-
-`doctor` gives one operator-facing preflight for the whole fleet or for a targeted surface. It reuses the existing Synology and Lume validators, checks that the configured runner groups still exist, confirms the Synology image tag is present in GHCR, verifies shared GitHub API reachability, and emits either human-readable text or stable JSON for automation.
-
-6. Validate that the configured GitHub runner groups already exist in the target organization:
+5. Validate that the configured GitHub runner groups already exist in the target organization:
 
 ```bash
 pnpm validate-github -- --config config/pools.yaml --env .env
@@ -62,7 +128,7 @@ pnpm validate-github -- --config config/pools.yaml --env .env
 
 This catches mismatched or missing `runnerGroup` values before Synology starts containers that would otherwise enter a restart loop.
 
-7. Render the compose file:
+6. Render the compose file:
 
 ```bash
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
@@ -72,10 +138,10 @@ The sample config uses `architecture: auto`, which lets Docker pull the native i
 
 If you set `resources.cpus` or `resources.pidsLimit`, `validate-config` and `render-compose` will warn because many Synology kernels reject Docker NanoCPUs, CPU CFS quotas, and PID cgroup limits. The sample config omits both limits for that reason.
 
-8. Build the runner image:
+7. Build the runner image:
 
 ```bash
-./scripts/build-image.sh ghcr.io/your-org/synology-github-runner:0.1.9 --push
+./scripts/build-image.sh ghcr.io/your-org/github-runner-fleet:0.1.9 --push
 ```
 
 When `--push` is used without an explicit `--platform`, the helper now defaults to `linux/amd64,linux/arm64` so the same tag works across Intel and ARM Synology models. A single-arch tag combined with the wrong `platform` or `architecture` setting will fail at startup with `Exec format error`.
@@ -92,9 +158,8 @@ For a fully programmatic install from your workstation, this repo can also reuse
 
 ```bash
 pnpm render-synology-project-manifest -- --config config/pools.yaml --env .env
-pnpm install-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
-pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
-pnpm synology-status -- --config config/pools.yaml --env .env --result .tmp/synology-status.json
+pnpm install-synology-project -- --config config/pools.yaml --env .env
+pnpm teardown-synology-project -- --config config/pools.yaml --env .env
 ```
 
 That installer path:
@@ -104,38 +169,51 @@ That installer path:
 - runs `docker compose -p $COMPOSE_PROJECT_NAME up -d --force-recreate --remove-orphans`
 - deletes the temporary scheduled task after completion
 
-`install-synology-project` is the recreate/resize path. If you change [config/pools.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/pools.yaml) from four private runners to two, or from two public runners to six, rerun `pnpm install-synology-project ...` and the generated compose project will reconcile to the new slot counts. `--force-recreate` refreshes existing services, and `--remove-orphans` removes slots that no longer exist in the rendered compose file.
+`install-synology-project` is the recreate/resize path. If you change [config/pools.yaml](config/pools.yaml) from four private runners to two, or from two public runners to six, rerun `pnpm install-synology-project ...` and the generated compose project will reconcile to the new slot counts. `--force-recreate` refreshes existing services, and `--remove-orphans` removes slots that no longer exist in the rendered compose file.
 
 Use `pnpm teardown-synology-project ...` when you want an explicit `docker compose down` on the NAS before reinstalling or when you want the runner project fully stopped.
 
-Use `pnpm synology-status ...` after an install or teardown attempt to inspect the saved DSM task result, the last known compose project state returned by `synology-api`, the expected remote log path, and the next troubleshooting steps. `install-synology-project` and `teardown-synology-project` now support `--status-output` so operators can persist the latest result for that command surface.
-
-### Synology operator runbook
-
-Recommended flow:
-
-1. `pnpm validate-config -- --config config/pools.yaml --env .env`
-2. `pnpm validate-github -- --config config/pools.yaml --env .env`
-3. `pnpm validate-image -- --config config/pools.yaml --env .env`
-4. `pnpm install-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json`
-5. `pnpm synology-status -- --config config/pools.yaml --env .env --result .tmp/synology-status.json`
-6. If recovery is needed, run `pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json` and inspect status again before reinstalling.
-
-### Synology troubleshooting guide
-
-| Symptom | Next step |
-| --- | --- |
-| GitHub registration/auth failures | Run `pnpm validate-github -- --config config/pools.yaml --env .env` and confirm `GITHUB_PAT` plus runner groups are still valid. |
-| Image tag drift or pull failures | Run `pnpm validate-image -- --config config/pools.yaml --env .env` before reinstalling. |
-| Synology path permission failures | Inspect the remote `install-project.log` path reported by `pnpm synology-status` and verify `SYNOLOGY_PROJECT_DIR` plus runner state directories are writable. |
-| DSM task failure or timeout | Review the saved task result via `pnpm synology-status -- --result .tmp/synology-status.json`, then inspect the remote log path it prints. |
-| Need a clean rollback/recovery cycle | Run `pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json`, confirm the saved result, then reinstall. |
-
 It intentionally avoids undocumented `SYNO.Docker.Project create/import` calls. If the Synology Docker daemon can see the compose project normally, Container Manager should still surface it as a compose project after the install task runs.
+
+## Linux Docker Pool
+
+This repo now also carries a separate Linux control plane for Docker-capable private workloads under [config/linux-docker-runners.yaml](config/linux-docker-runners.yaml). It keeps the runner ephemeral and one-job-per-runner, but stages those runners on a dedicated Linux Docker host instead of the Synology NAS.
+
+Use this plane for:
+
+- `container:` jobs
+- service containers
+- Docker daemon and Buildx workflows
+- Kind or heavier Linux integration suites
+
+Useful Linux Docker commands:
+
+```bash
+pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env
+pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env
+pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env .env --output docker-compose.linux-docker.yml
+pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env
+pnpm install-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
+pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
+```
+
+The installer path uses `ssh` and `scp` to stage `compose.yaml`, a project-local `.env`, and a generated deployment script onto `LINUX_DOCKER_HOST`, then runs `docker compose up -d` or `docker compose down` there. Keep access key-based and host-managed; do not bake long-lived GitHub credentials into the runner image.
+
+Recommended workflow labels:
+
+- Docker-capable private repos: `runs-on: [self-hosted, linux, docker-capable, private]`
+
+## Day-0 Operator Flow
+
+1. Validate the config and GitHub runner groups before touching Synology or Lume.
+2. Render the manifest or compose output you intend to deploy.
+3. Publish or verify the image tag before pointing a live pool at it.
+4. Install or reconcile the target plane.
+5. Run an acceptance workflow that matches the runner class you just changed.
 
 ## Publishing A Release Image
 
-Use [release-image.yml](/Users/johnteneyckjr./src/synology-github-runner/.github/workflows/release-image.yml) for published tags instead of relying on an ad hoc local push. The workflow runs on GitHub-hosted runners, not the Synology shell-only pool, because it needs multi-arch Buildx, QEMU, and registry publish support.
+Use [release-image.yml](.github/workflows/release-image.yml) for published tags instead of relying on an ad hoc local push. The workflow runs on GitHub-hosted runners, not the Synology shell-only pool, because it needs multi-arch Buildx, QEMU, and registry publish support.
 
 The release workflow:
 
@@ -149,7 +227,7 @@ The release workflow:
 - runs post-publish toolchain checks for both `linux/amd64` and `linux/arm64`
 - can create the matching GitHub release tag `v<version>` when dispatched from `main` with `publish_project_release=true`
 
-Only point [config/pools.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/pools.yaml) at a tag that this workflow has already published and verified.
+Only point [config/pools.yaml](config/pools.yaml) at a tag that this workflow has already published and verified.
 
 If you want the repository release and GHCR image tag to stay aligned, merge the version bump to `main` first and then run the release workflow from `main` with `publish_project_release=true`. That will create the repo tag and GitHub Release after the image publish/verify steps succeed.
 
@@ -179,7 +257,7 @@ Recommended workflow labels:
 For Node projects on shell-only runners, use the bundled action instead of `actions/setup-node`:
 
 ```yaml
-- uses: OMT-Global/synology-github-runner/actions/setup-shell-safe-node@main
+- uses: OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main
   with:
     node-version: 24.14.1
 ```
@@ -189,7 +267,7 @@ Use that action on self-hosted Synology runners where `actions/setup-node` would
 The shell-only runner image directly supports these job profiles without Docker or service containers:
 
 - Node `18` plus `npm` with `actions/cache`
-- Node `24` when bootstrapped through `OMT-Global/synology-github-runner/actions/setup-shell-safe-node`
+- Node `24` when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
 - Python `3.12` plus `pip` with `actions/cache`
 - `actions/setup-python@v6` when `python-version: '3.12'`
 - Terraform `1.6.6` plus plugin-cache directories under `RUNNER_TEMP`
@@ -197,18 +275,16 @@ The shell-only runner image directly supports these job profiles without Docker 
 
 For Python projects, the runner image already carries Python `3.12` and exposes that exact interpreter through `RUNNER_TOOL_CACHE`, so `actions/setup-python@v6` with `python-version: '3.12'` resolves locally on these runners instead of attempting a distro-specific download. Repos that only need `3.12` can stay on the shell-only pool. Repos with Python version matrices should keep the non-`3.12` lanes on GitHub-hosted runners and only route the built-in `3.12` lane to self-hosted runners.
 
-For OpenClaw Ouro style workflows, the compatible jobs are the Node/npm validators, docs checks, Python `3.12` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain. Keep workflow-parser jobs that rely on extra distro packages, plus any `container:`, `services:`, browser, or Docker-daemon jobs, on GitHub-hosted runners.
-
-For a copy-paste-ready compatibility matrix and downstream workflow recipes, see [docs/workflow-cookbook.md](docs/workflow-cookbook.md).
+For OpenClaw Ouro style workflows, the Node/npm validators, docs checks, Python `3.12` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain belong on Synology. `container:`, `services:`, browser, and Docker-daemon jobs belong on the Linux Docker plane. macOS-native lanes belong on Lume.
 
 ## Lume macOS Pool
 
-This repo now also carries a separate host-side control plane for pooled macOS runner VMs under [config/lume-runners.yaml](/Users/johnteneyckjr./src/synology-github-runner/config/lume-runners.yaml). This is not a macOS container path. `lume` runs full macOS VMs, and the host scripts recycle per-slot VM clones from a sealed base VM so the job host itself is ephemeral.
+This repo now also carries a separate host-side control plane for pooled macOS runner VMs under [config/lume-runners.yaml](config/lume-runners.yaml). This is not a macOS container path. `lume` runs full macOS VMs, and the host scripts recycle per-slot VM clones from a sealed base VM so the job host itself is ephemeral.
 
 The Lume flow is:
 
 - create and seal a base VM such as `macos-runner-base`
-- run [scripts/lume/reconcile-pool.sh](/Users/johnteneyckjr./src/synology-github-runner/scripts/lume/reconcile-pool.sh) on the host MacBook
+- run [scripts/lume/reconcile-pool.sh](scripts/lume/reconcile-pool.sh) on the host MacBook
 - let each slot clone boot, receive bootstrap assets over `lume ssh`, register one ephemeral runner in `macos-private`, run one job, and get destroyed
 
 Useful Lume commands:
@@ -218,41 +294,14 @@ pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env
 pnpm validate-lume-github -- --config config/lume-runners.yaml --env .env
 pnpm render-lume-runner-manifest -- --config config/lume-runners.yaml --env .env --slot 1
 bash scripts/lume/create-base-vm.sh --config config/lume-runners.yaml --env .env
+bash scripts/lume/setup-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env
-bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env --dry-run
-bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env --once
 bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env
-bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env --format json
 ```
 
 Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image.
 
-### Lume host layout and lifecycle playbook
-
-Treat the Lume host data as three separate layers:
-
-- base image state: the sealed base VM named by `vmBaseName`
-- host control-plane state: `LUME_RUNNER_BASE_DIR`, slot metadata under `slots/`, and logs under `logs/`
-- per-slot ephemeral state: cloned VMs named from `vmSlotPrefix`, transient guest bootstrap assets, and the copied runner env file
-
-A safe operator workflow looks like this:
-
-1. Validate the config and GitHub runner-group mapping.
-2. Create the base VM with `scripts/lume/create-base-vm.sh`.
-3. Boot the base VM manually, install Xcode and any pinned host-side prerequisites, verify the guest user can run CI workloads, then shut the VM down cleanly.
-4. Keep credentials out of the base image. Store them only in the host-side env file referenced by `LUME_RUNNER_ENV_FILE`.
-5. Run `scripts/lume/reconcile-pool.sh --dry-run` before starting or resizing the pool so you can see whether each slot will be created or have its worker restarted.
-6. Start the pool with `scripts/lume/reconcile-pool.sh`.
-7. Use `scripts/lume/status.sh --format json` for machine-readable status checks, and the default text output for quick terminal inspection.
-
-### Recovering and rotating Lume capacity
-
-- If one slot is unhealthy, stop its worker and recycle only that slot:
-  - inspect `logs/slot-XX.log` and `logs/slot-XX-vm.log`
-  - run `bash scripts/lume/destroy-slot.sh --slot <n> --config config/lume-runners.yaml --env .env`
-  - rerun `bash scripts/lume/reconcile-pool.sh --once --config config/lume-runners.yaml --env .env`
-- If the base image needs updates, shut down the pool, update and reseal the base VM, then rerun `reconcile-pool.sh` so fresh clones inherit the new image state.
-- `reconcile-pool.sh` now fails fast when the configured base VM is missing, which helps catch accidental host cleanup before the controller loops forever.
+`create-base-vm.sh` now caches the macOS IPSW under `LUME_RUNNER_BASE_DIR/cache/` by default so rebuilding the base image does not re-download the restore image every time. Override that path with `LUME_RUNNER_IPSW_PATH` if you want the cache elsewhere. If unattended setup drifts or gets interrupted, rerun `scripts/lume/setup-base-vm.sh` against the existing base VM instead of deleting and recreating it.
 
 ## Security Notes
 
@@ -262,22 +311,27 @@ A safe operator workflow looks like this:
 - Prefer memory-only limits on Synology. Only set `resources.cpus` or `resources.pidsLimit` if you have verified your NAS kernel supports Docker CPU CFS quotas and PID cgroup limits.
 - Do not add Compose `init: true` for these services. The image already uses `tini`, and double-init setups on Synology produce noisy subreaper warnings.
 - For public pools, use DSM firewall rules to reduce unnecessary LAN reachability.
-- If you need `container:` jobs or service containers later, create a second runner class instead of weakening this one.
+- Keep the Docker socket restricted to the dedicated Linux Docker host. Do not mount it into the Synology shell-only plane.
 
 ## Useful Commands
 
 ```bash
-pnpm doctor -- all --env .env --config config/pools.yaml --lume-config config/lume-runners.yaml
-pnpm doctor -- synology --env .env --config config/pools.yaml --format json
-pnpm doctor -- lume --env .env --lume-config config/lume-runners.yaml
+pnpm doctor -- full --env .env
+pnpm doctor -- synology --env .env
+pnpm doctor -- lume --env .env
+pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env
+pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env
 pnpm validate-config -- --config config/pools.yaml --env .env
 pnpm validate-github -- --config config/pools.yaml --env .env
 pnpm validate-image -- --config config/pools.yaml --env .env
+pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env .env --output docker-compose.linux-docker.yml
+pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env
+pnpm install-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
+pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
 pnpm render-compose -- --config config/pools.yaml --env .env --output docker-compose.generated.yml
 pnpm render-synology-project-manifest -- --config config/pools.yaml --env .env
-pnpm install-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
-pnpm teardown-synology-project -- --config config/pools.yaml --env .env --status-output .tmp/synology-status.json
-pnpm synology-status -- --config config/pools.yaml --env .env --result .tmp/synology-status.json
+pnpm install-synology-project -- --config config/pools.yaml --env .env
+pnpm teardown-synology-project -- --config config/pools.yaml --env .env
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
 pnpm smoke-test
@@ -307,15 +361,33 @@ SMOKE_PLATFORM=linux/amd64 pnpm smoke-test
 SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 ```
 
+## Troubleshooting Starting Points
+
+- `pnpm doctor -- full --env .env` for one preflight/status summary across Synology and Lume checks
+- `pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux pool schema and label validation
+- `pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux runner-group verification
+- `pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env` for the remote Linux Docker install plan before you push it
+- `pnpm validate-config -- --config config/pools.yaml --env .env` for schema, resource, and policy mismatches
+- `pnpm validate-github -- --config config/pools.yaml --env .env` for missing runner groups or GitHub auth failures
+- `pnpm validate-image -- --config config/pools.yaml --env .env` for GHCR tag drift before deploy
+- `pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env` for macOS pool config validation
+- `bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env` for current host-side Lume slot state
+- [docs/private-repo-parity.md](docs/private-repo-parity.md) for routing rules and the remaining GitHub-hosted gaps
+- [docs/linux-docker-pool.md](docs/linux-docker-pool.md) for Docker-capable workflow examples and host expectations
+- [ROADMAP.md](ROADMAP.md) for the next diagnostic surfaces planned in this repo
+
 ## Manual Acceptance Checklist
 
 - Build and launch both pools on the Synology NAS
+- Validate and install the Linux Docker pool on the dedicated Docker host
 - Verify both runner groups appear online in GitHub
+- Verify the Linux Docker runner group appears online with the `docker-capable` label contract
 - Verify the private runner group is set to the repo access policy you intend, such as "All repositories" for an org-wide private pool
 - Verify the generated compose file does not pin `platform:` unless you intentionally forced `architecture`
 - Run a private-repo shell workflow with secrets
+- Run a private-repo `container:` or `services:` workflow on the Linux Docker plane
 - Run a public-repo shell workflow without secrets
-- Run a self-hosted workflow that uses `OMT-Global/synology-github-runner/actions/setup-shell-safe-node@<ref>`
+- Run a self-hosted workflow that uses `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@<ref>`
 - Run a self-hosted workflow that uses `actions/setup-python@v6` with `python-version: '3.12'`
 - Verify `python3 --version` reports `3.12.x` and `terraform version` reports `1.6.6`
 - Confirm each job de-registers the runner and the service restarts cleanly

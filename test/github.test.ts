@@ -114,6 +114,64 @@ describe("github runner API helpers", () => {
         isDefault: false
       }
     ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("paginates organization runner groups beyond the first page", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: Array.from({ length: 100 }, (_, index) => ({
+              id: index + 1,
+              name: `group-${index + 1}`,
+              visibility: "all",
+              default: false
+            }))
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 101,
+                name: "group-101",
+                visibility: "selected",
+                default: false
+              }
+            ]
+          })
+      });
+
+    await expect(
+      fetchOrganizationRunnerGroups(
+        "https://api.github.com",
+        "example",
+        "secret",
+        fetchMock
+      )
+    ).resolves.toHaveLength(101);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=2",
+      expect.objectContaining({ method: "GET" })
+    );
   });
 
   test("verifies expected runner groups", async () => {
@@ -266,13 +324,13 @@ describe("github runner API helpers", () => {
       verifyContainerImageTag(
         "https://api.github.com",
         "secret",
-        "ghcr.io/omt-global/synology-github-runner:0.1.5",
+        "ghcr.io/omt-global/github-runner-fleet:0.1.5",
         fetchMock
       )
     ).resolves.toEqual({
-      imageRef: "ghcr.io/omt-global/synology-github-runner:0.1.5",
+      imageRef: "ghcr.io/omt-global/github-runner-fleet:0.1.5",
       owner: "omt-global",
-      packageName: "synology-github-runner",
+      packageName: "github-runner-fleet",
       tag: "0.1.5",
       versionId: 101,
       updatedAt: "2026-03-28T16:29:47Z",
@@ -308,7 +366,7 @@ describe("github runner API helpers", () => {
       verifyContainerImageTag(
         "https://api.github.com",
         "secret",
-        "ghcr.io/jmcte/synology-github-runner:0.1.5",
+        "ghcr.io/jmcte/github-runner-fleet:0.1.5",
         fetchMock
       )
     ).resolves.toMatchObject({
@@ -339,7 +397,7 @@ describe("github runner API helpers", () => {
       verifyContainerImageTag(
         "https://api.github.com",
         "secret",
-        "ghcr.io/omt-global/synology-github-runner:0.1.5",
+        "ghcr.io/omt-global/github-runner-fleet:0.1.5",
         fetchMock
       )
     ).rejects.toThrow(/does not include tag 0\.1\.5; available tags: 0\.1\.4, latest/);

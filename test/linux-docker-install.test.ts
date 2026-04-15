@@ -1,79 +1,48 @@
 import { describe, expect, test } from "vitest";
-import { renderCompose } from "../src/lib/compose.js";
-import type { ResolvedConfig } from "../src/lib/config.js";
 import type { DeploymentEnv } from "../src/lib/env.js";
+import type { ResolvedLinuxDockerConfig } from "../src/lib/linux-docker-config.js";
+import { renderLinuxDockerCompose } from "../src/lib/linux-docker-compose.js";
 import {
-  buildSynologyInstallPlan,
-  summarizeSynologyInstallPlan
-} from "../src/lib/synology-install.js";
+  buildLinuxDockerInstallPlan,
+  summarizeLinuxDockerInstallPlan
+} from "../src/lib/linux-docker-install.js";
 
-describe("buildSynologyInstallPlan", () => {
+describe("buildLinuxDockerInstallPlan", () => {
   test("renders remote project files and deployment script", () => {
     const env = envFixture();
-    const compose = renderCompose(configFixture(), env);
-    const plan = buildSynologyInstallPlan(configFixture(), env, compose);
+    const compose = renderLinuxDockerCompose(configFixture(), env);
+    const plan = buildLinuxDockerInstallPlan(configFixture(), env, compose);
 
     expect(plan.project).toMatchObject({
-      name: "github-runner-fleet",
-      directory: "/volume1/docker/github-runner-fleet",
+      name: "github-runner-fleet-linux-docker",
+      directory: "/srv/github-runner-fleet/linux-docker",
       composeFileName: "compose.yaml",
       envFileName: ".env",
-      logFileName: "install-project.log"
+      deploymentScriptName: "deploy-linux-docker.sh"
     });
     expect(plan.envFileContent).toContain('GITHUB_PAT="test-pat"');
-    expect(plan.envFileContent).toContain(
-      'GITHUB_API_URL="https://api.github.com"'
-    );
     expect(plan.deploymentScript).toContain(
       '"$docker_bin" compose -p "$project_name" -f "$compose_file" pull'
     );
     expect(plan.stateDirectories).toEqual([
-      "/volume1/docker/github-runner-fleet/pools/synology-private/runner-01"
+      "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01"
     ]);
-    expect(plan.deploymentScript).toContain(
-      "mkdir -p '/volume1/docker/github-runner-fleet' '/volume1/docker/github-runner-fleet/logs' '/volume1/docker/github-runner-fleet/pools/synology-private/runner-01'"
-    );
-    expect(plan.deploymentScript).toContain("--force-recreate");
-    expect(plan.deploymentScript).toContain("--remove-orphans");
   });
 
   test("redacts secrets in the summary output", () => {
     const env = envFixture();
-    const plan = buildSynologyInstallPlan(
+    const plan = buildLinuxDockerInstallPlan(
       configFixture(),
       env,
-      renderCompose(configFixture(), env)
+      renderLinuxDockerCompose(configFixture(), env)
     );
-    const summary = summarizeSynologyInstallPlan(plan);
+    const summary = summarizeLinuxDockerInstallPlan(plan);
 
-    expect(summary.connection.passwordConfigured).toBe(true);
-    expect(summary).not.toHaveProperty("password");
     expect(summary.envFilePreview).toContain("GITHUB_PAT=<redacted>");
-  });
-
-  test("renders teardown script with compose down", () => {
-    const env = envFixture();
-    const plan = buildSynologyInstallPlan(
-      configFixture(),
-      env,
-      renderCompose(configFixture(), env),
-      {
-        action: "down"
-      }
-    );
-
-    expect(plan.options.action).toBe("down");
-    expect(plan.deploymentScript).toContain(
-      '"$docker_bin" compose -p "$project_name" -f "$compose_file" down --remove-orphans'
-    );
-    expect(plan.deploymentScript).not.toContain(
-      '"$docker_bin" compose -p "$project_name" -f "$compose_file" pull'
-    );
-    expect(plan.deploymentScript).not.toContain("up -d");
   });
 });
 
-function configFixture(): ResolvedConfig {
+function configFixture(): ResolvedLinuxDockerConfig {
   return {
     version: 1,
     image: {
@@ -82,18 +51,18 @@ function configFixture(): ResolvedConfig {
     },
     pools: [
       {
-        key: "synology-private",
+        key: "linux-docker-private",
         visibility: "private",
         organization: "example",
-        runnerGroup: "synology-private",
+        runnerGroup: "linux-docker-private",
         repositoryAccess: "all",
         allowedRepositories: [],
-        labels: ["synology", "shell-only", "private"],
+        labels: ["linux", "docker-capable", "private", "x64"],
         size: 1,
-        architecture: "auto",
-        runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-private",
+        architecture: "amd64",
+        runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private",
         resources: {
-          memory: "2g"
+          memory: "8g"
         },
         imageRef: "ghcr.io/example/github-runner-fleet:0.1.9"
       }

@@ -1,291 +1,364 @@
-import type { DeploymentEnv } from "./env.js";
-import { loadConfig } from "./config.js";
-import { loadLumeConfig } from "./lume-config.js";
+import fs from "node:fs";
+import { collectConfigWarnings, loadConfig } from "./config.js";
+import { loadDeploymentEnv } from "./env.js";
 import {
-  fetchLatestRunnerRelease,
   type FetchLike,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./github.js";
+import { loadLumeConfig } from "./lume-config.js";
 
-export type DoctorMode = "synology" | "lume" | "all";
-
-export interface DoctorOptions {
-  mode: DoctorMode;
-  env: DeploymentEnv;
-  synologyConfigPath?: string;
-  lumeConfigPath?: string;
-  fetchImpl?: FetchLike;
-}
+export type DoctorMode = "full" | "synology" | "lume";
+export type DoctorCheckStatus = "pass" | "warn" | "fail" | "skip";
 
 export interface DoctorCheck {
-  key: string;
-  ok: boolean;
+  id: string;
+  target: "synology" | "lume";
+  status: DoctorCheckStatus;
   summary: string;
-  detail?: unknown;
-}
-
-export interface DoctorSection {
-  key: "synology" | "lume" | "shared";
-  ok: boolean;
-  checks: DoctorCheck[];
+  detail?: string;
+  data?: unknown;
 }
 
 export interface DoctorReport {
   ok: boolean;
   mode: DoctorMode;
-  sections: DoctorSection[];
+  checks: DoctorCheck[];
 }
 
-export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
+export interface RunDoctorOptions {
+  mode?: DoctorMode;
+  envPath?: string;
+  configPath?: string;
+  lumeConfigPath?: string;
+  fetchImpl?: FetchLike;
+}
+
+export async function runDoctor(
+  options: RunDoctorOptions = {}
+): Promise<DoctorReport> {
+  const mode = options.mode ?? "full";
+  const envPath = options.envPath ?? ".env";
+  const configPath = options.configPath ?? "config/pools.yaml";
+  const lumeConfigPath = options.lumeConfigPath ?? "config/lume-runners.yaml";
   const fetchImpl = options.fetchImpl;
-  const sections: DoctorSection[] = [];
+  const env = loadDeploymentEnv({
+    envPath,
+    requirePat: false
+  });
+  const checks: DoctorCheck[] = [];
 
-  if (options.mode === "synology" || options.mode === "all") {
-    sections.push(
-      await buildSynologySection(
-        options.env,
-        options.synologyConfigPath ?? "config/pools.yaml",
-        fetchImpl
-      )
-    );
+  if (mode === "full" || mode === "synology") {
+    const synologyChecks = await runSynologyDoctor({
+      env,
+      configPath,
+      fetchImpl
+    });
+    checks.push(...synologyChecks);
   }
 
-  if (options.mode === "lume" || options.mode === "all") {
-    sections.push(
-      await buildLumeSection(
-        options.env,
-        options.lumeConfigPath ?? "config/lume-runners.yaml",
-        fetchImpl
-      )
-    );
-  }
-
-  if (options.mode === "all") {
-    sections.unshift(await buildSharedSection(options.env, fetchImpl));
+  if (mode === "full" || mode === "lume") {
+    const lumeChecks = await runLumeDoctor({
+      env,
+      configPath: lumeConfigPath,
+      fetchImpl
+    });
+    checks.push(...lumeChecks);
   }
 
   return {
-    ok: sections.every((section) => section.ok),
-    mode: options.mode,
-    sections
+    ok: checks.every((check) => check.status !== "fail"),
+    mode,
+    checks
   };
 }
 
-export function formatDoctorText(report: DoctorReport): string {
-  const lines = [`doctor mode=${report.mode} ok=${report.ok ? "true" : "false"}`];
+export function renderDoctorReport(report: DoctorReport): string {
+  const lines = [`doctor mode: ${report.mode}`];
 
-  for (const section of report.sections) {
-    lines.push(`${section.key}: ${section.ok ? "ok" : "failed"}`);
-    for (const check of section.checks) {
-      lines.push(`- [${check.ok ? "ok" : "fail"}] ${check.key}: ${check.summary}`);
+  for (const check of report.checks) {
+    lines.push(
+      `${check.status.toUpperCase()} ${check.id}: ${check.summary}`
+    );
+    if (check.detail) {
+      lines.push(`  ${check.detail}`);
     }
   }
 
+  const counts = countStatuses(report.checks);
+  lines.push(
+    `overall: ${report.ok ? "PASS" : "FAIL"} (${counts.pass} passed, ${counts.warn} warned, ${counts.fail} failed, ${counts.skip} skipped)`
+  );
   return `${lines.join("\n")}\n`;
 }
 
-async function buildSharedSection(
-  env: DeploymentEnv,
-  fetchImpl?: FetchLike
-): Promise<DoctorSection> {
+async function runSynologyDoctor(input: {
+  env: ReturnType<typeof loadDeploymentEnv>;
+  configPath: string;
+  fetchImpl?: FetchLike;
+}): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
-  const hasPat = Boolean(env.githubPat);
-  checks.push({
-    key: "github_pat",
-    ok: hasPat,
-    summary: hasPat ? "GITHUB_PAT is configured" : "GITHUB_PAT is missing"
-  });
+  const missingDeploymentEnv = [
+    ["GITHUB_PAT", input.env.githubPat],
+    ["SYNOLOGY_HOST", input.env.synologyHost],
+    ["SYNOLOGY_USERNAME", input.env.synologyUsername],
+    ["SYNOLOGY_PASSWORD", input.env.synologyPassword]
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
-  if (hasPat) {
-    try {
-      const release = await fetchLatestRunnerRelease(
-        env.githubApiUrl,
-        env.githubPat,
-        fetchImpl
-      );
-      checks.push({
-        key: "runner_release",
-        ok: true,
-        summary: `latest actions/runner release is ${release.version}`,
-        detail: release
-      });
-    } catch (error) {
-      checks.push({
-        key: "runner_release",
-        ok: false,
-        summary: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
+  checks.push(
+    missingDeploymentEnv.length === 0
+      ? {
+          id: "synology-env",
+          target: "synology",
+          status: "pass",
+          summary: "required Synology deployment env is configured"
+        }
+      : {
+          id: "synology-env",
+          target: "synology",
+          status: "fail",
+          summary: "required Synology deployment env is incomplete",
+          detail: `missing ${missingDeploymentEnv.join(", ")}`
+        }
+  );
 
-  return finalizeSection("shared", checks);
-}
-
-async function buildSynologySection(
-  env: DeploymentEnv,
-  configPath: string,
-  fetchImpl?: FetchLike
-): Promise<DoctorSection> {
-  const checks: DoctorCheck[] = [];
-
+  let config: ReturnType<typeof loadConfig> | undefined;
   try {
-    const config = loadConfig(configPath, env);
+    config = loadConfig(input.configPath, input.env);
     checks.push({
-      key: "config",
-      ok: true,
-      summary: `loaded ${config.pools.length} Synology pool(s)`
+      id: "synology-config",
+      target: "synology",
+      status: "pass",
+      summary: `loaded ${input.configPath} with ${config.pools.length} pool${config.pools.length === 1 ? "" : "s"}`
     });
-
-    checks.push({
-      key: "synology_host",
-      ok: Boolean(env.synologyHost),
-      summary: env.synologyHost
-        ? `SYNOLOGY_HOST=${env.synologyHost}`
-        : "SYNOLOGY_HOST is missing"
-    });
-
-    if (!env.githubPat) {
-      checks.push({
-        key: "github_runner_groups",
-        ok: false,
-        summary: "GITHUB_PAT is required for GitHub runner group validation"
-      });
-      checks.push({
-        key: "image_tag",
-        ok: false,
-        summary: "GITHUB_PAT is required for GHCR image tag validation"
-      });
-      return finalizeSection("synology", checks);
-    }
-
-    try {
-      const groups = await verifyRunnerGroups(
-        env.githubApiUrl,
-        env.githubPat,
-        config.pools.map((pool) => ({
-          poolKey: pool.key,
-          organization: pool.organization,
-          runnerGroup: pool.runnerGroup
-        })),
-        fetchImpl
-      );
-      checks.push({
-        key: "github_runner_groups",
-        ok: true,
-        summary: `verified ${groups.length} Synology runner group mapping(s)`
-      });
-    } catch (error) {
-      checks.push({
-        key: "github_runner_groups",
-        ok: false,
-        summary: error instanceof Error ? error.message : String(error)
-      });
-    }
-
-    try {
-      const image = await verifyContainerImageTag(
-        env.githubApiUrl,
-        env.githubPat,
-        `${config.image.repository}:${config.image.tag}`,
-        fetchImpl
-      );
-      checks.push({
-        key: "image_tag",
-        ok: true,
-        summary: `verified image tag ${image.imageRef}`,
-        detail: image
-      });
-    } catch (error) {
-      checks.push({
-        key: "image_tag",
-        ok: false,
-        summary: error instanceof Error ? error.message : String(error)
-      });
-    }
   } catch (error) {
     checks.push({
-      key: "config",
-      ok: false,
-      summary: error instanceof Error ? error.message : String(error)
+      id: "synology-config",
+      target: "synology",
+      status: "fail",
+      summary: `failed to load ${input.configPath}`,
+      detail: formatError(error)
     });
+    return checks;
   }
 
-  return finalizeSection("synology", checks);
-}
+  const warnings = collectConfigWarnings(config);
+  checks.push(
+    warnings.length === 0
+      ? {
+          id: "synology-config-warnings",
+          target: "synology",
+          status: "pass",
+          summary: "no Synology config warnings were detected"
+        }
+      : {
+          id: "synology-config-warnings",
+          target: "synology",
+          status: "warn",
+          summary: `${warnings.length} Synology config warning${warnings.length === 1 ? "" : "s"} detected`,
+          detail: warnings.join("; ")
+        }
+  );
 
-async function buildLumeSection(
-  env: DeploymentEnv,
-  configPath: string,
-  fetchImpl?: FetchLike
-): Promise<DoctorSection> {
-  const checks: DoctorCheck[] = [];
+  if (!input.env.githubPat) {
+    checks.push({
+      id: "synology-runner-groups",
+      target: "synology",
+      status: "skip",
+      summary: "skipped Synology runner-group verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    checks.push({
+      id: "synology-image",
+      target: "synology",
+      status: "skip",
+      summary: "skipped Synology image verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    return checks;
+  }
 
   try {
-    const config = loadLumeConfig(configPath, env);
+    const pools = await verifyRunnerGroups(
+      input.env.githubApiUrl,
+      input.env.githubPat,
+      config.pools.map((pool) => ({
+        poolKey: pool.key,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup
+      })),
+      input.fetchImpl
+    );
     checks.push({
-      key: "config",
-      ok: true,
-      summary: `loaded Lume pool ${config.pool.key} with ${config.pool.size} slot(s)`
+      id: "synology-runner-groups",
+      target: "synology",
+      status: "pass",
+      summary: `verified ${pools.length} Synology runner group${pools.length === 1 ? "" : "s"} in GitHub`
     });
-    checks.push({
-      key: "lume_env_file",
-      ok: true,
-      summary: `LUME_RUNNER_ENV_FILE=${env.lumeRunnerEnvFile}`
-    });
-
-    if (!env.githubPat) {
-      checks.push({
-        key: "github_runner_group",
-        ok: false,
-        summary: "GITHUB_PAT is required for GitHub runner group validation"
-      });
-      return finalizeSection("lume", checks);
-    }
-
-    try {
-      const groups = await verifyRunnerGroups(
-        env.githubApiUrl,
-        env.githubPat,
-        [
-          {
-            poolKey: config.pool.key,
-            organization: config.pool.organization,
-            runnerGroup: config.pool.runnerGroup
-          }
-        ],
-        fetchImpl
-      );
-      checks.push({
-        key: "github_runner_group",
-        ok: true,
-        summary: `verified Lume runner group ${groups[0]?.runnerGroup ?? config.pool.runnerGroup}`
-      });
-    } catch (error) {
-      checks.push({
-        key: "github_runner_group",
-        ok: false,
-        summary: error instanceof Error ? error.message : String(error)
-      });
-    }
   } catch (error) {
     checks.push({
-      key: "config",
-      ok: false,
-      summary: error instanceof Error ? error.message : String(error)
+      id: "synology-runner-groups",
+      target: "synology",
+      status: "fail",
+      summary: "failed Synology runner-group verification",
+      detail: formatError(error)
     });
   }
 
-  return finalizeSection("lume", checks);
+  const imageRef = `${config.image.repository}:${config.image.tag}`;
+  try {
+    const image = await verifyContainerImageTag(
+      input.env.githubApiUrl,
+      input.env.githubPat,
+      imageRef,
+      input.fetchImpl
+    );
+    checks.push({
+      id: "synology-image",
+      target: "synology",
+      status: "pass",
+      summary: `verified ${image.imageRef} in GitHub Packages`
+    });
+  } catch (error) {
+    checks.push({
+      id: "synology-image",
+      target: "synology",
+      status: "fail",
+      summary: `failed image verification for ${imageRef}`,
+      detail: formatError(error)
+    });
+  }
+
+  return checks;
 }
 
-function finalizeSection(
-  key: DoctorSection["key"],
-  checks: DoctorCheck[]
-): DoctorSection {
-  return {
-    key,
-    ok: checks.every((check) => check.ok),
-    checks
-  };
+async function runLumeDoctor(input: {
+  env: ReturnType<typeof loadDeploymentEnv>;
+  configPath: string;
+  fetchImpl?: FetchLike;
+}): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+  const missingLumeEnv = [
+    ["GITHUB_PAT", input.env.githubPat]
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  checks.push(
+    missingLumeEnv.length === 0
+      ? {
+          id: "lume-env",
+          target: "lume",
+          status: "pass",
+          summary: "required Lume GitHub env is configured"
+        }
+      : {
+          id: "lume-env",
+          target: "lume",
+          status: "fail",
+          summary: "required Lume GitHub env is incomplete",
+          detail: `missing ${missingLumeEnv.join(", ")}`
+        }
+  );
+
+  let config: ReturnType<typeof loadLumeConfig> | undefined;
+  try {
+    config = loadLumeConfig(input.configPath, input.env);
+    checks.push({
+      id: "lume-config",
+      target: "lume",
+      status: "pass",
+      summary: `loaded ${input.configPath} with ${config.pool.size} slot${config.pool.size === 1 ? "" : "s"}`
+    });
+  } catch (error) {
+    checks.push({
+      id: "lume-config",
+      target: "lume",
+      status: "fail",
+      summary: `failed to load ${input.configPath}`,
+      detail: formatError(error)
+    });
+    return checks;
+  }
+
+  const envFileExists = fs.existsSync(config.host.envFile);
+  checks.push(
+    envFileExists
+      ? {
+          id: "lume-env-file",
+          target: "lume",
+          status: "pass",
+          summary: `found Lume runner env file at ${config.host.envFile}`
+        }
+      : {
+          id: "lume-env-file",
+          target: "lume",
+          status: "warn",
+          summary: "Lume runner env file is missing",
+          detail: `${config.host.envFile} does not exist yet`
+        }
+  );
+
+  if (!input.env.githubPat) {
+    checks.push({
+      id: "lume-runner-group",
+      target: "lume",
+      status: "skip",
+      summary: "skipped Lume runner-group verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    return checks;
+  }
+
+  try {
+    await verifyRunnerGroups(
+      input.env.githubApiUrl,
+      input.env.githubPat,
+      [
+        {
+          poolKey: config.pool.key,
+          organization: config.pool.organization,
+          runnerGroup: config.pool.runnerGroup
+        }
+      ],
+      input.fetchImpl
+    );
+    checks.push({
+      id: "lume-runner-group",
+      target: "lume",
+      status: "pass",
+      summary: `verified Lume runner group ${config.pool.runnerGroup} in GitHub`
+    });
+  } catch (error) {
+    checks.push({
+      id: "lume-runner-group",
+      target: "lume",
+      status: "fail",
+      summary: `failed Lume runner-group verification for ${config.pool.runnerGroup}`,
+      detail: formatError(error)
+    });
+  }
+
+  return checks;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function countStatuses(checks: DoctorCheck[]): Record<DoctorCheckStatus, number> {
+  return checks.reduce<Record<DoctorCheckStatus, number>>(
+    (counts, check) => {
+      counts[check.status] += 1;
+      return counts;
+    },
+    {
+      pass: 0,
+      warn: 0,
+      fail: 0,
+      skip: 0
+    }
+  );
 }

@@ -13,6 +13,10 @@ default_lume_env_path() {
   printf '%s/.env' "${REPO_ROOT}"
 }
 
+default_lume_unattended_path() {
+  printf '%s/scripts/lume/unattended-sequoia.yml' "${REPO_ROOT}"
+}
+
 load_slot_env() {
   local slot="$1"
   local config_path="$2"
@@ -27,6 +31,41 @@ load_slot_env() {
       --format shell
   )"
   popd >/dev/null
+}
+
+latest_ipsw_url() {
+  lume ipsw | tail -n 1
+}
+
+resolve_lume_ipsw_path() {
+  if [[ -n "${LUME_HOST_IPSW_PATH:-}" ]]; then
+    printf '%s\n' "${LUME_HOST_IPSW_PATH}"
+    return 0
+  fi
+
+  local ipsw_url
+  ipsw_url="$(latest_ipsw_url)"
+  printf '%s/cache/%s\n' "${LUME_HOST_BASE_DIR}" "$(basename "${ipsw_url}")"
+}
+
+ensure_cached_lume_ipsw() {
+  local target_path="$1"
+  local ipsw_url
+  local partial_path
+
+  mkdir -p "$(dirname "${target_path}")"
+  if [[ -s "${target_path}" ]]; then
+    log "reusing cached IPSW ${target_path}"
+    printf '%s\n' "${target_path}"
+    return 0
+  fi
+
+  ipsw_url="$(latest_ipsw_url)"
+  partial_path="${target_path}.partial"
+  log "downloading IPSW ${ipsw_url} -> ${target_path}"
+  curl -fL --continue-at - --output "${partial_path}" "${ipsw_url}"
+  mv "${partial_path}" "${target_path}"
+  printf '%s\n' "${target_path}"
 }
 
 load_pool_size() {
@@ -79,17 +118,43 @@ upload_guest_file() {
 
 upload_env_file() {
   local destination_path="$1"
+  local source_path="${2:-${LUME_HOST_ENV_FILE}}"
   local content
 
-  content="$(base64 < "${LUME_HOST_ENV_FILE}" | tr -d '\n')"
+  content="$(base64 < "${source_path}" | tr -d '\n')"
   lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 0 \
     "mkdir -p '$(dirname "${destination_path}")' && printf '%s' '${content}' | base64 -D > '${destination_path}' && chmod 0600 '${destination_path}'"
 }
 
-vm_exists() {
-  lume get "${LUME_VM_NAME}" --format json $(storage_args) >/dev/null 2>&1
+render_guest_runner_env() {
+  local env_path="$1"
+  local temp_env
+
+  temp_env="$(mktemp)"
+  (
+    set -a
+    # shellcheck disable=SC1090
+    source "${env_path}"
+    set +a
+
+    cat <<EOF
+GITHUB_PAT=${GITHUB_PAT}
+GITHUB_API_URL=${GITHUB_API_URL}
+GITHUB_REPO=${GITHUB_REPO:-}
+GITHUB_ORG=${GITHUB_ORG}
+RUNNER_GROUP=${RUNNER_GROUP}
+RUNNER_LABELS=${RUNNER_LABELS}
+RUNNER_NAME=${RUNNER_NAME}
+RUNNER_ROOT=${RUNNER_ROOT}
+RUNNER_WORK_DIR=${RUNNER_WORK_DIR}
+RUNNER_VERSION=${RUNNER_VERSION}
+RUNNER_DOWNLOAD_URL=${RUNNER_DOWNLOAD_URL:-}
+EOF
+  ) > "${temp_env}"
+
+  printf '%s\n' "${temp_env}"
 }
 
-base_vm_exists() {
-  lume get "${LUME_VM_BASE_NAME}" --format json $(storage_args) >/dev/null 2>&1
+vm_exists() {
+  lume get "${LUME_VM_NAME}" --format json $(storage_args) >/dev/null 2>&1
 }

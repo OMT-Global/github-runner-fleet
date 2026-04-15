@@ -1,9 +1,9 @@
 {
-  "name": "synology-github-runner",
+  "name": "github-runner-fleet",
   "version": "0.1.9",
   "private": true,
   "license": "MIT",
-  "description": "Shell-only GitHub self-hosted runner pools for Synology NAS deployments.",
+  "description": "Self-hosted GitHub runner fleet for Synology shell-only pools, Linux Docker hosts, and ephemeral Lume macOS VMs.",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "engines": {
@@ -14,30 +14,35 @@
     "check-runner-version": "tsx src/cli.ts check-runner-version",
     "doctor": "tsx src/cli.ts doctor",
     "install-synology-project": "tsx src/cli.ts install-synology-project",
+    "install-linux-docker-project": "tsx src/cli.ts install-linux-docker-project",
     "lint": "tsc --noEmit -p tsconfig.json",
+    "render-linux-docker-compose": "tsx src/cli.ts render-linux-docker-compose",
+    "render-linux-docker-project-manifest": "tsx src/cli.ts render-linux-docker-project-manifest",
     "render-lume-runner-manifest": "tsx src/cli.ts render-lume-runner-manifest",
     "render-compose": "tsx src/cli.ts render-compose",
     "render-synology-project-manifest": "tsx src/cli.ts render-synology-project-manifest",
+    "teardown-linux-docker-project": "tsx src/cli.ts teardown-linux-docker-project",
     "teardown-synology-project": "tsx src/cli.ts teardown-synology-project",
     "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
     "smoke-test": "bash scripts/smoke-test.sh",
-    "synology-status": "tsx src/cli.ts synology-status",
     "test": "vitest run",
     "validate-config": "tsx src/cli.ts validate-config",
+    "validate-linux-docker-config": "tsx src/cli.ts validate-linux-docker-config",
+    "validate-linux-docker-github": "tsx src/cli.ts validate-linux-docker-github",
     "validate-lume-config": "tsx src/cli.ts validate-lume-config",
     "validate-lume-github": "tsx src/cli.ts validate-lume-github",
     "validate-github": "tsx src/cli.ts validate-github",
     "validate-image": "tsx src/cli.ts validate-image"
   },
   "dependencies": {
-    "dotenv": "^17.4.1",
+    "dotenv": "^17.3.1",
     "yaml": "^2.8.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.5.0",
     "tsx": "^4.20.6",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.2"
   }
 }
