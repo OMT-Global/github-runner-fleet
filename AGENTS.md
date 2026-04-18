@@ -13,6 +13,7 @@
 - GitHub issues are the source of record for agent execution work.
 - Worker agents should act from assigned or explicitly enabled issues, not free-roaming backlog grabs.
 - If an agent authors a PR, that same agent may not approve it. This is a hard rule.
+- PR owners must repair their own PRs until merge-ready, including CI failures, rebase/behind-state fixes, mergeability fixes, and requested review changes, unless Pheidon explicitly reassigns ownership.
 - Healthy PRs should converge toward auto-merge once required checks are green or intentionally skipped, approvals are satisfied, and no blocking review state remains.
 - PRs should link and close their governing issue where possible so issue state remains the durable work contract.
 
