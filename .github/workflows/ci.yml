@@ -33,12 +33,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: mkdir -p "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE"
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
       - uses: ./actions/setup-shell-safe-node
         with:
           node-version: 24.14.1
+      - name: Enable pnpm from shell-safe Node
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+          pnpm --version
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test
