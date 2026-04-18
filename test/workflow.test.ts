@@ -16,6 +16,9 @@ describe("CI workflow", () => {
     const installNodeStep = steps.find(
       (step) => step.uses === "./actions/setup-shell-safe-node"
     );
+    const enablePnpmStep = steps.find(
+      (step) => step.name === "Enable pnpm from shell-safe Node"
+    );
     const forkSteps = workflow.jobs.test_public_fork_pr.steps as Array<
       Record<string, unknown>
     >;
@@ -41,6 +44,12 @@ describe("CI workflow", () => {
     expect(steps.some((step) => step.uses === "actions/setup-node@v6")).toBe(
       false
     );
+    expect(steps.some((step) => step.uses === "pnpm/action-setup@v6")).toBe(
+      false
+    );
+    expect(String(enablePnpmStep?.run)).toContain(
+      "corepack prepare pnpm@10.32.1 --activate"
+    );
     expect(forkSetupNodeStep?.with).toMatchObject({
       "node-version": "24",
       cache: "pnpm"
@@ -56,7 +65,7 @@ describe("CI workflow", () => {
 
     const contractJob = workflow.jobs.shell_safe_contract_trusted;
     const steps = contractJob.steps as Array<Record<string, unknown>>;
-    const cacheStep = steps.find((step) => step.uses === "actions/cache@v4");
+    const cacheStep = steps.find((step) => step.uses === "actions/cache@v5");
     const verifyToolchainStep = steps.find(
       (step) => step.name === "Verify built-in shell-safe toolchain"
     );
