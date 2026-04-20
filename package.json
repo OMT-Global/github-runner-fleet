@@ -26,6 +26,7 @@
     "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
     "smoke-test": "bash scripts/smoke-test.sh",
     "test": "vitest run",
+    "mutation-test": "stryker run",
     "validate-config": "tsx src/cli.ts validate-config",
     "validate-linux-docker-config": "tsx src/cli.ts validate-linux-docker-config",
     "validate-linux-docker-github": "tsx src/cli.ts validate-linux-docker-github",
@@ -40,6 +41,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^25.6.0",
     "tsx": "^4.20.6",
     "typescript": "^6.0.3",
