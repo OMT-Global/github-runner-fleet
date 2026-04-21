@@ -1,6 +1,6 @@
 # GitHub Runner Fleet
 
-Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Docker hosts, and ephemeral Lume macOS VMs.
+Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Docker hosts, Windows Docker hosts, and ephemeral Lume macOS VMs.
 
 > Shell-only by design on Synology, ephemeral by default across the fleet, and explicit about what belongs on self-hosted capacity versus GitHub-hosted runners.
 
@@ -8,6 +8,7 @@ Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Do
 
 - [Synology quick start](#synology-quick-start)
 - [Linux Docker pool](#linux-docker-pool)
+- [Windows Docker pool](#windows-docker-pool)
 - [Lume macOS pool](#lume-macos-pool)
 - [Supported workload matrix](#supported-workload-matrix)
 - [Workflow cookbook](docs/workflow-cookbook.md)
@@ -30,7 +31,7 @@ The roadmap doc keeps the operator view short; the GitHub issues are the executi
 ## Why This Exists
 
 - Keep Synology runner capacity locked to shell-safe workloads instead of gradually drifting into privileged Docker-host territory.
-- Give private repos a dedicated Linux Docker execution plane for `container:` jobs, service containers, and Buildx-style workflows.
+- Give private repos dedicated Linux and Windows Docker execution planes for `container:` jobs, service containers, and platform-native container workflows.
 - Give the org a second execution plane for macOS-native jobs through pooled Lume VMs without baking long-lived GitHub credentials into the base image.
 - Make runner policy explicit in config and docs so downstream repos can tell, up front, which jobs belong on this fleet and which jobs should stay on GitHub-hosted runners.
 
@@ -40,6 +41,7 @@ The roadmap doc keeps the operator view short; the GitHub issues are the executi
 | --- | --- | --- | --- |
 | Synology Linux pools | Ephemeral containers built from a multi-arch runner image | shell jobs, JS actions, Python `3.12`, Terraform, docs and validation work | Docker socket jobs, `container:` jobs, service containers, privileged workloads |
 | Linux Docker pool | Ephemeral runner containers on a dedicated Linux Docker host | `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native jobs, turning Synology into a Docker host |
+| Windows Docker pool | Ephemeral Windows runner containers on a dedicated Windows Docker host | Windows container workflows, PowerShell automation, Windows x64 jobs that need self-hosted capacity | untrusted public fork PRs, Linux container jobs, macOS-native jobs |
 | Lume macOS pool | Ephemeral VM clones from a sealed macOS base image | macOS-native build and test lanes that need a real macOS host | long-lived snowflake VMs, secrets baked into the base image, ad hoc manual drift |
 
 ## Topology
@@ -47,32 +49,36 @@ The roadmap doc keeps the operator view short; the GitHub issues are the executi
 ```mermaid
 flowchart LR
   Dev["Operator / CI maintainer"] --> CLI["github-runner-fleet CLI"]
-  CLI --> CFG["config/pools.yaml, config/linux-docker-runners.yaml, or config/lume-runners.yaml"]
+  CLI --> CFG["config/pools.yaml, config/linux-docker-runners.yaml, config/windows-runners.yaml, or config/lume-runners.yaml"]
   CLI --> GH["GitHub Actions API"]
   CLI --> SYN["Synology DSM via synology-api"]
   CLI --> LDH["Linux Docker host via ssh"]
+  CLI --> WDH["Windows Docker host via ssh"]
   CLI --> LUME["Lume on a host Mac"]
   SYN --> SLOTS["Ephemeral Linux runner slots"]
   LDH --> DOCKER["Docker-capable Linux runner slots"]
+  WDH --> WINDOCKER["Docker-capable Windows runner slots"]
   LUME --> MACS["Ephemeral macOS runner VMs"]
   SLOTS --> JOBS["One job per runner"]
   DOCKER --> JOBS
+  WINDOCKER --> JOBS
   MACS --> JOBS
 ```
 
 ## Supported Workload Matrix
 
-| Job Type | Synology shell-only pool | Linux Docker pool | Lume macOS pool | GitHub-hosted still recommended |
-| --- | --- | --- | --- | --- |
-| Node/npm validation | Yes | Yes | Yes | Optional |
-| Python `3.12` workflows | Yes | Yes | Yes | Optional |
-| Terraform CLI validation | Yes | Yes | Yes | Optional |
-| Docs and shell scripts | Yes | Yes | Yes | Optional |
-| macOS-native build/test lanes | No | No | Yes | Optional |
-| Multi-arch image publishing | No | Yes | No | Optional |
-| `container:` jobs or service containers | No | Yes | No | Optional |
-| Docker daemon workflows | No | Yes | No | Optional |
-| Browser stacks and heavy system deps | Usually no | Case-by-case | Case-by-case | Often |
+| Job Type | Synology shell-only pool | Linux Docker pool | Windows Docker pool | Lume macOS pool | GitHub-hosted still recommended |
+| --- | --- | --- | --- | --- | --- |
+| Node/npm validation | Yes | Yes | Yes | Yes | Optional |
+| Python `3.12` workflows | Yes | Yes | Case-by-case | Yes | Optional |
+| Terraform CLI validation | Yes | Yes | Case-by-case | Yes | Optional |
+| Docs and shell scripts | Yes | Yes | Case-by-case | Yes | Optional |
+| macOS-native build/test lanes | No | No | No | Yes | Optional |
+| Windows-native build/test lanes | No | No | Yes | No | Optional |
+| Multi-arch image publishing | No | Yes | No | No | Optional |
+| `container:` jobs or service containers | No | Yes | Yes for Windows containers | No | Optional |
+| Docker daemon workflows | No | Yes | Yes for Windows containers | No | Optional |
+| Browser stacks and heavy system deps | Usually no | Case-by-case | Case-by-case | Case-by-case | Often |
 
 ## What You Get
 
@@ -99,6 +105,7 @@ The Synology shell-only class supports shell jobs, JavaScript actions, composite
 
 - [config/pools.yaml](config/pools.yaml): non-secret pool config
 - [config/linux-docker-runners.yaml](config/linux-docker-runners.yaml): Docker-capable Linux pool config
+- [config/windows-runners.yaml](config/windows-runners.yaml): Docker-capable Windows pool config
 - [docs/linux-docker-pool.md](docs/linux-docker-pool.md): examples for `container:`, `services:`, and Docker daemon workflows
 - [docker/Dockerfile](docker/Dockerfile): runner image build
 - [docker/runner-entrypoint.sh](docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
@@ -203,9 +210,30 @@ Recommended workflow labels:
 
 - Docker-capable private repos: `runs-on: [self-hosted, linux, docker-capable, private]`
 
+## Windows Docker Pool
+
+This repo also carries a Windows control plane for Docker-capable private workloads under [config/windows-runners.yaml](config/windows-runners.yaml). It stages ephemeral Windows runner containers on a dedicated Windows Server or Windows Docker host reachable over OpenSSH.
+
+Useful Windows Docker commands:
+
+```bash
+pnpm validate-windows-config -- --config config/windows-runners.yaml --env .env
+pnpm validate-windows-github -- --config config/windows-runners.yaml --env .env
+pnpm render-windows-compose -- --config config/windows-runners.yaml --env .env --output docker-compose.windows.yml
+pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env .env
+pnpm install-windows-project -- --config config/windows-runners.yaml --env .env
+pnpm teardown-windows-project -- --config config/windows-runners.yaml --env .env
+```
+
+The installer path uses `ssh` and `scp` to stage `compose.yaml`, a project-local `.env`, and a generated PowerShell deployment script onto `WINDOWS_DOCKER_HOST`, then runs `docker compose up -d` or `docker compose down` there. Runner containers mount the Windows Docker named pipe and register as ephemeral organization runners.
+
+Recommended workflow labels:
+
+- Docker-capable Windows private repos: `runs-on: [self-hosted, windows, docker-capable, private]`
+
 ## Day-0 Operator Flow
 
-1. Validate the config and GitHub runner groups before touching Synology or Lume.
+1. Validate the config and GitHub runner groups before touching Synology, Linux Docker, Windows Docker, or Lume.
 2. Render the manifest or compose output you intend to deploy.
 3. Publish or verify the image tag before pointing a live pool at it.
 4. Install or reconcile the target plane.

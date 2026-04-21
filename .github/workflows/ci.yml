@@ -135,6 +135,41 @@ jobs:
           pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
           pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
 
+  windows_contract_trusted:
+    name: windows docker contract
+    if: >-
+      vars.WINDOWS_DOCKER_CONTRACT_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on:
+      - self-hosted
+      - windows
+      - docker-capable
+      - private
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Render Windows Docker runner manifests
+        shell: pwsh
+        run: |
+          Copy-Item .env.example $env:TEMP\windows-docker.env
+          pnpm validate-windows-config -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
+          pnpm render-windows-compose -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
+          pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
+      - name: Validate Windows entrypoint syntax
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content docker/runner-entrypoint.ps1 -Raw), [ref]$parseErrors)
+          if ($parseErrors) { throw ($parseErrors | Out-String) }
+
   lume_macos_contract_trusted:
     name: lume macos contract
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

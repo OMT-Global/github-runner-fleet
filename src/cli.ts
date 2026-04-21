@@ -14,6 +14,12 @@ import {
   summarizeLinuxDockerInstallPlan
 } from "./lib/linux-docker-install.js";
 import { renderLinuxDockerCompose } from "./lib/linux-docker-compose.js";
+import { loadWindowsDockerConfig } from "./lib/windows-config.js";
+import {
+  buildWindowsDockerInstallPlan,
+  summarizeWindowsDockerInstallPlan
+} from "./lib/windows-install.js";
+import { renderWindowsDockerCompose } from "./lib/windows-compose.js";
 import {
   loadLumeConfig,
   renderLumeShellExports
@@ -66,6 +72,12 @@ export async function main(
     case "validate-linux-docker-github":
       await validateLinuxDockerGitHub(args);
       break;
+    case "validate-windows-config":
+      await validateWindowsDockerConfig(args);
+      break;
+    case "validate-windows-github":
+      await validateWindowsDockerGitHub(args);
+      break;
     case "validate-github":
       await validateGitHub(args);
       break;
@@ -77,6 +89,12 @@ export async function main(
       break;
     case "render-linux-docker-project-manifest":
       await renderLinuxDockerProjectManifest(args);
+      break;
+    case "render-windows-compose":
+      await renderWindowsDockerComposeCommand(args);
+      break;
+    case "render-windows-project-manifest":
+      await renderWindowsDockerProjectManifest(args);
       break;
     case "render-compose":
       await renderComposeCommand(args);
@@ -92,6 +110,12 @@ export async function main(
       break;
     case "teardown-linux-docker-project":
       await teardownLinuxDockerProject(args);
+      break;
+    case "install-windows-project":
+      await installWindowsDockerProject(args);
+      break;
+    case "teardown-windows-project":
+      await teardownWindowsDockerProject(args);
       break;
     case "teardown-synology-project":
       await teardownSynologyProject(args);
@@ -444,6 +468,67 @@ async function validateLinuxDockerGitHub(args: string[]): Promise<void> {
   );
 }
 
+async function validateWindowsDockerConfig(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const configPath = getOption(args, "--config", "config/windows-runners.yaml");
+  const config = loadWindowsDockerConfig(configPath!, env);
+
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        version: config.version,
+        plane: config.plane,
+        image: config.image,
+        pools: config.pools.map((pool) => ({
+          key: pool.key,
+          runnerGroup: pool.runnerGroup,
+          visibility: pool.visibility,
+          labels: pool.labels,
+          size: pool.size,
+          host: pool.host,
+          sshUser: pool.sshUser,
+          runnerRoot: pool.runnerRoot,
+          imageRef: pool.imageRef
+        }))
+      },
+      null,
+      2
+    )}\n`
+  );
+}
+
+async function validateWindowsDockerGitHub(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const configPath = getOption(args, "--config", "config/windows-runners.yaml");
+  const config = loadWindowsDockerConfig(configPath!, env);
+  const matches = await verifyRunnerGroups(
+    env.githubApiUrl,
+    env.githubPat!,
+    config.pools.map((pool) => ({
+      poolKey: pool.key,
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup
+    }))
+  );
+
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        ok: true,
+        pools: matches
+      },
+      null,
+      2
+    )}\n`
+  );
+}
+
 async function renderSynologyProjectManifest(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
@@ -495,6 +580,42 @@ async function renderLinuxDockerProjectManifest(args: string[]): Promise<void> {
 
   process.stdout.write(
     `${JSON.stringify(summarizeLinuxDockerInstallPlan(plan), null, 2)}\n`
+  );
+}
+
+async function renderWindowsDockerComposeCommand(args: string[]): Promise<void> {
+  const output = getOption(args, "--output");
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const configPath = getOption(args, "--config", "config/windows-runners.yaml");
+  const config = loadWindowsDockerConfig(configPath!, env);
+  const compose = renderWindowsDockerCompose(config, env);
+
+  if (output) {
+    fs.writeFileSync(path.resolve(output), `${compose}\n`, "utf8");
+    process.stdout.write(`${output}\n`);
+    return;
+  }
+
+  process.stdout.write(`${compose}\n`);
+}
+
+async function renderWindowsDockerProjectManifest(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const configPath = getOption(args, "--config", "config/windows-runners.yaml");
+  const config = loadWindowsDockerConfig(configPath!, env);
+  const compose = renderWindowsDockerCompose(config, env);
+  const plan = buildWindowsDockerInstallPlan(config, env, compose, {
+    allowIncomplete: true
+  });
+
+  process.stdout.write(
+    `${JSON.stringify(summarizeWindowsDockerInstallPlan(plan), null, 2)}\n`
   );
 }
 
@@ -616,6 +737,54 @@ async function teardownLinuxDockerProject(args: string[]): Promise<void> {
   }
 
   runLinuxDockerInstall(plan);
+}
+
+async function installWindowsDockerProject(args: string[]): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: !dryRun
+  });
+  const configPath = getOption(args, "--config", "config/windows-runners.yaml");
+  const config = loadWindowsDockerConfig(configPath!, env);
+  const compose = renderWindowsDockerCompose(config, env);
+  const plan = buildWindowsDockerInstallPlan(config, env, compose, {
+    allowIncomplete: dryRun,
+    action: "up"
+  });
+
+  if (dryRun) {
+    process.stdout.write(
+      `${JSON.stringify(summarizeWindowsDockerInstallPlan(plan), null, 2)}\n`
+    );
+    return;
+  }
+
+  runWindowsDockerInstall(plan);
+}
+
+async function teardownWindowsDockerProject(args: string[]): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: !dryRun
+  });
+  const configPath = getOption(args, "--config", "config/windows-runners.yaml");
+  const config = loadWindowsDockerConfig(configPath!, env);
+  const compose = renderWindowsDockerCompose(config, env);
+  const plan = buildWindowsDockerInstallPlan(config, env, compose, {
+    allowIncomplete: dryRun,
+    action: "down"
+  });
+
+  if (dryRun) {
+    process.stdout.write(
+      `${JSON.stringify(summarizeWindowsDockerInstallPlan(plan), null, 2)}\n`
+    );
+    return;
+  }
+
+  runWindowsDockerInstall(plan);
 }
 
 async function validateImage(args: string[]): Promise<void> {
@@ -1042,6 +1211,73 @@ function runLinuxDockerInstall(
   }
 }
 
+function runWindowsDockerInstall(
+  plan: ReturnType<typeof buildWindowsDockerInstallPlan>
+): void {
+  const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), "windows-docker-install-"));
+  const composePath = path.join(stagingDir, plan.project.composeFileName);
+  const envPath = path.join(stagingDir, plan.project.envFileName);
+  const scriptPath = path.join(stagingDir, plan.project.deploymentScriptName);
+  const remote = `${plan.connection.username}@${plan.connection.host}`;
+  const remoteProjectDir = windowsRemotePath(plan.project.directory);
+  const remoteScriptPath = windowsRemotePath(
+    path.win32.join(plan.project.directory, plan.project.deploymentScriptName)
+  );
+
+  try {
+    fs.writeFileSync(composePath, `${plan.composeContent}\n`, "utf8");
+    fs.writeFileSync(envPath, plan.envFileContent, "utf8");
+    fs.writeFileSync(scriptPath, plan.deploymentScript, "utf8");
+
+    runCommand(
+      "ssh",
+      [
+        "-p",
+        plan.connection.port,
+        remote,
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        `New-Item -ItemType Directory -Force -Path ${powerShellQuote(plan.project.directory)} | Out-Null`
+      ],
+      "failed to prepare remote Windows Docker host"
+    );
+
+    runCommand(
+      "scp",
+      [
+        "-P",
+        plan.connection.port,
+        composePath,
+        envPath,
+        scriptPath,
+        `${remote}:${remoteProjectDir}/`
+      ],
+      "failed to upload Windows Docker project files"
+    );
+
+    runCommand(
+      "ssh",
+      [
+        "-p",
+        plan.connection.port,
+        remote,
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        remoteScriptPath
+      ],
+      "failed to execute Windows Docker deployment"
+    );
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
+}
+
 function runCommand(
   command: string,
   args: string[],
@@ -1073,6 +1309,14 @@ function shellEscapeRemotePath(value: string): string {
   return value.replace(/(["\\$`])/g, "\\$1");
 }
 
+function windowsRemotePath(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function powerShellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function printUsage(): void {
   process.stderr.write(`Usage:
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
@@ -1081,13 +1325,19 @@ function printUsage(): void {
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]
+  pnpm validate-windows-config [--config config/windows-runners.yaml] [--env .env]
+  pnpm validate-windows-github [--config config/windows-runners.yaml] [--env .env]
   pnpm validate-github [--config config/pools.yaml] [--env .env]
   pnpm validate-image [--config config/pools.yaml] [--env .env]
   pnpm render-linux-docker-compose [--config config/linux-docker-runners.yaml] [--env .env] [--output docker-compose.linux-docker.yml]
   pnpm render-linux-docker-project-manifest [--config config/linux-docker-runners.yaml] [--env .env]
+  pnpm render-windows-compose [--config config/windows-runners.yaml] [--env .env] [--output docker-compose.windows.yml]
+  pnpm render-windows-project-manifest [--config config/windows-runners.yaml] [--env .env]
   pnpm render-compose [--config config/pools.yaml] [--env .env] [--output docker-compose.generated.yml]
   pnpm install-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run]
   pnpm teardown-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run]
+  pnpm install-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run]
+  pnpm teardown-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run]
   pnpm render-synology-project-manifest [--config config/pools.yaml] [--env .env]
   pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
   pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
