@@ -524,8 +524,104 @@ pool:
           status: "warn"
         }),
         expect.objectContaining({
+          id: "lume-project-result",
+          status: "warn"
+        }),
+        expect.objectContaining({
           id: "lume-runner-group",
           status: "pass"
+        })
+      ])
+    );
+  });
+
+  test("reports Lume pool health from the project result artifact", async () => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    const lumeBaseDir = path.join(directory, "lume");
+    const lumeRunnerEnvPath = path.join(lumeBaseDir, "runner.env");
+    fs.mkdirSync(lumeBaseDir, { recursive: true });
+    fs.writeFileSync(lumeRunnerEnvPath, "GITHUB_PAT=secret\n", "utf8");
+    fs.writeFileSync(
+      path.join(lumeBaseDir, "lume-project-result.json"),
+      `${JSON.stringify({
+        plane: "lume",
+        action: "install",
+        status: "started",
+        recordedAt: "2026-04-21T00:00:00.000Z",
+        configPath: path.join(directory, "lume-runners.yaml"),
+        resultPath: path.join(lumeBaseDir, "lume-project-result.json"),
+        pidFile: path.join(lumeBaseDir, "lume-project.pid"),
+        logFile: path.join(lumeBaseDir, "logs", "lume-project.log"),
+        pool: {
+          key: "macos-private",
+          organization: "example",
+          runnerGroup: "macos-private",
+          size: 1
+        },
+        slots: []
+      })}\n`,
+      "utf8"
+    );
+    fs.writeFileSync(
+      envPath,
+      `GITHUB_PAT=secret
+LUME_RUNNER_BASE_DIR=${lumeBaseDir}
+LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
+`,
+      "utf8"
+    );
+
+    const lumePath = path.join(directory, "lume-runners.yaml");
+    fs.writeFileSync(
+      lumePath,
+      `version: 1
+pool:
+  key: macos-private
+  organization: example
+  runnerGroup: macos-private
+  size: 1
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+`,
+      "utf8"
+    );
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/actions/runner-groups")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                {
+                  id: 2,
+                  name: "macos-private",
+                  visibility: "selected",
+                  default: false
+                }
+              ]
+            })
+        };
+      }
+
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const report = await runDoctor({
+      mode: "lume",
+      envPath,
+      lumeConfigPath: lumePath,
+      fetchImpl: fetchMock
+    });
+
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lume-project-result",
+          status: "pass",
+          summary: "latest Lume project result action=install status=started"
         })
       ])
     );

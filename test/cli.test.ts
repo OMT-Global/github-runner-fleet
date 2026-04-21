@@ -626,6 +626,77 @@ describe("cli integration", () => {
     expect(shell.stdout).toContain("export RUNNER_LABELS='self-hosted,macos,arm64,private,xcode'");
   });
 
+  test("renders Lume install and teardown lifecycle results in dry-run mode", async () => {
+    const fixture = createCliFixture();
+    const resultPath = path.join(fixture.directory, "lume-result.json");
+
+    const install = await invokeCli([
+      "install-lume-project",
+      "--env",
+      fixture.envPath,
+      "--lume-config",
+      fixture.lumeConfigPath,
+      "--status-output",
+      resultPath,
+      "--format",
+      "json",
+      "--dry-run"
+    ]);
+    expect(install.error).toBeUndefined();
+    const installPayload = JSON.parse(install.stdout) as {
+      action: string;
+      status: string;
+      resultPath: string;
+      pool: { key: string; size: number };
+      slots: Array<{ vmName: string; runnerName: string }>;
+    };
+    expect(installPayload).toEqual(
+      expect.objectContaining({
+        action: "install",
+        status: "dry-run",
+        resultPath,
+        pool: expect.objectContaining({
+          key: "macos-private",
+          size: 1
+        }),
+        slots: [
+          expect.objectContaining({
+            vmName: "macos-runner-slot-01",
+            runnerName: "macos-runner-slot-01"
+          })
+        ]
+      })
+    );
+    expect(JSON.parse(fs.readFileSync(resultPath, "utf8"))).toEqual(
+      expect.objectContaining({
+        action: "install",
+        status: "dry-run"
+      })
+    );
+
+    const teardown = await invokeCli([
+      "teardown-lume-project",
+      "--env",
+      fixture.envPath,
+      "--lume-config",
+      fixture.lumeConfigPath,
+      "--status-output",
+      resultPath,
+      "--format",
+      "text",
+      "--dry-run"
+    ]);
+    expect(teardown.error).toBeUndefined();
+    expect(teardown.stdout).toContain("lume-project action=teardown status=dry-run");
+    expect(teardown.stdout).toContain("pool=macos-private slots=1");
+    expect(JSON.parse(fs.readFileSync(resultPath, "utf8"))).toEqual(
+      expect.objectContaining({
+        action: "teardown",
+        status: "dry-run"
+      })
+    );
+  });
+
   test("surfaces CLI option errors before mutating state", async () => {
     const fixture = createCliFixture();
 

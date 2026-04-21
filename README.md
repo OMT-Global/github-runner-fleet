@@ -326,6 +326,8 @@ Useful Lume commands:
 pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env
 pnpm validate-lume-github -- --config config/lume-runners.yaml --env .env
 pnpm render-lume-runner-manifest -- --config config/lume-runners.yaml --env .env --slot 1
+pnpm install-lume-project -- --lume-config config/lume-runners.yaml --env .env --format json
+pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env --format json
 pnpm drain-pool -- --pool macos-private --plane lume --timeout 15m --lume-config config/lume-runners.yaml --env .env
 bash scripts/lume/create-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/setup-base-vm.sh --config config/lume-runners.yaml --env .env
@@ -367,6 +369,8 @@ pnpm render-compose -- --config config/pools.yaml --env .env --output docker-com
 pnpm render-synology-project-manifest -- --config config/pools.yaml --env .env
 pnpm install-synology-project -- --config config/pools.yaml --env .env
 pnpm teardown-synology-project -- --config config/pools.yaml --env .env
+pnpm install-lume-project -- --lume-config config/lume-runners.yaml --env .env
+pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
 pnpm smoke-test
