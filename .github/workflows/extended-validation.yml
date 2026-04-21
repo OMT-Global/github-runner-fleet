@@ -126,6 +126,7 @@ jobs:
       - name: Compare desired and actual runner pool state
         env:
           GITHUB_PAT: ${{ secrets.RUNNER_FLEET_GITHUB_PAT }}
+          DRIFT_THRESHOLD: ${{ vars.DRIFT_THRESHOLD }}
           DRIFT_NOTIFY_CHANNEL: ${{ vars.DRIFT_NOTIFY_CHANNEL }}
         run: pnpm drift-detect -- --config config/pools.yaml --threshold "${DRIFT_THRESHOLD:-0}"
 

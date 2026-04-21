@@ -48,6 +48,50 @@ describe("CI workflow", () => {
     expect(gateJob.needs).toContain("mutation-tests");
   });
 
+  test("runs drift detection only for scheduled or manual extended validation", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(
+        path.resolve(".github/workflows/extended-validation.yml"),
+        "utf8"
+      )
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const driftJob = workflow.jobs["drift-detect"];
+    const gateJob = workflow.jobs["extended-validation-gate"];
+    const steps = driftJob.steps as Array<Record<string, unknown>>;
+    const setupNodeStep = steps.find(
+      (step) => step.uses === "./actions/setup-shell-safe-node"
+    );
+    const detectStep = steps.find(
+      (step) => step.name === "Compare desired and actual runner pool state"
+    );
+
+    expect(driftJob["runs-on"]).toEqual([
+      "self-hosted",
+      "synology",
+      "shell-only",
+      "public"
+    ]);
+    expect(driftJob.if).toBe(
+      "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    );
+    expect(setupNodeStep?.with).toMatchObject({
+      "node-version": "24.14.1"
+    });
+    expect(detectStep?.env).toMatchObject({
+      GITHUB_PAT: "${{ secrets.RUNNER_FLEET_GITHUB_PAT }}",
+      DRIFT_THRESHOLD: "${{ vars.DRIFT_THRESHOLD }}",
+      DRIFT_NOTIFY_CHANNEL: "${{ vars.DRIFT_NOTIFY_CHANNEL }}"
+    });
+    expect(String(detectStep?.run)).toContain("pnpm drift-detect");
+    expect(String(detectStep?.run)).toContain(
+      '--threshold "${DRIFT_THRESHOLD:-0}"'
+    );
+    expect(gateJob.needs).toContain("drift-detect");
+  });
+
   test("keeps trusted shell jobs on the public self-hosted runner contract", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
