@@ -14,6 +14,14 @@ pnpm build
 pnpm validate-config -- --config config/pools.yaml --env .env.example
 ```
 
+Snapshot tests lock generated compose and manifest artifacts. When an intentional
+renderer change updates those artifacts, refresh and review the golden files with:
+
+```bash
+pnpm test -u
+git diff -- test/__snapshots__
+```
+
 ## Pull Requests
 
 Please include:
