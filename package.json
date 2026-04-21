@@ -46,6 +46,7 @@
     "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "4.1.4",
+    "fast-check": "^4.7.0",
     "tsx": "^4.20.6",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
