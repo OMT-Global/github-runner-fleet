@@ -13,6 +13,11 @@ import {
   readJsonFromStdin,
   writeAuditRecord
 } from "./lib/audit.js";
+import {
+  drainRunnerPool,
+  type DrainProgress,
+  type DrainReport
+} from "./lib/drain.js";
 import { loadDeploymentEnv } from "./lib/env.js";
 import { loadLinuxDockerConfig } from "./lib/linux-docker-config.js";
 import {
@@ -74,6 +79,9 @@ export async function main(
       break;
     case "scale":
       await scaleCommand(args);
+      break;
+    case "drain-pool":
+      await drainPoolCommand(args);
       break;
     case "validate-linux-docker-config":
       await validateLinuxDockerConfig(args);
@@ -307,11 +315,11 @@ async function scaleCommand(args: string[]): Promise<void> {
     return;
   }
 
-  const drainTimeoutSeconds = parseNonNegativeInteger(
+  const drainTimeoutSeconds = parseDurationSeconds(
     getOption(args, "--drain-timeout", "300")!,
     "--drain-timeout"
   );
-  const drainIntervalSeconds = parseNonNegativeInteger(
+  const drainIntervalSeconds = parseDurationSeconds(
     getOption(args, "--drain-interval", "5")!,
     "--drain-interval"
   );
@@ -320,16 +328,25 @@ async function scaleCommand(args: string[]): Promise<void> {
     (entry) => entry.action === "scale-down"
   )) {
     const pool = config.pools.find((entry) => entry.key === decision.poolKey)!;
-    await waitForSynologyPoolDrain({
+    const report = await drainRunnerPool({
       apiUrl: env.githubApiUrl,
       token: env.githubPat!,
       organization: pool.organization,
       runnerGroup: pool.runnerGroup,
       poolKey: pool.key,
-      targetSize: decision.targetSize,
+      runnerNames: buildIndexedRunnerNames(
+        pool.key,
+        decision.targetSize + 1,
+        pool.size
+      ),
       timeoutSeconds: drainTimeoutSeconds,
       intervalSeconds: drainIntervalSeconds
     });
+    if (report.status === "timeout") {
+      throw new Error(
+        `timed out waiting for ${report.busy.join(", ")} to become idle before scaling ${pool.key} down`
+      );
+    }
   }
 
   const scaledConfig = applyAutoscaleDecisions(config, decisions);
@@ -340,6 +357,48 @@ async function scaleCommand(args: string[]): Promise<void> {
   runSynologyInstallPlan(plan, getOption(args, "--python", "python3")!);
   writeScaledPoolSizes(configPath, decisions);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+}
+
+async function drainPoolCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const poolKey = getOption(args, "--pool");
+  if (!poolKey) {
+    throw new Error("--pool is required");
+  }
+
+  const format = getOption(args, "--format", "text");
+  if (format !== "text" && format !== "json") {
+    throw new Error(`unknown drain format: ${format}`);
+  }
+
+  const definition = resolveDrainPoolDefinition(args, env, poolKey);
+  const report = await drainRunnerPool({
+    apiUrl: env.githubApiUrl,
+    token: env.githubPat!,
+    organization: definition.organization,
+    runnerGroup: definition.runnerGroup,
+    poolKey: definition.key,
+    runnerNames: definition.runnerNames,
+    timeoutSeconds: parseDurationSeconds(getOption(args, "--timeout", "300")!, "--timeout"),
+    intervalSeconds: parseDurationSeconds(getOption(args, "--interval", "5")!, "--interval"),
+    onProgress:
+      format === "text"
+        ? (progress) => writeDrainProgress(definition.plane, progress)
+        : undefined
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify({ ...report, plane: definition.plane }, null, 2)}\n`);
+  } else {
+    process.stdout.write(renderDrainReport(definition.plane, report));
+  }
+
+  if (report.status === "timeout") {
+    process.exitCode = 1;
+  }
 }
 
 function writeDriftNotification(
@@ -714,6 +773,16 @@ async function teardownSynologyProject(args: string[]): Promise<void> {
     return;
   }
 
+  await drainBeforeTeardown(args, env, [
+    ...config.pools.map((pool) => ({
+      plane: "synology" as const,
+      key: pool.key,
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup,
+      runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+    }))
+  ]);
+
   const python = getOption(args, "--python", "python3")!;
   runSynologyInstallPlan(plan, python);
 }
@@ -758,6 +827,16 @@ async function teardownLinuxDockerProject(args: string[]): Promise<void> {
     );
     return;
   }
+
+  await drainBeforeTeardown(args, env, [
+    ...config.pools.map((pool) => ({
+      plane: "linux-docker" as const,
+      key: pool.key,
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup,
+      runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+    }))
+  ]);
 
   runLinuxDockerInstall(plan);
 }
@@ -806,6 +885,16 @@ async function teardownWindowsDockerProject(args: string[]): Promise<void> {
     );
     return;
   }
+
+  await drainBeforeTeardown(args, env, [
+    ...config.pools.map((pool) => ({
+      plane: "windows-docker" as const,
+      key: pool.key,
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup,
+      runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+    }))
+  ]);
 
   runWindowsDockerInstall(plan);
 }
@@ -1048,71 +1137,210 @@ function writeScaledPoolSizes(
   fs.writeFileSync(absolutePath, YAML.stringify(document), "utf8");
 }
 
-async function waitForSynologyPoolDrain(options: {
-  apiUrl: string;
-  token: string;
+type DrainPlane = "synology" | "linux-docker" | "windows-docker" | "lume";
+
+interface DrainPoolDefinition {
+  plane: DrainPlane;
+  key: string;
   organization: string;
   runnerGroup: string;
-  poolKey: string;
-  targetSize: number;
-  timeoutSeconds: number;
-  intervalSeconds: number;
-}): Promise<void> {
-  const deadline = Date.now() + options.timeoutSeconds * 1000;
+  runnerNames: string[];
+}
 
-  while (true) {
-    const busyRunnerNames = await getBusyRunnersAboveTarget(options);
-    if (busyRunnerNames.length === 0) {
-      return;
-    }
+async function drainBeforeTeardown(
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>,
+  definitions: DrainPoolDefinition[]
+): Promise<void> {
+  if (!args.includes("--drain")) {
+    return;
+  }
 
-    if (Date.now() >= deadline) {
+  const timeoutSeconds = parseDurationSeconds(
+    getOption(args, "--drain-timeout", getOption(args, "--timeout", "300"))!,
+    "--drain-timeout"
+  );
+  const intervalSeconds = parseDurationSeconds(
+    getOption(args, "--drain-interval", getOption(args, "--interval", "5"))!,
+    "--drain-interval"
+  );
+
+  for (const definition of definitions) {
+    const report = await drainRunnerPool({
+      apiUrl: env.githubApiUrl,
+      token: env.githubPat!,
+      organization: definition.organization,
+      runnerGroup: definition.runnerGroup,
+      poolKey: definition.key,
+      runnerNames: definition.runnerNames,
+      timeoutSeconds,
+      intervalSeconds,
+      onProgress: (progress) => writeDrainProgress(definition.plane, progress)
+    });
+
+    if (report.status === "timeout") {
       throw new Error(
-        `timed out waiting for ${busyRunnerNames.join(", ")} to become idle before scaling ${options.poolKey} down`
+        `timed out waiting for ${report.busy.join(", ")} to become idle before tearing down ${definition.key}`
       );
     }
-
-    await sleep(options.intervalSeconds * 1000);
   }
 }
 
-async function getBusyRunnersAboveTarget(options: {
-  apiUrl: string;
-  token: string;
-  organization: string;
-  runnerGroup: string;
-  poolKey: string;
-  targetSize: number;
-}): Promise<string[]> {
-  const groups = await fetchOrganizationRunnerGroups(
-    options.apiUrl,
-    options.organization,
-    options.token
+function resolveDrainPoolDefinition(
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>,
+  poolKey: string
+): DrainPoolDefinition {
+  const plane = getOption(args, "--plane") as DrainPlane | undefined;
+  if (
+    plane &&
+    !["synology", "linux-docker", "windows-docker", "lume"].includes(plane)
+  ) {
+    throw new Error(`unknown drain plane: ${plane}`);
+  }
+
+  const matches = collectDrainPoolDefinitions(args, env, plane).filter(
+    (definition) => definition.key === poolKey
   );
-  const group = groups.find((entry) => entry.name === options.runnerGroup);
-  if (!group) {
+  if (matches.length === 0) {
+    throw new Error(`unknown pool: ${poolKey}`);
+  }
+  if (matches.length > 1) {
     throw new Error(
-      `runner group ${options.runnerGroup} was not found in ${options.organization}`
+      `pool ${poolKey} exists in multiple planes; pass --plane to choose one`
     );
   }
 
-  const runners = await fetchOrganizationRunners(
-    options.apiUrl,
-    options.organization,
-    options.token
-  );
-
-  return runners
-    .filter((runner) => runner.runnerGroupId === group.id && runner.busy)
-    .filter((runner) => {
-      const match = runner.name.match(/-runner-(\d+)$/);
-      return match ? Number(match[1]) > options.targetSize : true;
-    })
-    .map((runner) => runner.name);
+  return matches[0];
 }
 
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function collectDrainPoolDefinitions(
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>,
+  requestedPlane?: DrainPlane
+): DrainPoolDefinition[] {
+  const definitions: DrainPoolDefinition[] = [];
+
+  if (shouldLoadDrainConfig(args, "--config", requestedPlane, "synology")) {
+    const configPath = getOption(args, "--config", "config/pools.yaml")!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadConfig(configPath, env);
+      definitions.push(
+        ...config.pools.map((pool) => ({
+          plane: "synology" as const,
+          key: pool.key,
+          organization: pool.organization,
+          runnerGroup: pool.runnerGroup,
+          runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+        }))
+      );
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--linux-config", requestedPlane, "linux-docker")) {
+    const configPath = getOption(
+      args,
+      "--linux-config",
+      "config/linux-docker-runners.yaml"
+    )!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadLinuxDockerConfig(configPath, env);
+      definitions.push(
+        ...config.pools.map((pool) => ({
+          plane: "linux-docker" as const,
+          key: pool.key,
+          organization: pool.organization,
+          runnerGroup: pool.runnerGroup,
+          runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+        }))
+      );
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--windows-config", requestedPlane, "windows-docker")) {
+    const configPath = getOption(
+      args,
+      "--windows-config",
+      "config/windows-runners.yaml"
+    )!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadWindowsDockerConfig(configPath, env);
+      definitions.push(
+        ...config.pools.map((pool) => ({
+          plane: "windows-docker" as const,
+          key: pool.key,
+          organization: pool.organization,
+          runnerGroup: pool.runnerGroup,
+          runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+        }))
+      );
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--lume-config", requestedPlane, "lume")) {
+    const configPath = getOption(args, "--lume-config", "config/lume-runners.yaml")!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadLumeConfig(configPath, env);
+      definitions.push({
+        plane: "lume",
+        key: config.pool.key,
+        organization: config.pool.organization,
+        runnerGroup: config.pool.runnerGroup,
+        runnerNames: config.slots.map((slot) => slot.runnerName)
+      });
+    }
+  }
+
+  return definitions;
+}
+
+function shouldLoadDrainConfig(
+  args: string[],
+  optionName: string,
+  requestedPlane: DrainPlane | undefined,
+  plane: DrainPlane
+): boolean {
+  if (args.includes(optionName)) {
+    return true;
+  }
+  return !requestedPlane || requestedPlane === plane;
+}
+
+function buildIndexedRunnerNames(
+  poolKey: string,
+  startIndex: number,
+  endIndex: number
+): string[] {
+  if (endIndex < startIndex) {
+    return [];
+  }
+  return Array.from(
+    { length: endIndex - startIndex + 1 },
+    (_value, offset) =>
+      `${poolKey}-runner-${String(startIndex + offset).padStart(2, "0")}`
+  );
+}
+
+function writeDrainProgress(plane: DrainPlane, progress: DrainProgress): void {
+  process.stderr.write(
+    [
+      `drain ${plane}/${progress.poolKey}:`,
+      `${progress.status},`,
+      `${progress.busy.length} busy,`,
+      `${progress.cordoned.length} cordoned,`,
+      `${progress.missing.length} already absent`
+    ].join(" ") + "\n"
+  );
+}
+
+function renderDrainReport(plane: DrainPlane, report: DrainReport): string {
+  return [
+    `drain ${plane}/${report.poolKey}: ${report.status}`,
+    `cordoned: ${report.cordoned.length}/${report.total}`,
+    `busy: ${report.busy.length ? report.busy.join(", ") : "none"}`,
+    `already absent: ${report.missing.length ? report.missing.join(", ") : "none"}`,
+    ""
+  ].join("\n");
 }
 
 function getDoctorMode(args: string[]): DoctorMode {
@@ -1176,6 +1404,23 @@ function parsePositiveInteger(value: string, optionName: string): number {
     throw new Error(`${optionName} must be a positive integer`);
   }
   return parsed;
+}
+
+function parseDurationSeconds(value: string, optionName: string): number {
+  const match = value.match(/^(\d+)([smh])?$/);
+  if (!match) {
+    throw new Error(`${optionName} must be a non-negative duration like 300, 15m, or 1h`);
+  }
+
+  const amount = parseNonNegativeInteger(match[1], optionName);
+  const unit = match[2] ?? "s";
+  if (unit === "h") {
+    return amount * 60 * 60;
+  }
+  if (unit === "m") {
+    return amount * 60;
+  }
+  return amount;
 }
 
 function runLinuxDockerInstall(
@@ -1353,6 +1598,7 @@ function printUsage(): void {
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
+  pnpm drain-pool -- --pool synology-private [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--timeout 15m] [--interval 5] [--format text|json]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
@@ -1367,12 +1613,12 @@ function printUsage(): void {
   pnpm render-windows-project-manifest [--config config/windows-runners.yaml] [--env .env]
   pnpm render-compose [--config config/pools.yaml] [--env .env] [--output docker-compose.generated.yml]
   pnpm install-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run]
-  pnpm teardown-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run]
+  pnpm teardown-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run] [--drain] [--drain-timeout 15m]
   pnpm install-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run]
-  pnpm teardown-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run]
+  pnpm teardown-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run] [--drain] [--drain-timeout 15m]
   pnpm render-synology-project-manifest [--config config/pools.yaml] [--env .env]
   pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
-  pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
+  pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--drain] [--drain-timeout 15m] [--python python3]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
   pnpm runner-release-manifest [--current 2.333.0] [--env .env]
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]

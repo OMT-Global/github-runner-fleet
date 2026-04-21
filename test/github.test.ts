@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   buildRegistrationTokenRequest,
+  deleteOrganizationRunner,
   buildRemoveTokenRequest,
   fetchOrganizationRepositories,
   fetchOrganizationRunnerGroups,
@@ -219,6 +220,43 @@ describe("github runner API helpers", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.github.com/orgs/example/actions/runners?per_page=100&page=1",
       expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("deletes organization self-hosted runners idempotently", async () => {
+    const deletedFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      text: async () => ""
+    });
+    const missingFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "Not Found"
+    });
+
+    await expect(
+      deleteOrganizationRunner(
+        "https://api.github.com",
+        "example",
+        "secret",
+        101,
+        deletedFetch
+      )
+    ).resolves.toBe(true);
+    await expect(
+      deleteOrganizationRunner(
+        "https://api.github.com",
+        "example",
+        "secret",
+        101,
+        missingFetch
+      )
+    ).resolves.toBe(false);
+
+    expect(deletedFetch).toHaveBeenCalledWith(
+      "https://api.github.com/orgs/example/actions/runners/101",
+      expect.objectContaining({ method: "DELETE" })
     );
   });
 

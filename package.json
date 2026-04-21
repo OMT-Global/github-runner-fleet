@@ -15,6 +15,7 @@
     "check-runner-version": "tsx src/cli.ts check-runner-version",
     "doctor": "tsx src/cli.ts doctor",
     "drift-detect": "tsx src/cli.ts drift-detect",
+    "drain-pool": "tsx src/cli.ts drain-pool",
     "install-synology-project": "tsx src/cli.ts install-synology-project",
     "install-linux-docker-project": "tsx src/cli.ts install-linux-docker-project",
     "install-windows-project": "tsx src/cli.ts install-windows-project",
