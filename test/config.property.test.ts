@@ -178,10 +178,12 @@ describe("loadConfig property validation", () => {
     );
   });
 
-  test("accepts arbitrary non-empty memory strings", () => {
+  test("accepts arbitrary non-empty non-placeholder memory strings", () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 1, maxLength: 32 }).filter((value) => !value.includes("\0")),
+        fc
+          .string({ minLength: 1, maxLength: 32 })
+          .filter((value) => !value.includes("\0") && !value.includes("${")),
         (memory) => {
           const config = loadPoolConfig({
             resources: {
