@@ -101,6 +101,35 @@ jobs:
       - name: Run extended validation
         run: bash scripts/ci/run-extended-validation.sh
 
+  drift-detect:
+    name: Drift Detection
+    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    timeout-minutes: 10
+    needs: changes
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./actions/setup-shell-safe-node
+        with:
+          node-version: 24.14.1
+
+      - name: Enable pnpm from shell-safe Node
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compare desired and actual runner pool state
+        env:
+          GITHUB_PAT: ${{ secrets.RUNNER_FLEET_GITHUB_PAT }}
+          DRIFT_THRESHOLD: ${{ vars.DRIFT_THRESHOLD }}
+          DRIFT_NOTIFY_CHANNEL: ${{ vars.DRIFT_NOTIFY_CHANNEL }}
+        run: pnpm drift-detect -- --config config/pools.yaml --threshold "${DRIFT_THRESHOLD:-0}"
+
   mutation-tests:
     name: Mutation Tests
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
@@ -151,6 +180,7 @@ jobs:
       - changes
       - fast-checks
       - extended-checks
+      - drift-detect
       - mutation-tests
       - validate-secrets
     steps:
@@ -160,6 +190,7 @@ jobs:
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
             extended-checks=${{ needs.extended-checks.result }}
+            drift-detect=${{ needs.drift-detect.result }}
             mutation-tests=${{ needs.mutation-tests.result }}
             validate-secrets=${{ needs.validate-secrets.result }}
         run: |

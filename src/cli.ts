@@ -18,6 +18,12 @@ import {
 } from "./lib/lume-config.js";
 import { renderDoctorReport, runDoctor, type DoctorMode } from "./lib/doctor.js";
 import {
+  collectGitHubActualPoolState,
+  compareDesiredActualPools,
+  desiredPoolsFromConfig,
+  type DriftReport
+} from "./lib/drift.js";
+import {
   fetchLatestRunnerRelease,
   verifyContainerImageTag,
   verifyRunnerGroups
@@ -42,6 +48,9 @@ export async function main(
       break;
     case "doctor":
       await doctorCommand(args);
+      break;
+    case "drift-detect":
+      await driftDetectCommand(args);
       break;
     case "validate-linux-docker-config":
       await validateLinuxDockerConfig(args);
@@ -155,6 +164,81 @@ async function doctorCommand(args: string[]): Promise<void> {
   if (!report.ok) {
     process.exitCode = 1;
   }
+}
+
+async function driftDetectCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const threshold = parseNonNegativeInteger(
+    getOption(args, "--threshold", env.raw.DRIFT_THRESHOLD ?? "0")!,
+    "--threshold"
+  );
+  const config = loadConfig(configPath!, env);
+  emitWarnings(config);
+  const desiredPools = desiredPoolsFromConfig(config.pools);
+  const actualPools = await collectGitHubActualPoolState(
+    env.githubApiUrl,
+    env.githubPat!,
+    desiredPools
+  );
+  const report = compareDesiredActualPools(
+    desiredPools,
+    actualPools,
+    threshold
+  );
+
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  if (report.drifted) {
+    writeDriftNotification(
+      report,
+      env.raw.DRIFT_NOTIFY_CHANNEL,
+      env.raw.GITHUB_STEP_SUMMARY
+    );
+    process.exitCode = 1;
+  }
+}
+
+function writeDriftNotification(
+  report: DriftReport,
+  channel: string | undefined,
+  stepSummaryPath: string | undefined
+): void {
+  const normalizedChannel = channel?.trim();
+  if (!normalizedChannel) {
+    return;
+  }
+
+  if (!stepSummaryPath) {
+    process.stderr.write(
+      "DRIFT_NOTIFY_CHANNEL is set, but GITHUB_STEP_SUMMARY is unavailable; no drift notification was written.\n"
+    );
+    return;
+  }
+
+  const driftedPools = report.pools.filter((pool) => pool.status !== "ok");
+  const rows = driftedPools
+    .map(
+      (pool) =>
+        `| ${pool.name} | ${pool.desired} | ${pool.actual} | ${pool.drift} | ${pool.status} |`
+    )
+    .join("\n");
+  fs.appendFileSync(
+    stepSummaryPath,
+    [
+      "## Runner Pool Drift Detected",
+      "",
+      "Notification channel configured.",
+      "",
+      "| Pool | Desired | Actual | Drift | Status |",
+      "| --- | ---: | ---: | ---: | --- |",
+      rows,
+      ""
+    ].join("\n"),
+    "utf8"
+  );
 }
 
 async function renderComposeCommand(args: string[]): Promise<void> {
@@ -677,6 +761,14 @@ function getOption(
   return value;
 }
 
+function parseNonNegativeInteger(value: string, optionName: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${optionName} must be a non-negative integer`);
+  }
+  return parsed;
+}
+
 function runLinuxDockerInstall(
   plan: ReturnType<typeof buildLinuxDockerInstallPlan>
 ): void {
@@ -775,6 +867,7 @@ function shellEscapeRemotePath(value: string): string {
 function printUsage(): void {
   process.stderr.write(`Usage:
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]

@@ -3,6 +3,7 @@ import {
   buildRegistrationTokenRequest,
   buildRemoveTokenRequest,
   fetchOrganizationRunnerGroups,
+  fetchOrganizationRunners,
   fetchLatestRunnerRelease,
   fetchRunnerToken,
   verifyContainerImageTag,
@@ -170,6 +171,49 @@ describe("github runner API helpers", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "https://api.github.com/orgs/example/actions/runner-groups?per_page=100&page=2",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("parses organization self-hosted runners", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          runners: [
+            {
+              id: 101,
+              name: "synology-private-runner-01",
+              status: "online",
+              busy: false,
+              runner_group_id: 2,
+              labels: [{ name: "self-hosted" }, { name: "synology" }]
+            }
+          ]
+        })
+    });
+
+    await expect(
+      fetchOrganizationRunners(
+        "https://api.github.com",
+        "example",
+        "secret",
+        fetchMock
+      )
+    ).resolves.toEqual([
+      {
+        id: 101,
+        name: "synology-private-runner-01",
+        status: "online",
+        busy: false,
+        runnerGroupId: 2,
+        labels: ["self-hosted", "synology"]
+      }
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/orgs/example/actions/runners?per_page=100&page=1",
       expect.objectContaining({ method: "GET" })
     );
   });
