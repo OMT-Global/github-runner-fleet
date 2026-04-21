@@ -177,6 +177,35 @@ pool:
       ])
     );
     const stderrWrite = vi.mocked(process.stderr.write);
+    const synologyEnvLog = stderrWrite.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as {
+        level: string;
+        msg: string;
+        plane: string;
+        pool: string;
+        check: string;
+        status: string;
+      })
+      .find((entry) => entry.check === "synology-env");
+    expect(synologyEnvLog).toEqual(
+      expect.objectContaining({
+        level: "info",
+        msg: "doctor check result",
+        plane: "synology",
+        pool: "n/a",
+        check: "synology-env",
+        status: "pass"
+      })
+    );
+
+    const auditLog = stderrWrite.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as {
+        check: string;
+        summary: string;
+      })
+      .find((entry) => entry.check === "audit-log");
+    expect(auditLog?.summary).toContain("audit log path");
+
     const firstLog = JSON.parse(String(stderrWrite.mock.calls[0][0])) as {
       level: string;
       msg: string;
@@ -191,13 +220,14 @@ pool:
         msg: "doctor check result",
         plane: "synology",
         pool: "n/a",
-        check: "synology-env",
+        check: "audit-log",
         status: "pass"
       })
     );
 
     const rendered = renderDoctorReport(report);
     expect(rendered).toContain("doctor mode: full");
+    expect(rendered).toContain("PASS audit-log: audit log path");
     expect(rendered).toContain("PASS synology-image");
     expect(rendered).toContain("overall: PASS");
   });
@@ -412,18 +442,20 @@ pools:
     });
 
     expect(report.ok).toBe(false);
-    expect(report.checks).toEqual([
-      expect.objectContaining({
-        id: "synology-env",
-        status: "pass"
-      }),
-      expect.objectContaining({
-        id: "synology-config",
-        status: "fail",
-        summary: `failed to load ${poolsPath}`,
-        detail: "pool synology-private runnerRoot must resolve to an absolute path"
-      })
-    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "synology-env",
+          status: "pass"
+        }),
+        expect.objectContaining({
+          id: "synology-config",
+          status: "fail",
+          summary: `failed to load ${poolsPath}`,
+          detail: "pool synology-private runnerRoot must resolve to an absolute path"
+        })
+      ])
+    );
   });
 
   test("warns in Lume mode when the runner env file is missing", async () => {

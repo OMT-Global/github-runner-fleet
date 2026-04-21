@@ -30,4 +30,19 @@ describe("runner entrypoint", () => {
     );
     expect(script).not.toContain('rm -rf "${RUNNER_TOOL_CACHE}"');
   });
+
+  test("records runner lifecycle audit events and installs the job-start hook", () => {
+    const script = fs.readFileSync(
+      path.resolve("docker/runner-entrypoint.sh"),
+      "utf8"
+    );
+
+    expect(script).toContain(": \"${AUDIT_LOG_FILE:=/var/log/runner-fleet/audit.jsonl}\"");
+    expect(script).toContain("install_runner_hooks");
+    expect(script).toContain("ACTIONS_RUNNER_HOOK_JOB_STARTED");
+    expect(script).toContain("audit_event runner_job_start");
+    expect(script).toContain("audit_event token_fetch_failed");
+    expect(script).toContain("audit_event runner_registered");
+    expect(script).toContain('RUNNER_AUDIT_DEREGISTER_EVENT="runner_evicted"');
+  });
 });

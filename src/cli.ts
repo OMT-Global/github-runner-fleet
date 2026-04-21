@@ -7,6 +7,12 @@ import YAML from "yaml";
 import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
 import { collectConfigWarnings, loadConfig, type ResolvedConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
+import {
+  auditLogFileFromEnv,
+  auditMaxSizeBytesFromEnv,
+  readJsonFromStdin,
+  writeAuditRecord
+} from "./lib/audit.js";
 import { loadDeploymentEnv } from "./lib/env.js";
 import { loadLinuxDockerConfig } from "./lib/linux-docker-config.js";
 import {
@@ -62,6 +68,9 @@ export async function main(
       break;
     case "drift-detect":
       await driftDetectCommand(args);
+      break;
+    case "audit-log":
+      await auditLogCommand(args);
       break;
     case "scale":
       await scaleCommand(args);
@@ -232,6 +241,20 @@ async function driftDetectCommand(args: string[]): Promise<void> {
     );
     process.exitCode = 1;
   }
+}
+
+async function auditLogCommand(args: string[]): Promise<void> {
+  const filePath = getOption(args, "--file", auditLogFileFromEnv());
+  const maxSizeOption = getOption(args, "--max-size-bytes");
+  const maxSizeBytes = maxSizeOption
+    ? parsePositiveInteger(maxSizeOption, "--max-size-bytes")
+    : auditMaxSizeBytesFromEnv();
+  const record = writeAuditRecord(await readJsonFromStdin(), {
+    filePath,
+    maxSizeBytes
+  });
+
+  process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
 async function scaleCommand(args: string[]): Promise<void> {
@@ -1147,6 +1170,14 @@ function parseNonNegativeInteger(value: string, optionName: string): number {
   return parsed;
 }
 
+function parsePositiveInteger(value: string, optionName: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${optionName} must be a positive integer`);
+  }
+  return parsed;
+}
+
 function runLinuxDockerInstall(
   plan: ReturnType<typeof buildLinuxDockerInstallPlan>
 ): void {
@@ -1320,6 +1351,7 @@ function powerShellQuote(value: string): string {
 function printUsage(): void {
   process.stderr.write(`Usage:
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
   pnpm validate-config [--config config/pools.yaml] [--env .env]

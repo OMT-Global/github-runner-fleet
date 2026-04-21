@@ -18,6 +18,8 @@ services:
       RUNNER_SCOPE: organization
       RUNNER_NAME: synology-private-runner-01
       RUNNER_GROUP: synology-private
+      FLEET_POOL_KEY: synology-private
+      FLEET_PLANE: synology
       RUNNER_LABELS: synology,shell-only,private
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: all
@@ -55,6 +57,8 @@ services:
       RUNNER_SCOPE: organization
       RUNNER_NAME: synology-private-runner-02
       RUNNER_GROUP: synology-private
+      FLEET_POOL_KEY: synology-private
+      FLEET_PLANE: synology
       RUNNER_LABELS: synology,shell-only,private
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: all
@@ -92,6 +96,8 @@ services:
       RUNNER_SCOPE: organization
       RUNNER_NAME: synology-public-runner-01
       RUNNER_GROUP: synology-public
+      FLEET_POOL_KEY: synology-public
+      FLEET_PLANE: synology
       RUNNER_LABELS: synology,shell-only,public
       RUNNER_VISIBILITY: public
       RUNNER_REPOSITORY_ACCESS: selected

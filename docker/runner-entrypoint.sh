@@ -9,6 +9,7 @@ RUNNER_HOME="${RUNNER_HOME:-}"
 runner_configured="false"
 runner_exit_code=0
 runner_exec_mode="runner"
+RUNNER_AUDIT_DEREGISTER_EVENT="runner_deregistered"
 
 run_runner_bash() {
   local command="$1"
@@ -71,6 +72,39 @@ prepare_runtime_dirs() {
   chown -R runner:runner "${RUNNER_WORK_DIR}" "${RUNNER_TEMP}" "${RUNNER_TOOL_CACHE}"
 }
 
+prepare_audit_log() {
+  local audit_dir
+
+  : "${AUDIT_LOG_FILE:=/var/log/runner-fleet/audit.jsonl}"
+  audit_dir="$(dirname "${AUDIT_LOG_FILE}")"
+  mkdir -p "${audit_dir}"
+  touch "${AUDIT_LOG_FILE}"
+  chmod 0600 "${AUDIT_LOG_FILE}" 2>/dev/null || true
+
+  if [[ "${runner_exec_mode}" != "root" ]]; then
+    chown runner:runner "${audit_dir}" "${AUDIT_LOG_FILE}" 2>/dev/null || true
+  fi
+}
+
+install_runner_hooks() {
+  local hook_dir="${RUNNER_STATE_DIR%/}/hooks"
+  local job_started_hook="${hook_dir}/job-started.sh"
+
+  mkdir -p "${hook_dir}"
+  cat > "${job_started_hook}" <<'HOOK'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+source /usr/local/lib/github-runner-common.sh
+audit_event runner_job_start
+HOOK
+  chmod 0755 "${job_started_hook}"
+  if [[ "${runner_exec_mode}" != "root" ]]; then
+    chown -R runner:runner "${hook_dir}" 2>/dev/null || true
+  fi
+
+  export ACTIONS_RUNNER_HOOK_JOB_STARTED="${job_started_hook}"
+}
+
 ensure_root_runtime_dir() {
   local dir="$1"
 
@@ -103,7 +137,7 @@ on_exit() {
 }
 
 trap on_exit EXIT
-trap 'log "termination requested"; exit 0' TERM INT
+trap 'log "termination requested"; RUNNER_AUDIT_DEREGISTER_EVENT="runner_evicted"; export RUNNER_AUDIT_DEREGISTER_EVENT; exit 0' TERM INT
 
 require_env GITHUB_PAT
 require_env GITHUB_ORG
@@ -164,10 +198,16 @@ prepare_state_dir() {
 prepare_state_dir
 prepare_runtime_dirs
 prepare_runner_home
+prepare_audit_log
+install_runner_hooks
 
-registration_token="$(request_runner_token registration)"
+if ! registration_token="$(request_runner_token registration)"; then
+  audit_event token_fetch_failed
+  exit 1
+fi
 if [[ -z "${registration_token}" ]]; then
   log "registration token response was empty"
+  audit_event token_fetch_failed
   exit 1
 fi
 
@@ -211,6 +251,7 @@ log "runner source home: ${RUNNER_SOURCE_HOME}"
 log "runner writable home: ${RUNNER_HOME}"
 run_runner_bash "cd '${RUNNER_HOME}' && ./config.sh ${config_args[*]@Q}"
 runner_configured="true"
+audit_event runner_registered
 
 log "starting runner ${RUNNER_NAME}"
 run_runner_bash "cd '${RUNNER_HOME}' && exec ./run.sh" \

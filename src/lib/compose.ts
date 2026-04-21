@@ -48,6 +48,8 @@ function renderService(pool: PoolConfig, index: number): Record<string, unknown>
     RUNNER_SCOPE: "organization",
     RUNNER_NAME: buildRunnerName(pool, index),
     RUNNER_GROUP: pool.runnerGroup,
+    FLEET_POOL_KEY: pool.key,
+    FLEET_PLANE: "synology",
     RUNNER_LABELS: pool.labels.join(","),
     RUNNER_VISIBILITY: pool.visibility,
     RUNNER_REPOSITORY_ACCESS: pool.repositoryAccess,

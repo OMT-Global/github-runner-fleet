@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { auditLogFileFromEnv } from "./audit.js";
 import { collectConfigWarnings, loadConfig } from "./config.js";
 import { loadDeploymentEnv } from "./env.js";
 import {
@@ -108,6 +109,7 @@ async function runSynologyDoctor(input: {
   fetchImpl?: FetchLike;
 }): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
+  checks.push(buildAuditLogCheck(input.env.raw));
   const missingDeploymentEnv = [
     ["GITHUB_PAT", input.env.githubPat],
     ["SYNOLOGY_HOST", input.env.synologyHost],
@@ -248,6 +250,26 @@ async function runSynologyDoctor(input: {
   }
 
   return checks;
+}
+
+function buildAuditLogCheck(env: Record<string, string | undefined>): DoctorCheck {
+  const filePath = auditLogFileFromEnv(env);
+  let sizeBytes = 0;
+  if (fs.existsSync(filePath)) {
+    sizeBytes = fs.statSync(filePath).size;
+  }
+
+  return {
+    id: "audit-log",
+    target: "synology",
+    status: "pass",
+    summary: `audit log path ${filePath}`,
+    detail: `size ${sizeBytes} bytes`,
+    data: {
+      auditLogFile: filePath,
+      sizeBytes
+    }
+  };
 }
 
 async function runLumeDoctor(input: {

@@ -145,6 +145,8 @@ export function renderLumeShellExports(
     LUME_CONFIG_PATH: config.host.configPath,
     GITHUB_ORG: config.pool.organization,
     RUNNER_GROUP: config.pool.runnerGroup,
+    FLEET_POOL_KEY: config.pool.key,
+    FLEET_PLANE: "lume",
     RUNNER_VERSION: config.pool.runnerVersion,
     RUNNER_LABELS: slot.runnerLabels,
     GUEST_USER: config.pool.guestUser,

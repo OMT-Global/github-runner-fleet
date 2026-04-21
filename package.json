@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "audit-log": "tsx src/cli.ts audit-log",
     "check-runner-version": "tsx src/cli.ts check-runner-version",
     "doctor": "tsx src/cli.ts doctor",
     "drift-detect": "tsx src/cli.ts drift-detect",
