@@ -263,6 +263,11 @@ describe("github runner API helpers", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         text: async () =>
           JSON.stringify({
             jobs: [
@@ -303,6 +308,64 @@ describe("github runner API helpers", () => {
     ).resolves.toBe(1);
   });
 
+  test("counts queued jobs in active workflow runs", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            workflow_runs: [
+              {
+                id: 43,
+                jobs_url: "https://api.github.com/repos/example/private-app/actions/runs/43/jobs"
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jobs: [
+              {
+                id: 4,
+                status: "queued",
+                runner_group_name: "synology-private",
+                labels: ["synology", "shell-only"]
+              }
+            ]
+          })
+      });
+
+    await expect(
+      getQueuedJobCount(
+        "https://api.github.com",
+        "secret",
+        {
+          organization: "example",
+          runnerGroup: "synology-private",
+          repositories: ["example/private-app"],
+          labels: ["synology", "shell-only"]
+        },
+        fetchMock
+      )
+    ).resolves.toBe(1);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/repos/example/private-app/actions/runs?status=in_progress&per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   test("uses labels when queued jobs do not include runner group metadata", async () => {
     const fetchMock = vi
       .fn()
@@ -318,6 +381,11 @@ describe("github runner API helpers", () => {
               }
             ]
           })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
       })
       .mockResolvedValueOnce({
         ok: true,

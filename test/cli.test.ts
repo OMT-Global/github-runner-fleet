@@ -162,6 +162,11 @@ describe("cli integration", () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
+          text: async () => JSON.stringify({ workflow_runs: [] })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
           text: async () =>
             JSON.stringify({
               jobs: [

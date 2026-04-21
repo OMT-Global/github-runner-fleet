@@ -385,13 +385,14 @@ export async function fetchQueuedWorkflowRuns(
   apiUrl: string,
   repository: string,
   token: string,
-  fetchImpl: FetchLike = fetch as FetchLike
+  fetchImpl: FetchLike = fetch as FetchLike,
+  status: "queued" | "in_progress" = "queued"
 ): Promise<GitHubWorkflowRun[]> {
   const runs: GitHubWorkflowRun[] = [];
 
   for (let page = 1; ; page += 1) {
     const response = await fetchImpl(
-      `${trimApiUrl(apiUrl)}/repos/${repository}/actions/runs?status=queued&per_page=100&page=${page}`,
+      `${trimApiUrl(apiUrl)}/repos/${repository}/actions/runs?status=${status}&per_page=100&page=${page}`,
       {
         method: "GET",
         headers: buildGitHubApiHeaders(token)
@@ -401,7 +402,7 @@ export async function fetchQueuedWorkflowRuns(
     const body = await response.text();
     if (!response.ok) {
       throw new Error(
-        `GitHub queued workflow run lookup failed for ${repository} with ${response.status}: ${body}`
+        `GitHub ${status} workflow run lookup failed for ${repository} with ${response.status}: ${body}`
       );
     }
 
@@ -511,7 +512,22 @@ export async function getQueuedJobCount(
 
   let count = 0;
   for (const repository of repositories) {
-    const runs = await fetchQueuedWorkflowRuns(apiUrl, repository, token, fetchImpl);
+    const runs = [
+      ...(await fetchQueuedWorkflowRuns(
+        apiUrl,
+        repository,
+        token,
+        fetchImpl,
+        "queued"
+      )),
+      ...(await fetchQueuedWorkflowRuns(
+        apiUrl,
+        repository,
+        token,
+        fetchImpl,
+        "in_progress"
+      ))
+    ];
     for (const run of runs) {
       const jobs = await fetchWorkflowRunJobs(run.jobsUrl, token, fetchImpl);
       count += jobs.filter((job) => isQueuedForRunnerGroup(job, request)).length;
