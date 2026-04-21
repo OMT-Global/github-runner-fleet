@@ -166,6 +166,7 @@ For a fully programmatic install from your workstation, this repo can also reuse
 ```bash
 pnpm render-synology-project-manifest -- --config config/pools.yaml --env .env
 pnpm install-synology-project -- --config config/pools.yaml --env .env
+pnpm drain-pool -- --pool synology-private --plane synology --timeout 15m --format json --config config/pools.yaml --env .env
 pnpm teardown-synology-project -- --config config/pools.yaml --env .env
 ```
 
@@ -177,6 +178,8 @@ That installer path:
 - deletes the temporary scheduled task after completion
 
 `install-synology-project` is the recreate/resize path. If you change [config/pools.yaml](config/pools.yaml) from four private runners to two, or from two public runners to six, rerun `pnpm install-synology-project ...` and the generated compose project will reconcile to the new slot counts. `--force-recreate` refreshes existing services, and `--remove-orphans` removes slots that no longer exist in the rendered compose file.
+
+Use `pnpm drain-pool ...` before planned maintenance to remove idle runners from GitHub dispatch and wait for busy runners to finish. Teardown commands also accept `--drain --drain-timeout 15m` when you want that drain gate inline before `docker compose down`.
 
 Use `pnpm teardown-synology-project ...` when you want an explicit `docker compose down` on the NAS before reinstalling or when you want the runner project fully stopped.
 
@@ -201,6 +204,7 @@ pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml -
 pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env .env --output docker-compose.linux-docker.yml
 pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env
 pnpm install-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
+pnpm drain-pool -- --pool linux-private --plane linux-docker --timeout 15m --linux-config config/linux-docker-runners.yaml --env .env
 pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
 ```
 
@@ -222,6 +226,7 @@ pnpm validate-windows-github -- --config config/windows-runners.yaml --env .env
 pnpm render-windows-compose -- --config config/windows-runners.yaml --env .env --output docker-compose.windows.yml
 pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env .env
 pnpm install-windows-project -- --config config/windows-runners.yaml --env .env
+pnpm drain-pool -- --pool windows-private --plane windows-docker --timeout 15m --windows-config config/windows-runners.yaml --env .env
 pnpm teardown-windows-project -- --config config/windows-runners.yaml --env .env
 ```
 
@@ -321,6 +326,7 @@ Useful Lume commands:
 pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env
 pnpm validate-lume-github -- --config config/lume-runners.yaml --env .env
 pnpm render-lume-runner-manifest -- --config config/lume-runners.yaml --env .env --slot 1
+pnpm drain-pool -- --pool macos-private --plane lume --timeout 15m --lume-config config/lume-runners.yaml --env .env
 bash scripts/lume/create-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/setup-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env
@@ -352,6 +358,7 @@ pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml -
 pnpm validate-config -- --config config/pools.yaml --env .env
 pnpm validate-github -- --config config/pools.yaml --env .env
 pnpm validate-image -- --config config/pools.yaml --env .env
+pnpm drain-pool -- --pool synology-private --plane synology --timeout 15m --format json --config config/pools.yaml --env .env
 pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env .env --output docker-compose.linux-docker.yml
 pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env
 pnpm install-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env

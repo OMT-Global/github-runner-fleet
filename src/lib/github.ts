@@ -332,6 +332,35 @@ export async function fetchOrganizationRunners(
   }
 }
 
+export async function deleteOrganizationRunner(
+  apiUrl: string,
+  organization: string,
+  token: string,
+  runnerId: number,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<boolean> {
+  const response = await fetchImpl(
+    `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runners/${runnerId}`,
+    {
+      method: "DELETE",
+      headers: buildGitHubApiHeaders(token)
+    }
+  );
+
+  const body = await response.text();
+  if (response.status === 404) {
+    return false;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `GitHub runner deletion failed for ${organization}/${runnerId} with ${response.status}: ${body}`
+    );
+  }
+
+  return true;
+}
+
 export async function fetchOrganizationRepositories(
   apiUrl: string,
   organization: string,

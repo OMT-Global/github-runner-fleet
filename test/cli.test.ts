@@ -213,6 +213,141 @@ describe("cli integration", () => {
     );
   });
 
+  test("drains a pool and emits structured JSON status", async () => {
+    const fixture = createCliFixture();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 7,
+                name: "synology-private",
+                visibility: "all",
+                default: false
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runners: [
+              {
+                id: 101,
+                name: "synology-private-runner-01",
+                status: "online",
+                busy: false,
+                runner_group_id: 7
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        text: async () => ""
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await invokeCli([
+      "drain-pool",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--plane",
+      "synology",
+      "--pool",
+      "synology-private",
+      "--timeout",
+      "15m",
+      "--format",
+      "json"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual(
+      expect.objectContaining({
+        plane: "synology",
+        poolKey: "synology-private",
+        status: "drained",
+        timeoutSeconds: 900,
+        cordoned: ["synology-private-runner-01"],
+        busy: []
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "https://api.github.com/orgs/example/actions/runners/101",
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
+  test("drain-pool exits non-zero on timeout", async () => {
+    const fixture = createCliFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [{ id: 7, name: "synology-private" }]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runners: [
+                {
+                  id: 101,
+                  name: "synology-private-runner-01",
+                  status: "online",
+                  busy: true,
+                  runner_group_id: 7
+                }
+              ]
+            })
+        })
+    );
+
+    const result = await invokeCli([
+      "drain-pool",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--plane",
+      "synology",
+      "--pool",
+      "synology-private",
+      "--timeout",
+      "0",
+      "--format",
+      "json"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual(
+      expect.objectContaining({
+        status: "timeout",
+        busy: ["synology-private-runner-01"]
+      })
+    );
+  });
+
   test("validates and renders Linux Docker commands without remote execution in dry-run mode", async () => {
     const fixture = createCliFixture();
 
