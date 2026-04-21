@@ -583,10 +583,72 @@ describe("cli integration", () => {
     expect(validate.error).toBeUndefined();
     expect(JSON.parse(validate.stdout)).toEqual(
       expect.objectContaining({
+        host: expect.objectContaining({
+          baseDir: path.join(fixture.directory, "lume")
+        }),
         pool: expect.objectContaining({
           key: "macos-private",
           labels: ["self-hosted", "macos", "arm64", "private", "xcode"]
         })
+      })
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 7,
+                name: "macos-private",
+                visibility: "selected",
+                default: false
+              }
+            ]
+          })
+      }))
+    );
+    const github = await invokeCli([
+      "validate-lume-github",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath
+    ]);
+    expect(github.error).toBeUndefined();
+    expect(JSON.parse(github.stdout)).toEqual(
+      expect.objectContaining({
+        ok: true,
+        pools: [
+          expect.objectContaining({
+            poolKey: "macos-private",
+            visibility: "selected"
+          })
+        ]
+      })
+    );
+
+    const fullJson = await invokeCli([
+      "render-lume-runner-manifest",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath
+    ]);
+    expect(fullJson.error).toBeUndefined();
+    expect(JSON.parse(fullJson.stdout)).toEqual(
+      expect.objectContaining({
+        pool: expect.objectContaining({
+          key: "macos-private"
+        }),
+        slots: [
+          expect.objectContaining({
+            slotKey: "slot-01"
+          })
+        ]
       })
     );
 
@@ -695,6 +757,91 @@ describe("cli integration", () => {
         status: "dry-run"
       })
     );
+
+    const defaultOutput = await invokeCli([
+      "install-lume-project",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--dry-run"
+    ]);
+    expect(defaultOutput.error).toBeUndefined();
+    expect(defaultOutput.stdout).toContain("lume-project action=install status=dry-run");
+    expect(JSON.parse(fs.readFileSync(
+      path.join(fixture.directory, "lume", "lume-project-result.json"),
+      "utf8"
+    ))).toEqual(
+      expect.objectContaining({
+        action: "install",
+        status: "dry-run"
+      })
+    );
+
+    fs.mkdirSync(path.join(fixture.directory, "lume"), { recursive: true });
+    fs.writeFileSync(
+      path.join(fixture.directory, "lume", "lume-project.pid"),
+      `${process.pid}\n`,
+      "utf8"
+    );
+    const alreadyRunning = await invokeCli([
+      "install-lume-project",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--format",
+      "json"
+    ]);
+    expect(alreadyRunning.error).toBeUndefined();
+    expect(JSON.parse(alreadyRunning.stdout)).toEqual(
+      expect.objectContaining({
+        action: "install",
+        status: "already-running",
+        supervisorPid: process.pid
+      })
+    );
+  });
+
+  test("renders Lume drain status in text format when runners are already absent", async () => {
+    const fixture = createCliFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [{ id: 7, name: "macos-private" }]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ runners: [] })
+        })
+    );
+
+    const result = await invokeCli([
+      "drain-pool",
+      "--env",
+      fixture.envPath,
+      "--lume-config",
+      fixture.lumeConfigPath,
+      "--plane",
+      "lume",
+      "--pool",
+      "macos-private",
+      "--format",
+      "text"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.stdout).toContain("drain lume/macos-private: drained");
+    expect(result.stdout).toContain("already absent: macos-runner-slot-01");
+    expect(result.stderr).toContain("drain lume/macos-private: drained");
   });
 
   test("surfaces CLI option errors before mutating state", async () => {
@@ -718,6 +865,11 @@ describe("cli integration", () => {
       message: "unknown doctor format: yaml"
     });
 
+    const invalidDoctorMode = await invokeCli(["doctor", "network"]);
+    expect(invalidDoctorMode.error).toMatchObject({
+      message: "unknown doctor mode: network"
+    });
+
     const missingLumeSlot = await invokeCli([
       "render-lume-runner-manifest",
       "--env",
@@ -729,6 +881,33 @@ describe("cli integration", () => {
     ]);
     expect(missingLumeSlot.error).toMatchObject({
       message: "--slot is required when --format shell is used"
+    });
+
+    const invalidLumeSlot = await invokeCli([
+      "render-lume-runner-manifest",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--slot",
+      "9"
+    ]);
+    expect(invalidLumeSlot.error).toMatchObject({
+      message: "slot 9 is outside configured pool size 1"
+    });
+
+    const invalidLumeProjectFormat = await invokeCli([
+      "install-lume-project",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--format",
+      "yaml",
+      "--dry-run"
+    ]);
+    expect(invalidLumeProjectFormat.error).toMatchObject({
+      message: "unknown Lume project format: yaml"
     });
   });
 
