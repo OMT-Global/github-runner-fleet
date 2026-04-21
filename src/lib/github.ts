@@ -21,6 +21,15 @@ export interface GitHubRunnerGroup {
   isDefault?: boolean;
 }
 
+export interface GitHubRunner {
+  id: number;
+  name: string;
+  status: "online" | "offline" | string;
+  busy?: boolean;
+  runnerGroupId?: number;
+  labels: string[];
+}
+
 export interface GitHubContainerImageVersion {
   imageRef: string;
   owner: string;
@@ -226,6 +235,76 @@ export async function fetchOrganizationRunnerGroups(
 
     if (payload.runner_groups.length < 100) {
       return groups;
+    }
+  }
+}
+
+export async function fetchOrganizationRunners(
+  apiUrl: string,
+  organization: string,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<GitHubRunner[]> {
+  const runners: GitHubRunner[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const response = await fetchImpl(
+      `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runners?per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      }
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GitHub runner lookup failed for ${organization} with ${response.status}: ${body}`
+      );
+    }
+
+    const payload = JSON.parse(body) as {
+      runners?: Array<{
+        id?: number;
+        name?: string;
+        status?: string;
+        busy?: boolean;
+        runner_group_id?: number;
+        labels?: Array<{ name?: string }>;
+      }>;
+    };
+
+    if (!Array.isArray(payload.runners)) {
+      throw new Error(
+        `GitHub runner response for ${organization} did not include runners`
+      );
+    }
+
+    runners.push(
+      ...payload.runners.map((runner) => {
+        if (typeof runner.id !== "number" || !runner.name || !runner.status) {
+          throw new Error(
+            `GitHub runner response for ${organization} included an invalid runner entry`
+          );
+        }
+
+        return {
+          id: runner.id,
+          name: runner.name,
+          status: runner.status,
+          busy: runner.busy,
+          runnerGroupId: runner.runner_group_id,
+          labels: Array.isArray(runner.labels)
+            ? runner.labels
+                .map((label) => label.name)
+                .filter((name): name is string => typeof name === "string")
+            : []
+        };
+      })
+    );
+
+    if (payload.runners.length < 100) {
+      return runners;
     }
   }
 }

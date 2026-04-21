@@ -339,6 +339,126 @@ describe("cli integration", () => {
       })
     );
   });
+
+  test("runs drift detection and exits zero when desired state matches actual state", async () => {
+    const fixture = createCliFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                {
+                  id: 7,
+                  name: "synology-private",
+                  visibility: "all",
+                  default: false
+                }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runners: [
+                {
+                  id: 101,
+                  name: "synology-private-runner-01",
+                  status: "online",
+                  runner_group_id: 7
+                },
+                {
+                  id: 102,
+                  name: "synology-private-runner-02",
+                  status: "offline",
+                  runner_group_id: 7
+                }
+              ]
+            })
+        })
+    );
+
+    const result = await invokeCli([
+      "drift-detect",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({
+      pools: [
+        {
+          name: "synology-private",
+          desired: 1,
+          actual: 1,
+          drift: 0,
+          status: "ok"
+        }
+      ],
+      drifted: false
+    });
+  });
+
+  test("drift detection returns exit code 1 for under-provisioned pools", async () => {
+    const fixture = createCliFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                {
+                  id: 7,
+                  name: "synology-private",
+                  visibility: "all",
+                  default: false
+                }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ runners: [] })
+        })
+    );
+
+    const result = await invokeCli([
+      "drift-detect",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual(
+      expect.objectContaining({
+        drifted: true,
+        pools: [
+          expect.objectContaining({
+            actual: 0,
+            drift: -1,
+            status: "under-provisioned"
+          })
+        ]
+      })
+    );
+  });
 });
 
 interface CliResult {

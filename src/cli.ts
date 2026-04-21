@@ -18,6 +18,11 @@ import {
 } from "./lib/lume-config.js";
 import { renderDoctorReport, runDoctor, type DoctorMode } from "./lib/doctor.js";
 import {
+  collectGitHubActualPoolState,
+  compareDesiredActualPools,
+  desiredPoolsFromConfig
+} from "./lib/drift.js";
+import {
   fetchLatestRunnerRelease,
   verifyContainerImageTag,
   verifyRunnerGroups
@@ -42,6 +47,9 @@ export async function main(
       break;
     case "doctor":
       await doctorCommand(args);
+      break;
+    case "drift-detect":
+      await driftDetectCommand(args);
       break;
     case "validate-linux-docker-config":
       await validateLinuxDockerConfig(args);
@@ -153,6 +161,36 @@ async function doctorCommand(args: string[]): Promise<void> {
 
   process.stdout.write(renderDoctorReport(report));
   if (!report.ok) {
+    process.exitCode = 1;
+  }
+}
+
+async function driftDetectCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const threshold = parseNonNegativeInteger(
+    getOption(args, "--threshold", env.raw.DRIFT_THRESHOLD ?? "0")!,
+    "--threshold"
+  );
+  const config = loadConfig(configPath!, env);
+  emitWarnings(config);
+  const desiredPools = desiredPoolsFromConfig(config.pools);
+  const actualPools = await collectGitHubActualPoolState(
+    env.githubApiUrl,
+    env.githubPat!,
+    desiredPools
+  );
+  const report = compareDesiredActualPools(
+    desiredPools,
+    actualPools,
+    threshold
+  );
+
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  if (report.drifted) {
     process.exitCode = 1;
   }
 }
@@ -677,6 +715,14 @@ function getOption(
   return value;
 }
 
+function parseNonNegativeInteger(value: string, optionName: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${optionName} must be a non-negative integer`);
+  }
+  return parsed;
+}
+
 function runLinuxDockerInstall(
   plan: ReturnType<typeof buildLinuxDockerInstallPlan>
 ): void {
@@ -775,6 +821,7 @@ function shellEscapeRemotePath(value: string): string {
 function printUsage(): void {
   process.stderr.write(`Usage:
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]
