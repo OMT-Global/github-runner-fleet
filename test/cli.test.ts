@@ -348,6 +348,96 @@ describe("cli integration", () => {
     );
   });
 
+  test.each([
+    {
+      plane: "linux-docker",
+      pool: "linux-private",
+      configFlag: "--linux-config",
+      configPath: (fixture: ReturnType<typeof createCliFixture>) =>
+        fixture.linuxConfigPath,
+      runnerGroup: "linux-private",
+      runnerName: "linux-private-runner-01"
+    },
+    {
+      plane: "lume",
+      pool: "macos-private",
+      configFlag: "--lume-config",
+      configPath: (fixture: ReturnType<typeof createCliFixture>) =>
+        fixture.lumeConfigPath,
+      runnerGroup: "macos-private",
+      runnerName: "macos-runner-slot-01"
+    }
+  ])(
+    "drain-pool resolves $plane runner names from plane config",
+    async ({ plane, pool, configFlag, configPath, runnerGroup, runnerName }) => {
+      const fixture = createCliFixture();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [{ id: 7, name: runnerGroup }]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runners: [
+                {
+                  id: 101,
+                  name: runnerName,
+                  status: "online",
+                  busy: false,
+                  runner_group_id: 7
+                }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          text: async () => ""
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await invokeCli([
+        "drain-pool",
+        "--env",
+        fixture.envPath,
+        configFlag,
+        configPath(fixture),
+        "--plane",
+        plane,
+        "--pool",
+        pool,
+        "--timeout",
+        "15m",
+        "--format",
+        "json"
+      ]);
+
+      expect(result.error).toBeUndefined();
+      expect(result.exitCode).toBeUndefined();
+      expect(JSON.parse(result.stdout)).toEqual(
+        expect.objectContaining({
+          plane,
+          poolKey: pool,
+          status: "drained",
+          cordoned: [runnerName]
+        })
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "https://api.github.com/orgs/example/actions/runners/101",
+        expect.objectContaining({ method: "DELETE" })
+      );
+    }
+  );
+
   test("validates and renders Linux Docker commands without remote execution in dry-run mode", async () => {
     const fixture = createCliFixture();
 
