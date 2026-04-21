@@ -20,6 +20,8 @@ const cleanEnv: Record<string, string | undefined> = {
   LINUX_DOCKER_USERNAME: undefined,
   LUME_RUNNER_BASE_DIR: undefined,
   LUME_RUNNER_ENV_FILE: undefined,
+  DRIFT_NOTIFY_CHANNEL: undefined,
+  GITHUB_STEP_SUMMARY: undefined,
   METRICS_ENDPOINT: undefined,
   RUNNER_VERSION: undefined,
   COMPOSE_PROJECT_NAME: undefined
@@ -457,6 +459,58 @@ describe("cli integration", () => {
           })
         ]
       })
+    );
+  });
+
+  test("drift detection writes an opt-in step summary notification", async () => {
+    const fixture = createCliFixture();
+    const stepSummaryPath = path.join(fixture.directory, "step-summary.md");
+    fs.appendFileSync(
+      fixture.envPath,
+      `DRIFT_NOTIFY_CHANNEL=github-step-summary\nGITHUB_STEP_SUMMARY=${stepSummaryPath}\n`,
+      "utf8"
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                {
+                  id: 7,
+                  name: "synology-private",
+                  visibility: "all",
+                  default: false
+                }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ runners: [] })
+        })
+    );
+
+    const result = await invokeCli([
+      "drift-detect",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBe(1);
+    expect(fs.readFileSync(stepSummaryPath, "utf8")).toContain(
+      "| synology-private | 1 | 0 | -1 | under-provisioned |"
+    );
+    expect(fs.readFileSync(stepSummaryPath, "utf8")).toContain(
+      "Notification channel configured."
     );
   });
 });

@@ -20,7 +20,8 @@ import { renderDoctorReport, runDoctor, type DoctorMode } from "./lib/doctor.js"
 import {
   collectGitHubActualPoolState,
   compareDesiredActualPools,
-  desiredPoolsFromConfig
+  desiredPoolsFromConfig,
+  type DriftReport
 } from "./lib/drift.js";
 import {
   fetchLatestRunnerRelease,
@@ -191,8 +192,53 @@ async function driftDetectCommand(args: string[]): Promise<void> {
 
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   if (report.drifted) {
+    writeDriftNotification(
+      report,
+      env.raw.DRIFT_NOTIFY_CHANNEL,
+      env.raw.GITHUB_STEP_SUMMARY
+    );
     process.exitCode = 1;
   }
+}
+
+function writeDriftNotification(
+  report: DriftReport,
+  channel: string | undefined,
+  stepSummaryPath: string | undefined
+): void {
+  const normalizedChannel = channel?.trim();
+  if (!normalizedChannel) {
+    return;
+  }
+
+  if (!stepSummaryPath) {
+    process.stderr.write(
+      "DRIFT_NOTIFY_CHANNEL is set, but GITHUB_STEP_SUMMARY is unavailable; no drift notification was written.\n"
+    );
+    return;
+  }
+
+  const driftedPools = report.pools.filter((pool) => pool.status !== "ok");
+  const rows = driftedPools
+    .map(
+      (pool) =>
+        `| ${pool.name} | ${pool.desired} | ${pool.actual} | ${pool.drift} | ${pool.status} |`
+    )
+    .join("\n");
+  fs.appendFileSync(
+    stepSummaryPath,
+    [
+      "## Runner Pool Drift Detected",
+      "",
+      "Notification channel configured.",
+      "",
+      "| Pool | Desired | Actual | Drift | Status |",
+      "| --- | ---: | ---: | ---: | --- |",
+      rows,
+      ""
+    ].join("\n"),
+    "utf8"
+  );
 }
 
 async function renderComposeCommand(args: string[]): Promise<void> {
