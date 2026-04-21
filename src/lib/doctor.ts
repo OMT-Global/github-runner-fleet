@@ -6,7 +6,14 @@ import {
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./github.js";
+import { log, type LogLevel } from "./logger.js";
 import { loadLumeConfig } from "./lume-config.js";
+import {
+  doctorCheckResult,
+  emitMetrics,
+  poolSlotCount,
+  type MetricSample
+} from "./metrics.js";
 
 export type DoctorMode = "full" | "synology" | "lume";
 export type DoctorCheckStatus = "pass" | "warn" | "fail" | "skip";
@@ -66,11 +73,14 @@ export async function runDoctor(
     checks.push(...lumeChecks);
   }
 
-  return {
+  const report = {
     ok: checks.every((check) => check.status !== "fail"),
     mode,
     checks
   };
+
+  await emitDoctorObservability(report);
+  return report;
 }
 
 export function renderDoctorReport(report: DoctorReport): string {
@@ -131,7 +141,13 @@ async function runSynologyDoctor(input: {
       id: "synology-config",
       target: "synology",
       status: "pass",
-      summary: `loaded ${input.configPath} with ${config.pools.length} pool${config.pools.length === 1 ? "" : "s"}`
+      summary: `loaded ${input.configPath} with ${config.pools.length} pool${config.pools.length === 1 ? "" : "s"}`,
+      data: {
+        pools: config.pools.map((pool) => ({
+          key: pool.key,
+          size: pool.size
+        }))
+      }
     });
   } catch (error) {
     checks.push({
@@ -270,7 +286,13 @@ async function runLumeDoctor(input: {
       id: "lume-config",
       target: "lume",
       status: "pass",
-      summary: `loaded ${input.configPath} with ${config.pool.size} slot${config.pool.size === 1 ? "" : "s"}`
+      summary: `loaded ${input.configPath} with ${config.pool.size} slot${config.pool.size === 1 ? "" : "s"}`,
+      data: {
+        pool: {
+          key: config.pool.key,
+          size: config.pool.size
+        }
+      }
     });
   } catch (error) {
     checks.push({
@@ -360,5 +382,98 @@ function countStatuses(checks: DoctorCheck[]): Record<DoctorCheckStatus, number>
       fail: 0,
       skip: 0
     }
+  );
+}
+
+async function emitDoctorObservability(report: DoctorReport): Promise<void> {
+  const samples: MetricSample[] = [];
+
+  for (const check of report.checks) {
+    logForDoctorCheck(check);
+    samples.push(
+      doctorCheckResult({
+        check: check.id,
+        status: check.status
+      })
+    );
+    samples.push(...poolSlotMetricsForCheck(check));
+  }
+
+  await emitMetrics(samples);
+}
+
+function logForDoctorCheck(check: DoctorCheck): void {
+  const level = levelForStatus(check.status);
+  log[level]("doctor check result", {
+    plane: check.target,
+    pool: "n/a",
+    check: check.id,
+    status: check.status,
+    summary: check.summary,
+    ...(check.detail ? { detail: check.detail } : {})
+  });
+}
+
+function levelForStatus(status: DoctorCheckStatus): LogLevel {
+  if (status === "fail") {
+    return "error";
+  }
+  if (status === "warn") {
+    return "warn";
+  }
+  return "info";
+}
+
+function poolSlotMetricsForCheck(check: DoctorCheck): MetricSample[] {
+  if (check.target === "synology" && isSynologyConfigData(check.data)) {
+    return check.data.pools.map((pool) =>
+      poolSlotCount({
+        plane: "synology",
+        pool: pool.key,
+        count: pool.size
+      })
+    );
+  }
+
+  if (check.target === "lume" && isLumeConfigData(check.data)) {
+    return [
+      poolSlotCount({
+        plane: "lume",
+        pool: check.data.pool.key,
+        count: check.data.pool.size
+      })
+    ];
+  }
+
+  return [];
+}
+
+function isSynologyConfigData(
+  value: unknown
+): value is { pools: Array<{ key: string; size: number }> } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { pools?: unknown }).pools) &&
+    (value as { pools: unknown[] }).pools.every(
+      (pool) =>
+        typeof pool === "object" &&
+        pool !== null &&
+        typeof (pool as { key?: unknown }).key === "string" &&
+        typeof (pool as { size?: unknown }).size === "number"
+    )
+  );
+}
+
+function isLumeConfigData(
+  value: unknown
+): value is { pool: { key: string; size: number } } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { pool?: unknown }).pool === "object" &&
+    (value as { pool?: unknown }).pool !== null &&
+    typeof ((value as { pool: { key?: unknown } }).pool.key) === "string" &&
+    typeof ((value as { pool: { size?: unknown } }).pool.size) === "number"
   );
 }

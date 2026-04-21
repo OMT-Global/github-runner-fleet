@@ -337,6 +337,16 @@ pnpm runner-release-manifest -- --env .env
 pnpm smoke-test
 ```
 
+## Observability
+
+`pnpm doctor` keeps its normal stdout report, and also emits one structured JSON log line per check to stderr. Each line includes `level`, `msg`, `plane`, `pool`, and `ts` fields so log collectors can ingest the output without parsing the human report.
+
+Metrics are opt-in. Set `METRICS_ENDPOINT` to an HTTP endpoint to receive Prometheus text-format samples for doctor check results, pool slot counts, and runner token fetch duration measurements:
+
+```bash
+METRICS_ENDPOINT=https://metrics.example.internal/ingest pnpm doctor -- full --env .env
+```
+
 ## Local Smoke Test
 
 Run this from a machine with a live Docker daemon and Buildx support:

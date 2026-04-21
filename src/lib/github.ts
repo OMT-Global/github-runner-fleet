@@ -1,4 +1,5 @@
 import { normalizeRunnerVersion } from "./runner-version.js";
+import { emitRunnerTokenFetchDurationSeconds } from "./metrics.js";
 
 export interface RunnerTokenRequest {
   method: "POST";
@@ -50,6 +51,10 @@ export type FetchLike = (
   }
 ) => Promise<FetchLikeResponse>;
 
+export interface FetchRunnerTokenOptions {
+  plane?: string;
+}
+
 export function buildGitHubApiHeaders(
   token?: string
 ): Record<string, string> {
@@ -92,12 +97,23 @@ export function buildRemoveTokenRequest(
 
 export async function fetchRunnerToken(
   request: RunnerTokenRequest,
-  fetchImpl: FetchLike = fetch as FetchLike
+  fetchImpl: FetchLike = fetch as FetchLike,
+  options: FetchRunnerTokenOptions = {}
 ): Promise<string> {
-  const response = await fetchImpl(request.url, {
-    method: request.method,
-    headers: request.headers
-  });
+  const startedAt = Date.now();
+  let response: FetchLikeResponse;
+
+  try {
+    response = await fetchImpl(request.url, {
+      method: request.method,
+      headers: request.headers
+    });
+  } finally {
+    await emitRunnerTokenFetchDurationSeconds({
+      plane: options.plane ?? "unknown",
+      durationSeconds: (Date.now() - startedAt) / 1000
+    });
+  }
 
   const body = await response.text();
   if (!response.ok) {

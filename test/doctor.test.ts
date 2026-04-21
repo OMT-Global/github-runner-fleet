@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { renderDoctorReport, runDoctor } from "../src/lib/doctor.js";
 
 const tempPaths: string[] = [];
+
+beforeEach(() => {
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+});
 
 function withEnv<T>(
   overrides: Record<string, string | undefined>,
@@ -35,6 +39,7 @@ function withEnv<T>(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const tempPath of tempPaths.splice(0)) {
     fs.rmSync(tempPath, { recursive: true, force: true });
   }
@@ -170,6 +175,25 @@ pool:
           status: "pass"
         })
       ])
+    );
+    const stderrWrite = vi.mocked(process.stderr.write);
+    const firstLog = JSON.parse(String(stderrWrite.mock.calls[0][0])) as {
+      level: string;
+      msg: string;
+      plane: string;
+      pool: string;
+      check: string;
+      status: string;
+    };
+    expect(firstLog).toEqual(
+      expect.objectContaining({
+        level: "info",
+        msg: "doctor check result",
+        plane: "synology",
+        pool: "n/a",
+        check: "synology-env",
+        status: "pass"
+      })
     );
 
     const rendered = renderDoctorReport(report);

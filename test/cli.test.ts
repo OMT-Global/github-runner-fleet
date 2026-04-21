@@ -20,6 +20,7 @@ const cleanEnv: Record<string, string | undefined> = {
   LINUX_DOCKER_USERNAME: undefined,
   LUME_RUNNER_BASE_DIR: undefined,
   LUME_RUNNER_ENV_FILE: undefined,
+  METRICS_ENDPOINT: undefined,
   RUNNER_VERSION: undefined,
   COMPOSE_PROJECT_NAME: undefined
 };
