@@ -4,5 +4,7 @@ dist/
 .env
 .DS_Store
 coverage/
+reports/mutation/
+.stryker-tmp/
 docker-compose.generated.yml
 *.log

@@ -4,6 +4,50 @@ import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
 describe("CI workflow", () => {
+  test("runs mutation testing in extended validation and uploads the report", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(
+        path.resolve(".github/workflows/extended-validation.yml"),
+        "utf8"
+      )
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const mutationJob = workflow.jobs["mutation-tests"];
+    const gateJob = workflow.jobs["extended-validation-gate"];
+    const steps = mutationJob.steps as Array<Record<string, unknown>>;
+    const setupNodeStep = steps.find(
+      (step) => step.uses === "./actions/setup-shell-safe-node"
+    );
+    const mutationStep = steps.find(
+      (step) => step.name === "Run mutation tests"
+    );
+    const artifactStep = steps.find(
+      (step) => step.uses === "actions/upload-artifact@v6"
+    );
+
+    expect(mutationJob["runs-on"]).toEqual([
+      "self-hosted",
+      "synology",
+      "shell-only",
+      "public"
+    ]);
+    expect(setupNodeStep?.with).toMatchObject({
+      "node-version": "24.14.1"
+    });
+    expect(String(mutationStep?.run)).toContain("pnpm mutation-test");
+    expect(artifactStep).toMatchObject({
+      if: "always()",
+      with: {
+        name: "mutation-report",
+        path: "reports/mutation/**",
+        "if-no-files-found": "ignore"
+      }
+    });
+    expect(gateJob.needs).toContain("mutation-tests");
+  });
+
   test("keeps trusted shell jobs on the public self-hosted runner contract", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")

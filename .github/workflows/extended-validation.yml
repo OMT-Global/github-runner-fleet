@@ -101,6 +101,39 @@ jobs:
       - name: Run extended validation
         run: bash scripts/ci/run-extended-validation.sh
 
+  mutation-tests:
+    name: Mutation Tests
+    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.app == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./actions/setup-shell-safe-node
+        with:
+          node-version: 24.14.1
+
+      - name: Enable pnpm from shell-safe Node
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run mutation tests
+        run: pnpm mutation-test
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mutation-report
+          path: reports/mutation/**
+          if-no-files-found: ignore
+
   validate-secrets:
     name: Validate Secrets
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
@@ -118,6 +151,7 @@ jobs:
       - changes
       - fast-checks
       - extended-checks
+      - mutation-tests
       - validate-secrets
     steps:
       - name: Check extended validation jobs
@@ -126,6 +160,7 @@ jobs:
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
             extended-checks=${{ needs.extended-checks.result }}
+            mutation-tests=${{ needs.mutation-tests.result }}
             validate-secrets=${{ needs.validate-secrets.result }}
         run: |
           failed=0
