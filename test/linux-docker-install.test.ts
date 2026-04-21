@@ -4,6 +4,7 @@ import type { ResolvedLinuxDockerConfig } from "../src/lib/linux-docker-config.j
 import { renderLinuxDockerCompose } from "../src/lib/linux-docker-compose.js";
 import {
   buildLinuxDockerInstallPlan,
+  renderLinuxDockerComposeEnvFile,
   summarizeLinuxDockerInstallPlan
 } from "../src/lib/linux-docker-install.js";
 
@@ -39,6 +40,73 @@ describe("buildLinuxDockerInstallPlan", () => {
     const summary = summarizeLinuxDockerInstallPlan(plan);
 
     expect(summary.envFilePreview).toContain("GITHUB_PAT=<redacted>");
+  });
+
+  test("rejects missing required connection and token values", () => {
+    const env = {
+      ...envFixture(),
+      githubPat: undefined,
+      linuxDockerHost: undefined,
+      linuxDockerUsername: undefined
+    };
+
+    expect(() =>
+      buildLinuxDockerInstallPlan(
+        configFixture(),
+        env,
+        renderLinuxDockerCompose(configFixture(), env)
+      )
+    ).toThrow(
+      "missing required Linux Docker install env: LINUX_DOCKER_HOST, LINUX_DOCKER_USERNAME, GITHUB_PAT"
+    );
+  });
+
+  test("allows incomplete previews without leaking undefined connection values", () => {
+    const env = {
+      ...envFixture(),
+      linuxDockerHost: undefined,
+      linuxDockerUsername: undefined
+    };
+    const plan = buildLinuxDockerInstallPlan(
+      configFixture(),
+      env,
+      renderLinuxDockerCompose(configFixture(), env),
+      { allowIncomplete: true }
+    );
+
+    expect(plan.connection).toMatchObject({
+      host: "",
+      port: "22",
+      username: ""
+    });
+  });
+
+  test("renders down deployment script without pull or up flags", () => {
+    const env = envFixture();
+    const plan = buildLinuxDockerInstallPlan(
+      configFixture(),
+      env,
+      renderLinuxDockerCompose(configFixture(), env),
+      { action: "down" }
+    );
+
+    expect(plan.deploymentScript).toContain(
+      '"$docker_bin" compose -p "$project_name" -f "$compose_file" down --remove-orphans'
+    );
+    expect(plan.deploymentScript).not.toContain(" pull");
+    expect(plan.deploymentScript).not.toContain(" up -d");
+    expect(plan.deploymentScript).not.toContain("--volumes");
+  });
+
+  test("escapes dotenv values for remote compose env files", () => {
+    const env = {
+      ...envFixture(),
+      githubPat: 'pat-"quoted"\\line\nnext'
+    };
+
+    expect(renderLinuxDockerComposeEnvFile(env)).toContain(
+      'GITHUB_PAT="pat-\\"quoted\\"\\\\line\\nnext"'
+    );
   });
 });
 
