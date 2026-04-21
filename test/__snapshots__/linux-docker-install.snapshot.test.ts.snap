@@ -19,6 +19,8 @@ services:
       RUNNER_SCOPE: organization
       RUNNER_NAME: linux-docker-private-runner-01
       RUNNER_GROUP: linux-docker-private
+      FLEET_POOL_KEY: linux-docker-private
+      FLEET_PLANE: linux-docker
       RUNNER_LABELS: linux,docker-capable,private,x64
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: selected
@@ -60,6 +62,8 @@ services:
       RUNNER_SCOPE: organization
       RUNNER_NAME: linux-docker-private-runner-02
       RUNNER_GROUP: linux-docker-private
+      FLEET_POOL_KEY: linux-docker-private
+      FLEET_PLANE: linux-docker
       RUNNER_LABELS: linux,docker-capable,private,x64
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: selected

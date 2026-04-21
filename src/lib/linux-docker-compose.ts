@@ -59,6 +59,8 @@ function renderService(
     RUNNER_SCOPE: "organization",
     RUNNER_NAME: buildLinuxDockerServiceName(pool, index),
     RUNNER_GROUP: pool.runnerGroup,
+    FLEET_POOL_KEY: pool.key,
+    FLEET_PLANE: "linux-docker",
     RUNNER_LABELS: pool.labels.join(","),
     RUNNER_VISIBILITY: pool.visibility,
     RUNNER_REPOSITORY_ACCESS: pool.repositoryAccess,
