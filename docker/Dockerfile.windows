@@ -1,0 +1,34 @@
+# escape=`
+
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+ARG RUNNER_VERSION=2.333.0
+
+SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+
+ENV RUNNER_SOURCE_HOME="C:\\actions-runner" `
+    RUNNER_TEMP="C:\\github-runner-temp" `
+    RUNNER_TOOL_CACHE="C:\\hostedtoolcache" `
+    AGENT_TOOLSDIRECTORY="C:\\hostedtoolcache"
+
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
+    Invoke-Expression ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); `
+    choco feature disable --name showDownloadProgress; `
+    choco install -y git nodejs-lts powershell-core; `
+    New-Item -ItemType Directory -Force -Path $env:RUNNER_SOURCE_HOME, $env:RUNNER_TEMP, $env:RUNNER_TOOL_CACHE | Out-Null
+
+WORKDIR C:\\actions-runner
+
+RUN $runnerZip = 'actions-runner-win-x64-' + $env:RUNNER_VERSION + '.zip'; `
+    $runnerUrl = 'https://github.com/actions/runner/releases/download/v' + $env:RUNNER_VERSION + '/' + $runnerZip; `
+    Invoke-WebRequest -Uri $runnerUrl -OutFile $runnerZip; `
+    Expand-Archive -Path $runnerZip -DestinationPath $env:RUNNER_SOURCE_HOME; `
+    Remove-Item $runnerZip
+
+COPY docker/runner-entrypoint.ps1 C:/runner-entrypoint.ps1
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 `
+  CMD powershell -NoProfile -Command "if (Get-Process Runner.Listener -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
+
+ENTRYPOINT ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\runner-entrypoint.ps1"]

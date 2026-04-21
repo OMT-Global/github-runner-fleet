@@ -222,6 +222,39 @@ describe("CI workflow", () => {
     );
   });
 
+  test("keeps the Windows Docker contract opt-in for self-hosted Windows runners", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const windowsJob = workflow.jobs.windows_contract_trusted;
+    const steps = windowsJob.steps as Array<Record<string, unknown>>;
+    const renderStep = steps.find(
+      (step) => step.name === "Render Windows Docker runner manifests"
+    );
+    const syntaxStep = steps.find(
+      (step) => step.name === "Validate Windows entrypoint syntax"
+    );
+
+    expect(windowsJob.if).toContain(
+      "vars.WINDOWS_DOCKER_CONTRACT_ENABLED == 'true'"
+    );
+    expect(windowsJob["runs-on"]).toEqual([
+      "self-hosted",
+      "windows",
+      "docker-capable",
+      "private"
+    ]);
+    expect(String(renderStep?.run)).toContain("pnpm validate-windows-config");
+    expect(String(renderStep?.run)).toContain("pnpm render-windows-compose");
+    expect(String(renderStep?.run)).toContain(
+      "pnpm render-windows-project-manifest"
+    );
+    expect(String(syntaxStep?.run)).toContain("docker/runner-entrypoint.ps1");
+  });
+
   test("keeps the Lume macOS pool contract on hosted macOS runners", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")

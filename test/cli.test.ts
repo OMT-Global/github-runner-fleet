@@ -18,6 +18,9 @@ const cleanEnv: Record<string, string | undefined> = {
   LINUX_DOCKER_RUNNER_BASE_DIR: undefined,
   LINUX_DOCKER_HOST: undefined,
   LINUX_DOCKER_USERNAME: undefined,
+  WINDOWS_DOCKER_RUNNER_BASE_DIR: undefined,
+  WINDOWS_DOCKER_HOST: undefined,
+  WINDOWS_DOCKER_USERNAME: undefined,
   LUME_RUNNER_BASE_DIR: undefined,
   LUME_RUNNER_ENV_FILE: undefined,
   DRIFT_NOTIFY_CHANNEL: undefined,
@@ -272,6 +275,73 @@ describe("cli integration", () => {
         command === "teardown-linux-docker-project" ? "down" : "up"
       );
       expect(payload.deploymentScript).toContain('"$docker_bin" compose');
+    }
+  });
+
+  test("validates and renders Windows Docker commands without remote execution in dry-run mode", async () => {
+    const fixture = createCliFixture();
+
+    const validate = await invokeCli([
+      "validate-windows-config",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.windowsConfigPath
+    ]);
+    expect(validate.error).toBeUndefined();
+    expect(JSON.parse(validate.stdout)).toEqual(
+      expect.objectContaining({
+        plane: "windows-docker",
+        pools: [
+          expect.objectContaining({
+            key: "windows-private",
+            labels: ["windows", "docker-capable", "private", "x64"]
+          })
+        ]
+      })
+    );
+
+    const compose = await invokeCli([
+      "render-windows-compose",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.windowsConfigPath
+    ]);
+    expect(compose.error).toBeUndefined();
+    expect(compose.stdout).toContain("windows-private-runner-01:");
+    expect(compose.stdout).toContain("npipe:////./pipe/docker_engine");
+
+    for (const command of [
+      "render-windows-project-manifest",
+      "install-windows-project",
+      "teardown-windows-project"
+    ]) {
+      const result = await invokeCli([
+        command,
+        "--env",
+        fixture.envPath,
+        "--config",
+        fixture.windowsConfigPath,
+        ...(command === "render-windows-project-manifest" ? [] : ["--dry-run"])
+      ]);
+      const payload = JSON.parse(result.stdout) as {
+        connection: { host: string; username: string };
+        options: { action: string };
+        deploymentScript: string;
+      };
+
+      expect(result.error).toBeUndefined();
+      expect(payload.connection).toEqual(
+        expect.objectContaining({
+          host: "windows.example.com",
+          username: "administrator"
+        })
+      );
+      expect(payload.options.action).toBe(
+        command === "teardown-windows-project" ? "down" : "up"
+      );
+      expect(payload.deploymentScript).toContain("& $Docker compose");
     }
   });
 
@@ -665,6 +735,7 @@ function createCliFixture(): {
   envPath: string;
   synologyConfigPath: string;
   linuxConfigPath: string;
+  windowsConfigPath: string;
   lumeConfigPath: string;
 } {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cli-test-"));
@@ -673,6 +744,7 @@ function createCliFixture(): {
   const envPath = path.join(directory, ".env");
   const synologyConfigPath = path.join(directory, "pools.yaml");
   const linuxConfigPath = path.join(directory, "linux-docker-runners.yaml");
+  const windowsConfigPath = path.join(directory, "windows-runners.yaml");
   const lumeConfigPath = path.join(directory, "lume-runners.yaml");
 
   fs.writeFileSync(
@@ -685,6 +757,10 @@ SYNOLOGY_PASSWORD=secret
 LINUX_DOCKER_RUNNER_BASE_DIR=${directory}/linux
 LINUX_DOCKER_HOST=linux.example.com
 LINUX_DOCKER_USERNAME=runner-admin
+WINDOWS_DOCKER_RUNNER_BASE_DIR=C:\\github-runner-fleet\\windows-docker
+WINDOWS_DOCKER_HOST=windows.example.com
+WINDOWS_DOCKER_USERNAME=administrator
+WINDOWS_DOCKER_PROJECT_DIR=C:\\github-runner-fleet\\windows-docker
 LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${directory}/lume/runner.env
 RUNNER_VERSION=2.333.0
@@ -743,6 +819,27 @@ pools:
   );
 
   fs.writeFileSync(
+    windowsConfigPath,
+    `version: 1
+plane: windows-docker
+pools:
+  - name: windows-private
+    group: windows-private
+    repositoryAccess: selected
+    repositories:
+      - example/windows-app
+    slots: 1
+    host: \${WINDOWS_DOCKER_HOST}
+    sshUser: \${WINDOWS_DOCKER_USERNAME}
+    image: ghcr.io/example/github-runner-fleet:0.1.9-windows
+    runnerRoot: \${WINDOWS_DOCKER_RUNNER_BASE_DIR}\\pools\\windows-private
+    labels:
+      - x64
+`,
+    "utf8"
+  );
+
+  fs.writeFileSync(
     lumeConfigPath,
     `version: 1
 pool:
@@ -763,6 +860,7 @@ pool:
     envPath,
     synologyConfigPath,
     linuxConfigPath,
+    windowsConfigPath,
     lumeConfigPath
   };
 }

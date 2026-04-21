@@ -32,6 +32,16 @@ export interface DeploymentEnv {
   linuxDockerInstallPullImages: boolean;
   linuxDockerInstallForceRecreate: boolean;
   linuxDockerInstallRemoveOrphans: boolean;
+  windowsDockerRunnerBaseDir: string;
+  windowsDockerHost?: string;
+  windowsDockerPort: string;
+  windowsDockerUsername?: string;
+  windowsDockerProjectDir: string;
+  windowsDockerProjectComposeFile: string;
+  windowsDockerProjectEnvFile: string;
+  windowsDockerInstallPullImages: boolean;
+  windowsDockerInstallForceRecreate: boolean;
+  windowsDockerInstallRemoveOrphans: boolean;
   lumeRunnerBaseDir: string;
   lumeRunnerEnvFile: string;
   lumeRunnerIpswPath?: string;
@@ -129,6 +139,28 @@ export function loadDeploymentEnv(
     merged.LINUX_DOCKER_INSTALL_REMOVE_ORPHANS,
     true
   );
+  const windowsDockerRunnerBaseDir =
+    merged.WINDOWS_DOCKER_RUNNER_BASE_DIR ||
+    "C:\\github-runner-fleet\\windows-docker";
+  const windowsDockerPort = merged.WINDOWS_DOCKER_PORT || "22";
+  const windowsDockerProjectDir =
+    merged.WINDOWS_DOCKER_PROJECT_DIR || windowsDockerRunnerBaseDir;
+  const windowsDockerProjectComposeFile =
+    merged.WINDOWS_DOCKER_PROJECT_COMPOSE_FILE || "compose.yaml";
+  const windowsDockerProjectEnvFile =
+    merged.WINDOWS_DOCKER_PROJECT_ENV_FILE || ".env";
+  const windowsDockerInstallPullImages = parseBoolean(
+    merged.WINDOWS_DOCKER_INSTALL_PULL_IMAGES,
+    true
+  );
+  const windowsDockerInstallForceRecreate = parseBoolean(
+    merged.WINDOWS_DOCKER_INSTALL_FORCE_RECREATE,
+    true
+  );
+  const windowsDockerInstallRemoveOrphans = parseBoolean(
+    merged.WINDOWS_DOCKER_INSTALL_REMOVE_ORPHANS,
+    true
+  );
   const lumeRunnerBaseDir = expandHome(
     merged.LUME_RUNNER_BASE_DIR ||
       "~/Library/Application Support/github-runner-fleet/lume"
@@ -172,6 +204,16 @@ export function loadDeploymentEnv(
     linuxDockerInstallPullImages,
     linuxDockerInstallForceRecreate,
     linuxDockerInstallRemoveOrphans,
+    windowsDockerRunnerBaseDir,
+    windowsDockerHost: merged.WINDOWS_DOCKER_HOST?.trim() || undefined,
+    windowsDockerPort,
+    windowsDockerUsername: merged.WINDOWS_DOCKER_USERNAME?.trim() || undefined,
+    windowsDockerProjectDir,
+    windowsDockerProjectComposeFile,
+    windowsDockerProjectEnvFile,
+    windowsDockerInstallPullImages,
+    windowsDockerInstallForceRecreate,
+    windowsDockerInstallRemoveOrphans,
     lumeRunnerBaseDir,
     lumeRunnerEnvFile,
     lumeRunnerIpswPath,
@@ -204,6 +246,24 @@ export function loadDeploymentEnv(
       LINUX_DOCKER_INSTALL_REMOVE_ORPHANS: String(
         linuxDockerInstallRemoveOrphans
       ),
+      WINDOWS_DOCKER_RUNNER_BASE_DIR: windowsDockerRunnerBaseDir,
+      WINDOWS_DOCKER_PORT: windowsDockerPort,
+      WINDOWS_DOCKER_PROJECT_DIR: windowsDockerProjectDir,
+      WINDOWS_DOCKER_PROJECT_COMPOSE_FILE: windowsDockerProjectComposeFile,
+      WINDOWS_DOCKER_PROJECT_ENV_FILE: windowsDockerProjectEnvFile,
+      WINDOWS_DOCKER_INSTALL_PULL_IMAGES: String(windowsDockerInstallPullImages),
+      WINDOWS_DOCKER_INSTALL_FORCE_RECREATE: String(
+        windowsDockerInstallForceRecreate
+      ),
+      WINDOWS_DOCKER_INSTALL_REMOVE_ORPHANS: String(
+        windowsDockerInstallRemoveOrphans
+      ),
+      ...(merged.WINDOWS_DOCKER_HOST?.trim()
+        ? { WINDOWS_DOCKER_HOST: merged.WINDOWS_DOCKER_HOST.trim() }
+        : {}),
+      ...(merged.WINDOWS_DOCKER_USERNAME?.trim()
+        ? { WINDOWS_DOCKER_USERNAME: merged.WINDOWS_DOCKER_USERNAME.trim() }
+        : {}),
       ...(merged.LINUX_DOCKER_HOST?.trim()
         ? { LINUX_DOCKER_HOST: merged.LINUX_DOCKER_HOST.trim() }
         : {}),

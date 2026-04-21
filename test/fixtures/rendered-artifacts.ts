@@ -1,6 +1,7 @@
 import type { ResolvedConfig } from "../../src/lib/config.js";
 import type { DeploymentEnv } from "../../src/lib/env.js";
 import type { ResolvedLinuxDockerConfig } from "../../src/lib/linux-docker-config.js";
+import type { ResolvedWindowsDockerConfig } from "../../src/lib/windows-config.js";
 
 export function synologyConfigFixture(): ResolvedConfig {
   return {
@@ -78,6 +79,36 @@ export function linuxDockerConfigFixture(): ResolvedLinuxDockerConfig {
   };
 }
 
+export function windowsDockerConfigFixture(): ResolvedWindowsDockerConfig {
+  return {
+    version: 1,
+    plane: "windows-docker",
+    pools: [
+      {
+        key: "windows-private",
+        visibility: "private",
+        organization: "example",
+        runnerGroup: "windows-private",
+        repositoryAccess: "selected",
+        allowedRepositories: ["example/windows-app"],
+        labels: ["windows", "docker-capable", "private", "x64"],
+        size: 2,
+        host: "windows-host.example.com",
+        sshUser: "administrator",
+        sshPort: "22",
+        runnerRoot:
+          "C:\\github-runner-fleet\\windows-docker\\pools\\windows-private",
+        resources: {
+          cpus: "4",
+          memory: "8g",
+          pidsLimit: 1024
+        },
+        imageRef: "ghcr.io/example/github-runner-fleet:0.1.9-windows"
+      }
+    ]
+  };
+}
+
 export function deploymentEnvFixture(): DeploymentEnv {
   return {
     githubPat: "fixture-token",
@@ -107,6 +138,16 @@ export function deploymentEnvFixture(): DeploymentEnv {
     linuxDockerInstallPullImages: true,
     linuxDockerInstallForceRecreate: true,
     linuxDockerInstallRemoveOrphans: true,
+    windowsDockerRunnerBaseDir: "C:\\github-runner-fleet\\windows-docker",
+    windowsDockerHost: "windows-host.example.com",
+    windowsDockerPort: "22",
+    windowsDockerUsername: "administrator",
+    windowsDockerProjectDir: "C:\\github-runner-fleet\\windows-docker",
+    windowsDockerProjectComposeFile: "compose.yaml",
+    windowsDockerProjectEnvFile: ".env",
+    windowsDockerInstallPullImages: true,
+    windowsDockerInstallForceRecreate: true,
+    windowsDockerInstallRemoveOrphans: true,
     lumeRunnerBaseDir:
       "/Users/tester/Library/Application Support/github-runner-fleet/lume",
     lumeRunnerEnvFile:
@@ -119,6 +160,8 @@ export function deploymentEnvFixture(): DeploymentEnv {
       GITHUB_API_URL: "https://api.github.com",
       SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet",
       LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker",
+      WINDOWS_DOCKER_RUNNER_BASE_DIR:
+        "C:\\github-runner-fleet\\windows-docker",
       LUME_RUNNER_BASE_DIR:
         "/Users/tester/Library/Application Support/github-runner-fleet/lume",
       LUME_RUNNER_ENV_FILE:

@@ -39,4 +39,18 @@ describe("Dockerfile packaging", () => {
       "terraform_${TERRAFORM_VERSION}_linux_${terraform_arch}.zip"
     );
   });
+
+  test("adds a Windows Server Core runner image with PowerShell entrypoint", () => {
+    const dockerfile = fs.readFileSync(
+      path.resolve("docker/Dockerfile.windows"),
+      "utf8"
+    );
+
+    expect(dockerfile).toContain("mcr.microsoft.com/windows/servercore:ltsc2022");
+    expect(dockerfile).toContain("ARG RUNNER_VERSION=2.333.0");
+    expect(dockerfile).toContain("choco install -y git nodejs-lts powershell-core");
+    expect(dockerfile).toContain("actions-runner-win-x64-");
+    expect(dockerfile).toContain("COPY docker/runner-entrypoint.ps1 C:/runner-entrypoint.ps1");
+    expect(dockerfile).toContain("ENTRYPOINT");
+  });
 });
