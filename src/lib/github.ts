@@ -30,6 +30,22 @@ export interface GitHubRunner {
   labels: string[];
 }
 
+export interface GitHubRepository {
+  fullName: string;
+}
+
+export interface GitHubWorkflowRun {
+  id: number;
+  jobsUrl: string;
+}
+
+export interface GitHubWorkflowJob {
+  id: number;
+  status: string;
+  labels: string[];
+  runnerGroupName?: string;
+}
+
 export interface GitHubContainerImageVersion {
   imageRef: string;
   owner: string;
@@ -62,6 +78,13 @@ export type FetchLike = (
 
 export interface FetchRunnerTokenOptions {
   plane?: string;
+}
+
+export interface QueuedJobCountRequest {
+  organization: string;
+  runnerGroup: string;
+  repositories: string[];
+  labels?: string[];
 }
 
 export function buildGitHubApiHeaders(
@@ -309,6 +332,195 @@ export async function fetchOrganizationRunners(
   }
 }
 
+export async function fetchOrganizationRepositories(
+  apiUrl: string,
+  organization: string,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<GitHubRepository[]> {
+  const repositories: GitHubRepository[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const response = await fetchImpl(
+      `${trimApiUrl(apiUrl)}/orgs/${organization}/repos?type=all&per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      }
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GitHub repository lookup failed for ${organization} with ${response.status}: ${body}`
+      );
+    }
+
+    const payload = JSON.parse(body) as Array<{ full_name?: string }>;
+    if (!Array.isArray(payload)) {
+      throw new Error(
+        `GitHub repository response for ${organization} did not return an array`
+      );
+    }
+
+    repositories.push(
+      ...payload.map((repository) => {
+        if (!repository.full_name) {
+          throw new Error(
+            `GitHub repository response for ${organization} included an invalid repository entry`
+          );
+        }
+
+        return { fullName: repository.full_name };
+      })
+    );
+
+    if (payload.length < 100) {
+      return repositories;
+    }
+  }
+}
+
+export async function fetchQueuedWorkflowRuns(
+  apiUrl: string,
+  repository: string,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<GitHubWorkflowRun[]> {
+  const runs: GitHubWorkflowRun[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const response = await fetchImpl(
+      `${trimApiUrl(apiUrl)}/repos/${repository}/actions/runs?status=queued&per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      }
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GitHub queued workflow run lookup failed for ${repository} with ${response.status}: ${body}`
+      );
+    }
+
+    const payload = JSON.parse(body) as {
+      workflow_runs?: Array<{ id?: number; jobs_url?: string }>;
+    };
+    if (!Array.isArray(payload.workflow_runs)) {
+      throw new Error(
+        `GitHub workflow run response for ${repository} did not include workflow_runs`
+      );
+    }
+
+    runs.push(
+      ...payload.workflow_runs.map((run) => {
+        if (typeof run.id !== "number" || !run.jobs_url) {
+          throw new Error(
+            `GitHub workflow run response for ${repository} included an invalid run entry`
+          );
+        }
+
+        return { id: run.id, jobsUrl: run.jobs_url };
+      })
+    );
+
+    if (payload.workflow_runs.length < 100) {
+      return runs;
+    }
+  }
+}
+
+export async function fetchWorkflowRunJobs(
+  jobsUrl: string,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<GitHubWorkflowJob[]> {
+  const jobs: GitHubWorkflowJob[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const separator = jobsUrl.includes("?") ? "&" : "?";
+    const response = await fetchImpl(
+      `${jobsUrl}${separator}per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      }
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GitHub workflow job lookup failed with ${response.status}: ${body}`
+      );
+    }
+
+    const payload = JSON.parse(body) as {
+      jobs?: Array<{
+        id?: number;
+        status?: string;
+        labels?: string[];
+        runner_group_name?: string;
+      }>;
+    };
+    if (!Array.isArray(payload.jobs)) {
+      throw new Error("GitHub workflow job response did not include jobs");
+    }
+
+    jobs.push(
+      ...payload.jobs.map((job) => {
+        if (typeof job.id !== "number" || !job.status) {
+          throw new Error("GitHub workflow job response included an invalid job entry");
+        }
+
+        return {
+          id: job.id,
+          status: job.status,
+          labels: Array.isArray(job.labels)
+            ? job.labels.filter((label): label is string => typeof label === "string")
+            : [],
+          runnerGroupName: job.runner_group_name
+        };
+      })
+    );
+
+    if (payload.jobs.length < 100) {
+      return jobs;
+    }
+  }
+}
+
+export async function getQueuedJobCount(
+  apiUrl: string,
+  token: string,
+  request: QueuedJobCountRequest,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<number> {
+  const repositories =
+    request.repositories.length > 0
+      ? request.repositories
+      : (
+          await fetchOrganizationRepositories(
+            apiUrl,
+            request.organization,
+            token,
+            fetchImpl
+          )
+        ).map((repository) => repository.fullName);
+
+  let count = 0;
+  for (const repository of repositories) {
+    const runs = await fetchQueuedWorkflowRuns(apiUrl, repository, token, fetchImpl);
+    for (const run of runs) {
+      const jobs = await fetchWorkflowRunJobs(run.jobsUrl, token, fetchImpl);
+      count += jobs.filter((job) => isQueuedForRunnerGroup(job, request)).length;
+    }
+  }
+
+  return count;
+}
+
 export async function verifyRunnerGroups(
   apiUrl: string,
   token: string,
@@ -435,6 +647,29 @@ export async function verifyContainerImageTag(
 
 function trimApiUrl(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function isQueuedForRunnerGroup(
+  job: GitHubWorkflowJob,
+  request: QueuedJobCountRequest
+): boolean {
+  if (job.status !== "queued") {
+    return false;
+  }
+
+  if (job.runnerGroupName === request.runnerGroup) {
+    return true;
+  }
+
+  if (job.runnerGroupName) {
+    return false;
+  }
+
+  const expectedLabels = request.labels ?? [];
+  return (
+    expectedLabels.length > 0 &&
+    expectedLabels.every((label) => job.labels.includes(label))
+  );
 }
 
 function parseGhcrImageRef(

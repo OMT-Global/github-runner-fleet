@@ -4,6 +4,7 @@ export default {
   reporters: ["html", "clear-text", "progress"],
   coverageAnalysis: "perTest",
   mutate: [
+    "src/lib/autoscale.ts",
     "src/lib/config.ts",
     "src/lib/github.ts",
     "src/lib/doctor.ts",

@@ -13,6 +13,11 @@ pools:
       - shell-only
       - private
     size: 4
+    scaling:
+      min: 2
+      max: 8
+      queueThreshold: 3
+      cooldownSeconds: 120
     architecture: auto
     runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-private
     resources:
@@ -30,6 +35,11 @@ pools:
       - shell-only
       - public
     size: 4
+    scaling:
+      min: 1
+      max: 4
+      queueThreshold: 3
+      cooldownSeconds: 120
     architecture: auto
     runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-public
     resources:

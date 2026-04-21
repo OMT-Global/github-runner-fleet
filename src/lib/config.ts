@@ -15,6 +15,13 @@ export interface PoolResources {
   pidsLimit?: number;
 }
 
+export interface PoolScaling {
+  min: number;
+  max: number;
+  queueThreshold: number;
+  cooldownSeconds: number;
+}
+
 export interface PoolConfig {
   key: string;
   visibility: RunnerVisibility;
@@ -27,6 +34,7 @@ export interface PoolConfig {
   architecture: RunnerPlatform;
   runnerRoot: string;
   resources: PoolResources;
+  scaling?: PoolScaling;
   imageRef: string;
 }
 
@@ -81,7 +89,15 @@ const poolSchema = z
         memory: z.string().min(1).optional(),
         pidsLimit: z.number().int().positive().optional()
       })
-      .default({})
+      .default({}),
+    scaling: z
+      .object({
+        min: z.number().int().min(1),
+        max: z.number().int().min(1),
+        queueThreshold: z.number().int().min(1),
+        cooldownSeconds: z.number().int().min(0)
+      })
+      .optional()
   })
   .superRefine((pool, ctx) => {
     if (pool.repositoryAccess === "selected" && pool.allowedRepositories.length === 0) {
@@ -99,6 +115,14 @@ const poolSchema = z
         message:
           "allowedRepositories must be omitted when repositoryAccess is all",
         path: ["allowedRepositories"]
+      });
+    }
+
+    if (pool.scaling && pool.scaling.min > pool.scaling.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "scaling.min must be less than or equal to scaling.max",
+        path: ["scaling", "min"]
       });
     }
   });
@@ -154,6 +178,7 @@ export function loadConfig(
         memory: pool.resources.memory,
         pidsLimit: pool.resources.pidsLimit
       },
+      scaling: pool.scaling,
       imageRef: `${result.image.repository}:${result.image.tag}`
     };
   });

@@ -2,10 +2,14 @@ import { describe, expect, test, vi } from "vitest";
 import {
   buildRegistrationTokenRequest,
   buildRemoveTokenRequest,
+  fetchOrganizationRepositories,
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
+  fetchQueuedWorkflowRuns,
   fetchLatestRunnerRelease,
+  fetchWorkflowRunJobs,
   fetchRunnerToken,
+  getQueuedJobCount,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "../src/lib/github.js";
@@ -216,6 +220,192 @@ describe("github runner API helpers", () => {
       "https://api.github.com/orgs/example/actions/runners?per_page=100&page=1",
       expect.objectContaining({ method: "GET" })
     );
+  });
+
+  test("parses organization repositories", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify([
+          {
+            full_name: "example/private-app"
+          }
+        ])
+    });
+
+    await expect(
+      fetchOrganizationRepositories(
+        "https://api.github.com",
+        "example",
+        "secret",
+        fetchMock
+      )
+    ).resolves.toEqual([{ fullName: "example/private-app" }]);
+  });
+
+  test("counts queued workflow jobs for a runner group", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            workflow_runs: [
+              {
+                id: 42,
+                jobs_url: "https://api.github.com/repos/example/private-app/actions/runs/42/jobs"
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jobs: [
+              {
+                id: 1,
+                status: "queued",
+                runner_group_name: "synology-private",
+                labels: ["synology", "shell-only"]
+              },
+              {
+                id: 2,
+                status: "queued",
+                runner_group_name: "linux-private",
+                labels: ["linux"]
+              },
+              {
+                id: 3,
+                status: "in_progress",
+                runner_group_name: "synology-private",
+                labels: ["synology", "shell-only"]
+              }
+            ]
+          })
+      });
+
+    await expect(
+      getQueuedJobCount(
+        "https://api.github.com",
+        "secret",
+        {
+          organization: "example",
+          runnerGroup: "synology-private",
+          repositories: ["example/private-app"],
+          labels: ["synology", "shell-only"]
+        },
+        fetchMock
+      )
+    ).resolves.toBe(1);
+  });
+
+  test("uses labels when queued jobs do not include runner group metadata", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            workflow_runs: [
+              {
+                id: 42,
+                jobs_url: "https://api.github.com/repos/example/private-app/actions/runs/42/jobs"
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            jobs: [
+              {
+                id: 1,
+                status: "queued",
+                labels: ["synology", "shell-only", "private"]
+              }
+            ]
+          })
+      });
+
+    await expect(
+      getQueuedJobCount(
+        "https://api.github.com",
+        "secret",
+        {
+          organization: "example",
+          runnerGroup: "synology-private",
+          repositories: ["example/private-app"],
+          labels: ["synology", "shell-only", "private"]
+        },
+        fetchMock
+      )
+    ).resolves.toBe(1);
+  });
+
+  test("parses queued workflow runs and workflow jobs directly", async () => {
+    const runsFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          workflow_runs: [
+            {
+              id: 42,
+              jobs_url: "https://api.github.com/repos/example/private-app/actions/runs/42/jobs"
+            }
+          ]
+        })
+    });
+    const jobsFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          jobs: [
+            {
+              id: 1,
+              status: "queued",
+              runner_group_name: "synology-private",
+              labels: ["synology"]
+            }
+          ]
+        })
+    });
+
+    await expect(
+      fetchQueuedWorkflowRuns(
+        "https://api.github.com",
+        "example/private-app",
+        "secret",
+        runsFetch
+      )
+    ).resolves.toEqual([
+      {
+        id: 42,
+        jobsUrl: "https://api.github.com/repos/example/private-app/actions/runs/42/jobs"
+      }
+    ]);
+    await expect(
+      fetchWorkflowRunJobs(
+        "https://api.github.com/repos/example/private-app/actions/runs/42/jobs",
+        "secret",
+        jobsFetch
+      )
+    ).resolves.toEqual([
+      {
+        id: 1,
+        status: "queued",
+        labels: ["synology"],
+        runnerGroupName: "synology-private"
+      }
+    ]);
   });
 
   test("verifies expected runner groups", async () => {

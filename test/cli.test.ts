@@ -132,6 +132,79 @@ describe("cli integration", () => {
     }
   });
 
+  test("prints autoscale dry-run decisions without changing the config file", async () => {
+    const fixture = createCliFixture();
+    const before = fs.readFileSync(fixture.synologyConfigPath, "utf8");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify([{ full_name: "example/private-app" }])
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              workflow_runs: [
+                {
+                  id: 42,
+                  jobs_url:
+                    "https://api.github.com/repos/example/private-app/actions/runs/42/jobs"
+                }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              jobs: [
+                {
+                  id: 1,
+                  status: "queued",
+                  runner_group_name: "synology-private",
+                  labels: ["synology", "shell-only", "private"]
+                }
+              ]
+            })
+        })
+    );
+
+    const result = await invokeCli([
+      "scale",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--pool",
+      "synology-private",
+      "--dry-run"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(fs.readFileSync(fixture.synologyConfigPath, "utf8")).toBe(before);
+    expect(JSON.parse(result.stdout)).toEqual(
+      expect.objectContaining({
+        dryRun: true,
+        pools: [
+          expect.objectContaining({
+            poolKey: "synology-private",
+            action: "scale-up",
+            currentSize: 1,
+            targetSize: 2,
+            queuedJobs: 1
+          })
+        ]
+      })
+    );
+  });
+
   test("validates and renders Linux Docker commands without remote execution in dry-run mode", async () => {
     const fixture = createCliFixture();
 
@@ -631,6 +704,11 @@ pools:
       - shell-only
       - custom-label
     size: 1
+    scaling:
+      min: 1
+      max: 3
+      queueThreshold: 1
+      cooldownSeconds: 120
     architecture: auto
     runnerRoot: \${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-private
 `,
