@@ -7,7 +7,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov", "html"],
-      include: ["src/lib/**/*.ts"],
+      include: ["src/**/*.ts"],
       reportsDirectory: "coverage",
       thresholds: {
         lines: 80,

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { collectConfigWarnings, loadConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
 import { loadDeploymentEnv } from "./lib/env.js";
@@ -30,8 +31,10 @@ import {
   summarizeSynologyInstallPlan
 } from "./lib/synology-install.js";
 
-async function main(): Promise<void> {
-  const [, , command, ...args] = process.argv;
+export async function main(
+  commandLineArgs = process.argv.slice(2)
+): Promise<void> {
+  const [command, ...args] = commandLineArgs;
 
   switch (command) {
     case "validate-config":
@@ -799,8 +802,13 @@ function emitWarnings(config: ReturnType<typeof loadConfig>): void {
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exitCode = 1;
+  });
+}
