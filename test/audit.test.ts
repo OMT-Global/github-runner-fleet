@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   auditLogFileFromEnv,
   normalizeAuditRecord,
@@ -11,6 +11,7 @@ import {
 const tempPaths: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const tempPath of tempPaths.splice(0)) {
     fs.rmSync(tempPath, { recursive: true, force: true });
   }
@@ -21,6 +22,7 @@ describe("audit log", () => {
     const directory = createTempDir();
     const filePath = path.join(directory, "audit.jsonl");
     const now = new Date("2026-04-19T12:00:00.000Z");
+    const fsync = vi.spyOn(fs, "fsyncSync").mockImplementation(() => undefined);
 
     const record = writeAuditRecord(
       {
@@ -48,6 +50,7 @@ describe("audit log", () => {
         container_id: "abc123"
       }
     ]);
+    expect(fsync).toHaveBeenCalledTimes(1);
   });
 
   test("rotates before append when the next record exceeds max size", () => {
@@ -82,6 +85,7 @@ describe("audit log", () => {
   test("keeps concurrent append attempts as complete JSONL records", async () => {
     const directory = createTempDir();
     const filePath = path.join(directory, "audit.jsonl");
+    vi.spyOn(fs, "fsyncSync").mockImplementation(() => undefined);
 
     await Promise.all(
       Array.from({ length: 25 }, async (_value, index) => {
