@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { collectConfigWarnings, loadConfig } from "./lib/config.js";
+import YAML from "yaml";
+import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
+import { collectConfigWarnings, loadConfig, type ResolvedConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
 import { loadDeploymentEnv } from "./lib/env.js";
 import { loadLinuxDockerConfig } from "./lib/linux-docker-config.js";
@@ -24,7 +26,10 @@ import {
   type DriftReport
 } from "./lib/drift.js";
 import {
+  fetchOrganizationRunnerGroups,
+  fetchOrganizationRunners,
   fetchLatestRunnerRelease,
+  getQueuedJobCount,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./lib/github.js";
@@ -51,6 +56,9 @@ export async function main(
       break;
     case "drift-detect":
       await driftDetectCommand(args);
+      break;
+    case "scale":
+      await scaleCommand(args);
       break;
     case "validate-linux-docker-config":
       await validateLinuxDockerConfig(args);
@@ -129,6 +137,7 @@ async function validateConfig(args: string[]): Promise<void> {
           visibility: pool.visibility,
           labels: pool.labels,
           size: pool.size,
+          scaling: pool.scaling,
           architecture: pool.architecture,
           runnerRoot: pool.runnerRoot
         }))
@@ -199,6 +208,91 @@ async function driftDetectCommand(args: string[]): Promise<void> {
     );
     process.exitCode = 1;
   }
+}
+
+async function scaleCommand(args: string[]): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml")!;
+  const poolFilter = getOption(args, "--pool");
+  const config = loadConfig(configPath, env);
+  emitWarnings(config);
+  const cooldownElapsedSeconds = getConfigAgeSeconds(configPath);
+  const pools = poolFilter
+    ? config.pools.filter((pool) => pool.key === poolFilter)
+    : config.pools;
+
+  if (poolFilter && pools.length === 0) {
+    throw new Error(`unknown pool: ${poolFilter}`);
+  }
+
+  const decisions: AutoscaleDecision[] = [];
+  for (const pool of pools) {
+    const queuedJobs = await getQueuedJobCount(env.githubApiUrl, env.githubPat!, {
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup,
+      repositories:
+        pool.repositoryAccess === "selected" ? pool.allowedRepositories : [],
+      labels: pool.labels
+    });
+    decisions.push(
+      decideAutoscale({
+        poolKey: pool.key,
+        currentSize: pool.size,
+        queuedJobs,
+        scaling: pool.scaling,
+        cooldownElapsedSeconds
+      })
+    );
+  }
+
+  const report = {
+    dryRun,
+    cooldownElapsedSeconds,
+    pools: decisions
+  };
+
+  if (dryRun || decisions.every((decision) => decision.action === "none")) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return;
+  }
+
+  const drainTimeoutSeconds = parseNonNegativeInteger(
+    getOption(args, "--drain-timeout", "300")!,
+    "--drain-timeout"
+  );
+  const drainIntervalSeconds = parseNonNegativeInteger(
+    getOption(args, "--drain-interval", "5")!,
+    "--drain-interval"
+  );
+
+  for (const decision of decisions.filter(
+    (entry) => entry.action === "scale-down"
+  )) {
+    const pool = config.pools.find((entry) => entry.key === decision.poolKey)!;
+    await waitForSynologyPoolDrain({
+      apiUrl: env.githubApiUrl,
+      token: env.githubPat!,
+      organization: pool.organization,
+      runnerGroup: pool.runnerGroup,
+      poolKey: pool.key,
+      targetSize: decision.targetSize,
+      timeoutSeconds: drainTimeoutSeconds,
+      intervalSeconds: drainIntervalSeconds
+    });
+  }
+
+  const scaledConfig = applyAutoscaleDecisions(config, decisions);
+  const compose = renderCompose(scaledConfig, env);
+  const plan = buildSynologyInstallPlan(scaledConfig, env, compose, {
+    action: "up"
+  });
+  runSynologyInstallPlan(plan, getOption(args, "--python", "python3")!);
+  writeScaledPoolSizes(configPath, decisions);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
 function writeDriftNotification(
@@ -427,20 +521,7 @@ async function installSynologyProject(args: string[]): Promise<void> {
   }
 
   const python = getOption(args, "--python", "python3")!;
-  const scriptPath = path.resolve("scripts/install-synology-project.py");
-  const result = spawnSync(python, [scriptPath], {
-    input: JSON.stringify(plan),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    const stderr = result.stderr.trim();
-    const stdout = result.stdout.trim();
-    throw new Error(stderr || stdout || `installer exited with status ${result.status}`);
-  }
-
-  process.stdout.write(result.stdout);
+  runSynologyInstallPlan(plan, python);
 }
 
 async function installLinuxDockerProject(args: string[]): Promise<void> {
@@ -490,6 +571,13 @@ async function teardownSynologyProject(args: string[]): Promise<void> {
   }
 
   const python = getOption(args, "--python", "python3")!;
+  runSynologyInstallPlan(plan, python);
+}
+
+function runSynologyInstallPlan(
+  plan: ReturnType<typeof buildSynologyInstallPlan>,
+  python: string
+): void {
   const scriptPath = path.resolve("scripts/install-synology-project.py");
   const result = spawnSync(python, [scriptPath], {
     input: JSON.stringify(plan),
@@ -714,6 +802,127 @@ async function renderLumeRunnerManifest(args: string[]): Promise<void> {
   process.stdout.write(`${JSON.stringify(config, null, 2)}\n`);
 }
 
+function getConfigAgeSeconds(configPath: string): number {
+  const stats = fs.statSync(path.resolve(configPath));
+  return Math.max(0, Math.floor((Date.now() - stats.mtimeMs) / 1000));
+}
+
+function applyAutoscaleDecisions(
+  config: ResolvedConfig,
+  decisions: AutoscaleDecision[]
+): ResolvedConfig {
+  const targetSizes = new Map(
+    decisions
+      .filter((decision) => decision.action !== "none")
+      .map((decision) => [decision.poolKey, decision.targetSize])
+  );
+
+  return {
+    ...config,
+    pools: config.pools.map((pool) => ({
+      ...pool,
+      size: targetSizes.get(pool.key) ?? pool.size
+    }))
+  };
+}
+
+function writeScaledPoolSizes(
+  configPath: string,
+  decisions: AutoscaleDecision[]
+): void {
+  const targetSizes = new Map(
+    decisions
+      .filter((decision) => decision.action !== "none")
+      .map((decision) => [decision.poolKey, decision.targetSize])
+  );
+  if (targetSizes.size === 0) {
+    return;
+  }
+
+  const absolutePath = path.resolve(configPath);
+  const document = YAML.parse(fs.readFileSync(absolutePath, "utf8")) as {
+    pools?: Array<{ key?: string; size?: number }>;
+  };
+  if (!Array.isArray(document.pools)) {
+    throw new Error(`config ${configPath} did not include pools`);
+  }
+
+  for (const pool of document.pools) {
+    if (pool.key && targetSizes.has(pool.key)) {
+      pool.size = targetSizes.get(pool.key);
+    }
+  }
+
+  fs.writeFileSync(absolutePath, YAML.stringify(document), "utf8");
+}
+
+async function waitForSynologyPoolDrain(options: {
+  apiUrl: string;
+  token: string;
+  organization: string;
+  runnerGroup: string;
+  poolKey: string;
+  targetSize: number;
+  timeoutSeconds: number;
+  intervalSeconds: number;
+}): Promise<void> {
+  const deadline = Date.now() + options.timeoutSeconds * 1000;
+
+  while (true) {
+    const busyRunnerNames = await getBusyRunnersAboveTarget(options);
+    if (busyRunnerNames.length === 0) {
+      return;
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `timed out waiting for ${busyRunnerNames.join(", ")} to become idle before scaling ${options.poolKey} down`
+      );
+    }
+
+    await sleep(options.intervalSeconds * 1000);
+  }
+}
+
+async function getBusyRunnersAboveTarget(options: {
+  apiUrl: string;
+  token: string;
+  organization: string;
+  runnerGroup: string;
+  poolKey: string;
+  targetSize: number;
+}): Promise<string[]> {
+  const groups = await fetchOrganizationRunnerGroups(
+    options.apiUrl,
+    options.organization,
+    options.token
+  );
+  const group = groups.find((entry) => entry.name === options.runnerGroup);
+  if (!group) {
+    throw new Error(
+      `runner group ${options.runnerGroup} was not found in ${options.organization}`
+    );
+  }
+
+  const runners = await fetchOrganizationRunners(
+    options.apiUrl,
+    options.organization,
+    options.token
+  );
+
+  return runners
+    .filter((runner) => runner.runnerGroupId === group.id && runner.busy)
+    .filter((runner) => {
+      const match = runner.name.match(/-runner-(\d+)$/);
+      return match ? Number(match[1]) > options.targetSize : true;
+    })
+    .map((runner) => runner.name);
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function getDoctorMode(args: string[]): DoctorMode {
   const optionFlags = new Set([
     "--env",
@@ -868,6 +1077,7 @@ function printUsage(): void {
   process.stderr.write(`Usage:
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
+  pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]

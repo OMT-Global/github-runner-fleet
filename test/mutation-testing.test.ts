@@ -37,6 +37,7 @@ describe("mutation testing", () => {
       }
     });
     expect(strykerConfig.default.mutate).toEqual([
+      "src/lib/autoscale.ts",
       "src/lib/config.ts",
       "src/lib/github.ts",
       "src/lib/doctor.ts",

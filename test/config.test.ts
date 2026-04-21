@@ -54,6 +54,77 @@ pools:
     expect(config.pools[0].allowedRepositories).toEqual([]);
   });
 
+  test("loads optional autoscaling bounds", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "pools.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.5
+pools:
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    repositoryAccess: all
+    labels: []
+    size: 2
+    scaling:
+      min: 1
+      max: 4
+      queueThreshold: 3
+      cooldownSeconds: 120
+    architecture: arm64
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
+`,
+      "utf8"
+    );
+
+    expect(loadConfig(configPath, deploymentEnv()).pools[0].scaling).toEqual({
+      min: 1,
+      max: 4,
+      queueThreshold: 3,
+      cooldownSeconds: 120
+    });
+  });
+
+  test("rejects autoscaling bounds with min greater than max", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "pools.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.5
+pools:
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    repositoryAccess: all
+    labels: []
+    size: 2
+    scaling:
+      min: 5
+      max: 4
+      queueThreshold: 3
+      cooldownSeconds: 120
+    architecture: arm64
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
+`,
+      "utf8"
+    );
+
+    expect(() => loadConfig(configPath, deploymentEnv())).toThrow(
+      /scaling\.min must be less than or equal to scaling\.max/
+    );
+  });
+
   test("rejects repositories outside the configured organization", () => {
     const directory = createTempDir();
     const configPath = path.join(directory, "pools.yaml");
