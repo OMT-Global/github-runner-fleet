@@ -19,6 +19,7 @@ renderer change updates those artifacts, refresh and review the golden files wit
 
 ```bash
 pnpm test -u
+git diff -- test/__snapshots__
 ```
 
 ## Pull Requests
