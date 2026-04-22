@@ -107,6 +107,7 @@ The Synology shell-only class supports shell jobs, JavaScript actions, composite
 - [config/linux-docker-runners.yaml](config/linux-docker-runners.yaml): Docker-capable Linux pool config
 - [config/windows-runners.yaml](config/windows-runners.yaml): Docker-capable Windows pool config
 - [docs/linux-docker-pool.md](docs/linux-docker-pool.md): examples for `container:`, `services:`, and Docker daemon workflows
+- [docs/bootstrap/aws-account-bootstrap.md](docs/bootstrap/aws-account-bootstrap.md): checklist for bringing a new AWS account into the deployment path
 - [docker/Dockerfile](docker/Dockerfile): runner image build
 - [docker/runner-entrypoint.sh](docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
 - [src/cli.ts](src/cli.ts): config validation, compose rendering, and runner release helpers
