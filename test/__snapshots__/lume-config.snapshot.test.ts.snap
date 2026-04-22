@@ -29,7 +29,7 @@ exports[`loadLumeConfig snapshots > locks the full Lume runner manifest 1`] = `
     "network": "shared",
     "organization": "example",
     "runnerGroup": "macos-private",
-    "runnerVersion": "2.333.0",
+    "runnerVersion": "2.340.0",
     "size": 2,
     "storage": "/Users/tester/.lume",
     "vmBaseName": "macos-runner-base",

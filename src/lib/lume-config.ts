@@ -72,7 +72,8 @@ const poolSchema = z.object({
   guestUser: z.string().min(1).default("lume"),
   guestPassword: z.string().min(1).default("lume"),
   guestRunnerRoot: z.string().min(1).default("/Users/lume/actions-runner"),
-  guestWorkRoot: z.string().min(1).default("/Users/lume/actions-runner/_work")
+  guestWorkRoot: z.string().min(1).default("/Users/lume/actions-runner/_work"),
+  runnerVersion: z.string().min(1).optional()
 });
 
 const configSchema = z.object({
@@ -102,7 +103,7 @@ export function loadLumeConfig(
   const pool: LumePoolConfig = {
     ...result.pool,
     labels: normalizedLabels,
-    runnerVersion: env.runnerVersion
+    runnerVersion: result.pool.runnerVersion ?? env.runnerVersion
   };
 
   const host = {

@@ -39,6 +39,7 @@ pool:
   guestPassword: fake-password
   guestRunnerRoot: /Users/lume/actions-runner
   guestWorkRoot: /Users/lume/actions-runner/_work
+  runnerVersion: 2.340.0
 `,
       "utf8"
     );
