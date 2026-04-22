@@ -18,6 +18,10 @@ import {
   type DrainProgress,
   type DrainReport
 } from "./lib/drain.js";
+import {
+  pruneStaleRunners,
+  type PruneStaleRunnersReport
+} from "./lib/prune.js";
 import { loadDeploymentEnv } from "./lib/env.js";
 import { loadLinuxDockerConfig } from "./lib/linux-docker-config.js";
 import {
@@ -91,6 +95,9 @@ export async function main(
       break;
     case "drain-pool":
       await drainPoolCommand(args);
+      break;
+    case "prune-stale-runners":
+      await pruneStaleRunnersCommand(args);
       break;
     case "validate-linux-docker-config":
       await validateLinuxDockerConfig(args);
@@ -264,6 +271,38 @@ async function driftDetectCommand(args: string[]): Promise<void> {
     );
     process.exitCode = 1;
   }
+}
+
+async function pruneStaleRunnersCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const format = getOption(args, "--format", "text")!;
+  if (format !== "text" && format !== "json") {
+    throw new Error(`unknown prune-stale-runners format: ${format}`);
+  }
+
+  const plane = getOption(args, "--plane") as DrainPlane | undefined;
+  if (
+    plane &&
+    !["synology", "linux-docker", "windows-docker", "lume"].includes(plane)
+  ) {
+    throw new Error(`unknown prune-stale-runners plane: ${plane}`);
+  }
+
+  const report = await pruneStaleRunners({
+    apiUrl: env.githubApiUrl,
+    token: env.githubPat!,
+    pools: collectDrainPoolDefinitions(args, env, plane),
+    apply: args.includes("--apply")
+  });
+
+  process.stdout.write(
+    format === "json"
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : renderPruneStaleRunnersReport(report)
+  );
 }
 
 async function auditLogCommand(args: string[]): Promise<void> {
@@ -1463,6 +1502,30 @@ function renderDrainReport(plane: DrainPlane, report: DrainReport): string {
   ].join("\n");
 }
 
+function renderPruneStaleRunnersReport(
+  report: PruneStaleRunnersReport
+): string {
+  const lines = [
+    `prune-stale-runners mode=${report.apply ? "apply" : "dry-run"}`,
+    `groups scanned: ${report.groups.length}`,
+    `stale runners: ${report.stale.length}`,
+    `deleted: ${report.deleted.length}`
+  ];
+
+  for (const runner of report.stale) {
+    lines.push(
+      `- ${runner.organization}/${runner.runnerGroup} ${runner.name} (${runner.plane}/${runner.poolKey}) id=${runner.id}` +
+        (report.apply ? ` deleted=${runner.deleted === true ? "yes" : "no"}` : "")
+    );
+  }
+
+  if (!report.apply && report.stale.length > 0) {
+    lines.push("rerun with --apply to deregister the stale offline runners");
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 function getDoctorMode(args: string[]): DoctorMode {
   const optionFlags = new Set([
     "--env",
@@ -1836,6 +1899,7 @@ function printUsage(): void {
   pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm drain-pool -- --pool synology-private [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--timeout 15m] [--interval 5] [--format text|json]
+  pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
