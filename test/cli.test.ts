@@ -347,6 +347,141 @@ describe("cli integration", () => {
     );
   });
 
+  test("rejects token rotation when no replacement PAT is configured", async () => {
+    const fixture = createCliFixture();
+
+    const result = await invokeCli([
+      "rotate-token",
+      "--env",
+      fixture.envPath
+    ]);
+
+    expect(result.error).toEqual(
+      new Error(
+        "NEW_GITHUB_PAT is required; export the replacement PAT and pass --new-token-env if you use a different variable"
+      )
+    );
+    expect(result.stdout).toBe("");
+  });
+
+  test("applies Synology token rotation after draining runners", async () => {
+    const fixture = createCliFixture();
+    const auditLogPath = path.join(fixture.directory, "audit.jsonl");
+    const previousAuditLogFile = process.env.AUDIT_LOG_FILE;
+    process.env.AUDIT_LOG_FILE = auditLogPath;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 7,
+                name: "synology-private",
+                visibility: "all",
+                default: false
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ token: "registration-token" })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [{ id: 7, name: "synology-private" }]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runners: [
+              {
+                id: 101,
+                name: "synology-private-runner-01",
+                status: "online",
+                busy: false,
+                runner_group_id: 7
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        text: async () => ""
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=replacement-secret\n", "utf8");
+
+    try {
+      const result = await invokeCli([
+        "rotate-token",
+        "--apply",
+        "--env",
+        fixture.envPath,
+        "--config",
+        fixture.synologyConfigPath,
+        "--plane",
+        "synology",
+        "--drain-timeout",
+        "0",
+        "--python",
+        "true"
+      ]);
+
+      expect(result.error).toBeUndefined();
+      const payload = JSON.parse(result.stdout) as {
+        dryRun: boolean;
+        pools: Array<{ plane: string; key: string }>;
+        drains: Array<{ poolKey: string; status: string; cordoned: string[] }>;
+      };
+      expect(payload.dryRun).toBe(false);
+      expect(payload.pools).toEqual([
+        expect.objectContaining({
+          plane: "synology",
+          key: "synology-private"
+        })
+      ]);
+      expect(payload.drains).toEqual([
+        expect.objectContaining({
+          poolKey: "synology-private",
+          status: "drained",
+          cordoned: ["synology-private-runner-01"]
+        })
+      ]);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        5,
+        "https://api.github.com/orgs/example/actions/runners/101",
+        expect.objectContaining({ method: "DELETE" })
+      );
+      expect(JSON.parse(fs.readFileSync(auditLogPath, "utf8"))).toEqual(
+        expect.objectContaining({
+          event: "runner_token_rotated",
+          runner_name: "synology-private-runner-01",
+          pool: "synology-private",
+          plane: "synology",
+          org: "example"
+        })
+      );
+    } finally {
+      if (previousAuditLogFile === undefined) {
+        delete process.env.AUDIT_LOG_FILE;
+      } else {
+        process.env.AUDIT_LOG_FILE = previousAuditLogFile;
+      }
+    }
+  });
+
   test("rejects conflicting token rotation modes", async () => {
     const result = await invokeCli(["rotate-token", "--apply", "--dry-run"]);
 
