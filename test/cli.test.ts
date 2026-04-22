@@ -213,6 +213,196 @@ describe("cli integration", () => {
     );
   });
 
+  test("drains the retiring runner before applying scale-in", async () => {
+    const fixture = createCliFixture();
+    fs.writeFileSync(
+      fixture.synologyConfigPath,
+      fs
+        .readFileSync(fixture.synologyConfigPath, "utf8")
+        .replace("    size: 1", "    size: 2"),
+      "utf8"
+    );
+    const oldConfigTime = new Date(Date.now() - 300_000);
+    fs.utimesSync(fixture.synologyConfigPath, oldConfigTime, oldConfigTime);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify([{ full_name: "example/private-app" }])
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [{ id: 7, name: "synology-private" }]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runners: [
+              {
+                id: 102,
+                name: "synology-private-runner-02",
+                status: "online",
+                busy: false,
+                runner_group_id: 7
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        text: async () => ""
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await invokeCli([
+      "scale",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--pool",
+      "synology-private",
+      "--drain-timeout",
+      "0",
+      "--python",
+      "true"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBeUndefined();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "https://api.github.com/orgs/example/actions/runners/102",
+      expect.objectContaining({ method: "DELETE" })
+    );
+    expect(JSON.parse(result.stdout)).toEqual(
+      expect.objectContaining({
+        dryRun: false,
+        pools: [
+          expect.objectContaining({
+            poolKey: "synology-private",
+            action: "scale-down",
+            currentSize: 2,
+            targetSize: 1
+          })
+        ],
+        drains: [
+          expect.objectContaining({
+            poolKey: "synology-private",
+            status: "drained",
+            cordoned: ["synology-private-runner-02"],
+            busy: []
+          })
+        ]
+      })
+    );
+    expect(fs.readFileSync(fixture.synologyConfigPath, "utf8")).toContain(
+      "size: 1"
+    );
+  });
+
+  test("stops scale-in when the retiring runner does not drain", async () => {
+    const fixture = createCliFixture();
+    fs.writeFileSync(
+      fixture.synologyConfigPath,
+      fs
+        .readFileSync(fixture.synologyConfigPath, "utf8")
+        .replace("    size: 1", "    size: 2"),
+      "utf8"
+    );
+    const before = fs.readFileSync(fixture.synologyConfigPath, "utf8");
+    const oldConfigTime = new Date(Date.now() - 300_000);
+    fs.utimesSync(fixture.synologyConfigPath, oldConfigTime, oldConfigTime);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify([{ full_name: "example/private-app" }])
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ workflow_runs: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [{ id: 7, name: "synology-private" }]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runners: [
+              {
+                id: 102,
+                name: "synology-private-runner-02",
+                status: "online",
+                busy: true,
+                runner_group_id: 7
+              }
+            ]
+          })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await invokeCli([
+      "scale",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--pool",
+      "synology-private",
+      "--drain-timeout",
+      "0",
+      "--python",
+      "true"
+    ]);
+
+    expect(result.error).toEqual(
+      new Error(
+        "timed out waiting for synology-private-runner-02 to become idle before scaling synology-private down"
+      )
+    );
+    expect(result.exitCode).toBeUndefined();
+    expect(result.stdout).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fs.readFileSync(fixture.synologyConfigPath, "utf8")).toBe(before);
+  });
+
   test("drains a pool and emits structured JSON status", async () => {
     const fixture = createCliFixture();
     const fetchMock = vi
