@@ -13,6 +13,7 @@
     "build": "tsc -p tsconfig.json",
     "audit-log": "tsx src/cli.ts audit-log",
     "check-runner-version": "tsx src/cli.ts check-runner-version",
+    "config-diff": "tsx src/cli.ts config-diff",
     "doctor": "tsx src/cli.ts doctor",
     "drift-detect": "tsx src/cli.ts drift-detect",
     "drain-pool": "tsx src/cli.ts drain-pool",

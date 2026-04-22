@@ -50,9 +50,13 @@ import {
 } from "./lib/lume-project.js";
 import { renderDoctorReport, runDoctor, type DoctorMode } from "./lib/doctor.js";
 import {
+  collectGitHubActualRunnerState,
   collectGitHubActualPoolState,
+  compareDesiredActualRunners,
   compareDesiredActualPools,
   desiredPoolsFromConfig,
+  type ConfigDiffReport,
+  type DesiredRunnerState,
   type DriftReport
 } from "./lib/drift.js";
 import {
@@ -87,6 +91,9 @@ export async function main(
       break;
     case "drift-detect":
       await driftDetectCommand(args);
+      break;
+    case "config-diff":
+      await configDiffCommand(args);
       break;
     case "audit-log":
       await auditLogCommand(args);
@@ -270,6 +277,43 @@ async function driftDetectCommand(args: string[]): Promise<void> {
       env.raw.DRIFT_NOTIFY_CHANNEL,
       env.raw.GITHUB_STEP_SUMMARY
     );
+    process.exitCode = 1;
+  }
+}
+
+async function configDiffCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: true
+  });
+  const format = getOption(args, "--format", "text")!;
+  if (format !== "text" && format !== "json") {
+    throw new Error(`unknown config-diff format: ${format}`);
+  }
+
+  const plane = getOption(args, "--plane") as DrainPlane | undefined;
+  if (
+    plane &&
+    !["synology", "linux-docker", "windows-docker", "lume"].includes(plane)
+  ) {
+    throw new Error(`unknown config-diff plane: ${plane}`);
+  }
+
+  const desiredRunners = collectConfigDiffDesiredRunners(args, env, plane);
+  const actualRunners = await collectGitHubActualRunnerState(
+    env.githubApiUrl,
+    env.githubPat!,
+    desiredRunners
+  );
+  const report = compareDesiredActualRunners(desiredRunners, actualRunners);
+
+  process.stdout.write(
+    format === "json"
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : renderConfigDiffReport(report)
+  );
+
+  if (!report.inSync) {
     process.exitCode = 1;
   }
 }
@@ -1751,6 +1795,143 @@ function renderPruneStaleRunnersReport(
   return `${lines.join("\n")}\n`;
 }
 
+function renderConfigDiffReport(report: ConfigDiffReport): string {
+  if (report.inSync) {
+    return "config-diff: in sync\n";
+  }
+
+  const lines = [
+    "config-diff: out of sync",
+    `added: ${report.added.length}`,
+    `removed: ${report.removed.length}`,
+    `changed: ${report.changed.length}`
+  ];
+
+  for (const runner of report.added) {
+    lines.push(
+      `+ ${runner.organization}/${runner.name} ${runner.plane}/${runner.poolKey} group=${runner.runnerGroup} labels=${runner.labels.join(",")}`
+    );
+  }
+
+  for (const runner of report.removed) {
+    lines.push(
+      `- ${runner.organization}/${runner.name} group=${runner.runnerGroup ?? "unknown"} status=${runner.status} labels=${runner.labels.join(",")}`
+    );
+  }
+
+  for (const runner of report.changed) {
+    const details = [
+      runner.actualRunnerGroup !== runner.runnerGroup
+        ? `group ${runner.actualRunnerGroup ?? "unknown"} -> ${runner.runnerGroup}`
+        : undefined,
+      runner.missingLabels.length > 0
+        ? `missing labels ${runner.missingLabels.join(",")}`
+        : undefined,
+      runner.unexpectedLabels.length > 0
+        ? `unexpected labels ${runner.unexpectedLabels.join(",")}`
+        : undefined
+    ].filter((entry): entry is string => entry !== undefined);
+    lines.push(
+      `~ ${runner.organization}/${runner.name} ${runner.plane}/${runner.poolKey}: ${details.join("; ")}`
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function collectConfigDiffDesiredRunners(
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>,
+  requestedPlane?: DrainPlane
+): DesiredRunnerState[] {
+  const runners: DesiredRunnerState[] = [];
+
+  if (shouldLoadDrainConfig(args, "--config", requestedPlane, "synology")) {
+    const configPath = getOption(args, "--config", "config/pools.yaml")!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadConfig(configPath, env);
+      emitWarnings(config);
+      for (const pool of config.pools) {
+        runners.push(
+          ...buildIndexedRunnerNames(pool.key, 1, pool.size).map((name) => ({
+            plane: "synology",
+            poolKey: pool.key,
+            organization: pool.organization,
+            name,
+            runnerGroup: pool.runnerGroup,
+            labels: pool.labels
+          }))
+        );
+      }
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--linux-config", requestedPlane, "linux-docker")) {
+    const configPath = getOption(
+      args,
+      "--linux-config",
+      "config/linux-docker-runners.yaml"
+    )!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadLinuxDockerConfig(configPath, env);
+      for (const pool of config.pools) {
+        runners.push(
+          ...buildIndexedRunnerNames(pool.key, 1, pool.size).map((name) => ({
+            plane: "linux-docker",
+            poolKey: pool.key,
+            organization: pool.organization,
+            name,
+            runnerGroup: pool.runnerGroup,
+            labels: pool.labels
+          }))
+        );
+      }
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--windows-config", requestedPlane, "windows-docker")) {
+    const configPath = getOption(
+      args,
+      "--windows-config",
+      "config/windows-runners.yaml"
+    )!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadWindowsDockerConfig(configPath, env);
+      for (const pool of config.pools) {
+        runners.push(
+          ...buildIndexedRunnerNames(pool.key, 1, pool.size).map((name) => ({
+            plane: "windows-docker",
+            poolKey: pool.key,
+            organization: pool.organization,
+            name,
+            runnerGroup: pool.runnerGroup,
+            labels: pool.labels
+          }))
+        );
+      }
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--lume-config", requestedPlane, "lume")) {
+    const configPath = getOption(args, "--lume-config", "config/lume-runners.yaml")!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadLumeConfig(configPath, env);
+      runners.push(
+        ...config.slots.map((slot) => ({
+          plane: "lume",
+          poolKey: config.pool.key,
+          organization: config.pool.organization,
+          name: slot.runnerName,
+          runnerGroup: config.pool.runnerGroup,
+          labels: config.pool.labels
+        }))
+      );
+    }
+  }
+
+  return runners;
+}
+
 function getDoctorMode(args: string[]): DoctorMode {
   const optionFlags = new Set([
     "--env",
@@ -2123,6 +2304,7 @@ function printUsage(): void {
   pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
+  pnpm config-diff [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm drain-pool -- --pool synology-private [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--timeout 15m] [--interval 5] [--format text|json]
   pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]

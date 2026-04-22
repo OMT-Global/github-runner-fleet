@@ -1349,6 +1349,150 @@ describe("cli integration", () => {
     );
   });
 
+  test("config-diff emits structured JSON and exits zero when every plane is in sync", async () => {
+    const fixture = createCliFixture();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              { id: 7, name: "synology-private" },
+              { id: 8, name: "linux-private" },
+              { id: 9, name: "windows-private" },
+              { id: 10, name: "macos-private" }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runners: [
+              configDiffRunner(101, "synology-private-runner-01", 7, [
+                "self-hosted",
+                "synology",
+                "shell-only",
+                "private",
+                "custom-label"
+              ]),
+              configDiffRunner(102, "linux-private-runner-01", 8, [
+                "self-hosted",
+                "linux",
+                "docker-capable",
+                "private",
+                "docker-host"
+              ]),
+              configDiffRunner(103, "windows-private-runner-01", 9, [
+                "self-hosted",
+                "windows",
+                "docker-capable",
+                "private",
+                "x64"
+              ]),
+              configDiffRunner(104, "macos-runner-slot-01", 10, [
+                "self-hosted",
+                "macos",
+                "arm64",
+                "private",
+                "xcode"
+              ])
+            ]
+          })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await invokeCli([
+      "config-diff",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--linux-config",
+      fixture.linuxConfigPath,
+      "--windows-config",
+      fixture.windowsConfigPath,
+      "--lume-config",
+      fixture.lumeConfigPath,
+      "--format",
+      "json"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({
+      inSync: true,
+      added: [],
+      removed: [],
+      changed: []
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("config-diff renders +/- text and exits non-zero for registration drift", async () => {
+    const fixture = createCliFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                { id: 7, name: "synology-private" },
+                { id: 8, name: "wrong-group" }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runners: [
+                configDiffRunner(101, "synology-private-runner-01", 8, [
+                  "self-hosted",
+                  "synology",
+                  "private",
+                  "stale-label"
+                ]),
+                configDiffRunner(102, "synology-private-runner-old", 7, [
+                  "self-hosted",
+                  "synology",
+                  "private"
+                ])
+              ]
+            })
+        })
+    );
+
+    const result = await invokeCli([
+      "config-diff",
+      "--env",
+      fixture.envPath,
+      "--plane",
+      "synology",
+      "--config",
+      fixture.synologyConfigPath,
+      "--format",
+      "text"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("config-diff: out of sync");
+    expect(result.stdout).toContain("- example/synology-private-runner-old");
+    expect(result.stdout).toContain("~ example/synology-private-runner-01");
+    expect(result.stdout).toContain("group wrong-group -> synology-private");
+    expect(result.stdout).toContain("missing labels custom-label,shell-only");
+    expect(result.stdout).toContain("unexpected labels stale-label");
+  });
+
   test("prune-stale-runners defaults to dry-run JSON output", async () => {
     const fixture = createCliFixture();
     vi.stubGlobal(
@@ -1541,6 +1685,21 @@ function parseJsonLogLines(stderr: string): Array<Record<string, unknown>> {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+function configDiffRunner(
+  id: number,
+  name: string,
+  runnerGroupId: number,
+  labels: string[]
+) {
+  return {
+    id,
+    name,
+    status: "online",
+    runner_group_id: runnerGroupId,
+    labels: labels.map((label) => ({ name: label }))
+  };
 }
 
 async function withEnv<T>(
