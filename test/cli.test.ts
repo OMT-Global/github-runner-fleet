@@ -1085,6 +1085,100 @@ describe("cli integration", () => {
     );
   });
 
+  test("prune-stale-runners defaults to dry-run JSON output", async () => {
+    const fixture = createCliFixture();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                {
+                  id: 7,
+                  name: "synology-private",
+                  visibility: "all",
+                  default: false
+                }
+              ]
+            })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runners: [
+                {
+                  id: 301,
+                  name: "synology-private-runner-01",
+                  status: "offline",
+                  busy: false,
+                  runner_group_id: 7
+                },
+                {
+                  id: 302,
+                  name: "synology-private-runner-old",
+                  status: "offline",
+                  busy: false,
+                  runner_group_id: 7
+                },
+                {
+                  id: 303,
+                  name: "synology-private-runner-busy",
+                  status: "offline",
+                  busy: true,
+                  runner_group_id: 7
+                }
+              ]
+            })
+        })
+    );
+
+    const result = await invokeCli([
+      "prune-stale-runners",
+      "--env",
+      fixture.envPath,
+      "--plane",
+      "synology",
+      "--config",
+      fixture.synologyConfigPath,
+      "--format",
+      "json"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({
+      apply: false,
+      groups: [
+        {
+          plane: "synology",
+          poolKey: "synology-private",
+          organization: "example",
+          runnerGroup: "synology-private",
+          expected: ["synology-private-runner-01"],
+          scanned: 3
+        }
+      ],
+      stale: [
+        {
+          plane: "synology",
+          poolKey: "synology-private",
+          organization: "example",
+          runnerGroup: "synology-private",
+          id: 302,
+          name: "synology-private-runner-old",
+          status: "offline",
+          busy: false
+        }
+      ],
+      deleted: []
+    });
+  });
+
   test("drift detection writes an opt-in step summary notification", async () => {
     const fixture = createCliFixture();
     const stepSummaryPath = path.join(fixture.directory, "step-summary.md");

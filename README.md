@@ -181,6 +181,8 @@ That installer path:
 
 Use `pnpm drain-pool ...` before planned maintenance to remove idle runners from GitHub dispatch and wait for busy runners to finish. Teardown commands also accept `--drain --drain-timeout 15m` when you want that drain gate inline before `docker compose down`.
 
+Use `pnpm prune-stale-runners -- --format json --env .env` to report offline GitHub runner registrations that are no longer expected by the configured pool slots. The command is a dry run by default and only deregisters those offline, non-busy ghost runners when you pass `--apply`.
+
 Use `pnpm teardown-synology-project ...` when you want an explicit `docker compose down` on the NAS before reinstalling or when you want the runner project fully stopped.
 
 It intentionally avoids undocumented `SYNO.Docker.Project create/import` calls. If the Synology Docker daemon can see the compose project normally, Container Manager should still surface it as a compose project after the install task runs.
@@ -418,6 +420,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - `pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env` for the remote Linux Docker install plan before you push it
 - `pnpm validate-config -- --config config/pools.yaml --env .env` for schema, resource, and policy mismatches
 - `pnpm validate-github -- --config config/pools.yaml --env .env` for missing runner groups or GitHub auth failures
+- `pnpm prune-stale-runners -- --format json --env .env` for dry-run stale offline runner cleanup across configured pool groups
 - `pnpm validate-image -- --config config/pools.yaml --env .env` for GHCR tag drift before deploy
 - `pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env` for macOS pool config validation
 - `bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env` for current host-side Lume slot state
