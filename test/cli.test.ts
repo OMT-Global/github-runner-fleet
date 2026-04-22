@@ -347,6 +347,120 @@ describe("cli integration", () => {
     );
   });
 
+  test("rejects conflicting token rotation modes", async () => {
+    const result = await invokeCli(["rotate-token", "--apply", "--dry-run"]);
+
+    expect(result.error).toEqual(
+      new Error("pass either --apply or --dry-run, not both")
+    );
+    expect(result.stdout).toBe("");
+  });
+
+  test("rejects an unknown token rotation plane", async () => {
+    const fixture = createCliFixture();
+    fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=replacement-secret\n", "utf8");
+
+    const result = await invokeCli([
+      "rotate-token",
+      "--env",
+      fixture.envPath,
+      "--plane",
+      "windows-docker"
+    ]);
+
+    expect(result.error).toEqual(
+      new Error("unknown rotate-token plane: windows-docker")
+    );
+    expect(result.stdout).toBe("");
+  });
+
+  test("filters token rotation to an explicit pool and token env", async () => {
+    const fixture = createCliFixture();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 7,
+                name: "synology-private",
+                visibility: "all",
+                default: false
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ token: "registration-token" })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    fs.appendFileSync(fixture.envPath, "GITHUB_PAT_NEXT=next-secret\n", "utf8");
+
+    const result = await invokeCli([
+      "rotate-token",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--linux-config",
+      fixture.linuxConfigPath,
+      "--lume-config",
+      fixture.lumeConfigPath,
+      "--new-token-env",
+      "GITHUB_PAT_NEXT",
+      "--plane",
+      "synology",
+      "--pool",
+      "synology-private"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    const payload = JSON.parse(result.stdout) as {
+      tokenEnv: string;
+      pools: Array<{ plane: string; key: string; runnerNames: string[] }>;
+    };
+    expect(payload.tokenEnv).toBe("GITHUB_PAT_NEXT");
+    expect(payload.pools).toEqual([
+      expect.objectContaining({
+        plane: "synology",
+        key: "synology-private",
+        runnerNames: ["synology-private-runner-01"]
+      })
+    ]);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/orgs/example/actions/runners/registration-token",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer next-secret"
+        })
+      })
+    );
+  });
+
+  test("rejects an unknown token rotation pool", async () => {
+    const fixture = createCliFixture();
+    fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=replacement-secret\n", "utf8");
+
+    const result = await invokeCli([
+      "rotate-token",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--pool",
+      "missing-pool"
+    ]);
+
+    expect(result.error).toEqual(new Error("unknown pool: missing-pool"));
+    expect(result.stdout).toBe("");
+  });
+
   test("drains the retiring runner before applying scale-in", async () => {
     const fixture = createCliFixture();
     fs.writeFileSync(
