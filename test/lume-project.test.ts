@@ -68,7 +68,8 @@ function createResolvedLumeConfig(baseDir: string): ResolvedLumeConfig {
     host: {
       baseDir,
       configPath: path.join(baseDir, "lume-runners.yaml"),
-      envFile: path.join(baseDir, "runner.env")
+      envFile: path.join(baseDir, "runner.env"),
+      reconcileStateFile: path.join(baseDir, "reconcile-state.json")
     },
     pool: {
       key: "macos-private",

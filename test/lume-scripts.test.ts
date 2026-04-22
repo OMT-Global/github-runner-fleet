@@ -22,6 +22,9 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain("uploading guest bootstrap assets");
     expect(runSlot).toContain('guest_env_file="$(render_guest_runner_env "${env_path}")"');
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
+    expect(reconcile).toContain("retire_removed_slots_from_state");
+    expect(reconcile).toContain("write_reconcile_state");
+    expect(reconcile).toContain('reconcile_state_file="${LUME_RECONCILE_STATE_FILE}"');
     expect(reconcile).toContain('nohup "${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
     expect(createBase).toContain('unattended="$(default_lume_unattended_path)"');
     expect(createBase).toContain('ipsw="$(ensure_cached_lume_ipsw "$(resolve_lume_ipsw_path)")"');

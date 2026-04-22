@@ -49,6 +49,7 @@ export interface ResolvedLumeConfig {
     envFile: string;
     ipswPath?: string;
     configPath: string;
+    reconcileStateFile: string;
   };
   pool: LumePoolConfig;
   slots: LumeSlotManifest[];
@@ -108,7 +109,8 @@ export function loadLumeConfig(
     baseDir: env.lumeRunnerBaseDir,
     envFile: env.lumeRunnerEnvFile,
     ipswPath: env.lumeRunnerIpswPath,
-    configPath: absolutePath
+    configPath: absolutePath,
+    reconcileStateFile: path.join(env.lumeRunnerBaseDir, "reconcile-state.json")
   };
 
   return {
@@ -143,6 +145,7 @@ export function renderLumeShellExports(
     LUME_HOST_ENV_FILE: config.host.envFile,
     LUME_HOST_IPSW_PATH: config.host.ipswPath ?? "",
     LUME_CONFIG_PATH: config.host.configPath,
+    LUME_RECONCILE_STATE_FILE: config.host.reconcileStateFile,
     GITHUB_ORG: config.pool.organization,
     RUNNER_GROUP: config.pool.runnerGroup,
     FLEET_POOL_KEY: config.pool.key,
