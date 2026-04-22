@@ -71,6 +71,7 @@ import {
   buildSynologyInstallPlan,
   summarizeSynologyInstallPlan
 } from "./lib/synology-install.js";
+import { log, type LogFields, type LogLevel } from "./lib/logger.js";
 
 export async function main(
   commandLineArgs = process.argv.slice(2)
@@ -338,80 +339,100 @@ async function scaleCommand(args: string[]): Promise<void> {
     throw new Error(`unknown pool: ${poolFilter}`);
   }
 
-  const decisions: AutoscaleDecision[] = [];
-  for (const pool of pools) {
-    const queuedJobs = await getQueuedJobCount(env.githubApiUrl, env.githubPat!, {
-      organization: pool.organization,
-      runnerGroup: pool.runnerGroup,
-      repositories:
-        pool.repositoryAccess === "selected" ? pool.allowedRepositories : [],
-      labels: pool.labels
-    });
-    decisions.push(
-      decideAutoscale({
-        poolKey: pool.key,
-        currentSize: pool.size,
-        queuedJobs,
-        scaling: pool.scaling,
-        cooldownElapsedSeconds
-      })
-    );
-  }
-
-  const report = {
-    dryRun,
-    cooldownElapsedSeconds,
-    pools: decisions,
-    drains: [] as DrainReport[]
+  const actionFields = {
+    command: "scale",
+    action: "autoscale",
+    plane: "synology",
+    pool: poolFilter ?? "all",
+    dryRun
   };
+  const report = await withControllerAction(actionFields, async () => {
+    const decisions: AutoscaleDecision[] = [];
+    for (const pool of pools) {
+      const queuedJobs = await getQueuedJobCount(env.githubApiUrl, env.githubPat!, {
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        repositories:
+          pool.repositoryAccess === "selected" ? pool.allowedRepositories : [],
+        labels: pool.labels
+      });
+      decisions.push(
+        decideAutoscale({
+          poolKey: pool.key,
+          currentSize: pool.size,
+          queuedJobs,
+          scaling: pool.scaling,
+          cooldownElapsedSeconds
+        })
+      );
+    }
 
-  if (dryRun || decisions.every((decision) => decision.action === "none")) {
+    const report = {
+      dryRun,
+      cooldownElapsedSeconds,
+      pools: decisions,
+      drains: [] as DrainReport[]
+    };
+
+    if (dryRun || decisions.every((decision) => decision.action === "none")) {
+      return report;
+    }
+
+    const drainTimeoutSeconds = parseDurationSeconds(
+      getOption(args, "--drain-timeout", "300")!,
+      "--drain-timeout"
+    );
+    const drainIntervalSeconds = parseDurationSeconds(
+      getOption(args, "--drain-interval", "5")!,
+      "--drain-interval"
+    );
+
+    for (const decision of decisions.filter(
+      (entry) => entry.action === "scale-down"
+    )) {
+      const pool = config.pools.find((entry) => entry.key === decision.poolKey)!;
+      const drainReport = await drainRunnerPool({
+        apiUrl: env.githubApiUrl,
+        token: env.githubPat!,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        poolKey: pool.key,
+        runnerNames: buildIndexedRunnerNames(
+          pool.key,
+          decision.targetSize + 1,
+          pool.size
+        ),
+        timeoutSeconds: drainTimeoutSeconds,
+        intervalSeconds: drainIntervalSeconds,
+        onProgress: (progress) => writeDrainProgress("synology", progress)
+      });
+      report.drains.push(drainReport);
+      if (drainReport.status === "timeout") {
+        throw new Error(
+          `timed out waiting for ${drainReport.busy.join(", ")} to become idle before scaling ${pool.key} down`
+        );
+      }
+    }
+
+    const scaledConfig = applyAutoscaleDecisions(config, decisions);
+    const compose = renderCompose(scaledConfig, env);
+    const plan = buildSynologyInstallPlan(scaledConfig, env, compose, {
+      action: "up"
+    });
+    runSynologyInstallPlan(plan, getOption(args, "--python", "python3")!);
+    writeScaledPoolSizes(configPath, decisions);
+    return report;
+  }, (report) => ({
+    decisionCount: report.pools.length,
+    scaleUp: report.pools.filter((decision) => decision.action === "scale-up").length,
+    scaleDown: report.pools.filter((decision) => decision.action === "scale-down").length,
+    drains: report.drains.length
+  }));
+
+  if (dryRun || report.pools.every((decision) => decision.action === "none")) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
-
-  const drainTimeoutSeconds = parseDurationSeconds(
-    getOption(args, "--drain-timeout", "300")!,
-    "--drain-timeout"
-  );
-  const drainIntervalSeconds = parseDurationSeconds(
-    getOption(args, "--drain-interval", "5")!,
-    "--drain-interval"
-  );
-
-  for (const decision of decisions.filter(
-    (entry) => entry.action === "scale-down"
-  )) {
-    const pool = config.pools.find((entry) => entry.key === decision.poolKey)!;
-    const drainReport = await drainRunnerPool({
-      apiUrl: env.githubApiUrl,
-      token: env.githubPat!,
-      organization: pool.organization,
-      runnerGroup: pool.runnerGroup,
-      poolKey: pool.key,
-      runnerNames: buildIndexedRunnerNames(
-        pool.key,
-        decision.targetSize + 1,
-        pool.size
-      ),
-      timeoutSeconds: drainTimeoutSeconds,
-      intervalSeconds: drainIntervalSeconds
-    });
-    report.drains.push(drainReport);
-    if (drainReport.status === "timeout") {
-      throw new Error(
-        `timed out waiting for ${drainReport.busy.join(", ")} to become idle before scaling ${pool.key} down`
-      );
-    }
-  }
-
-  const scaledConfig = applyAutoscaleDecisions(config, decisions);
-  const compose = renderCompose(scaledConfig, env);
-  const plan = buildSynologyInstallPlan(scaledConfig, env, compose, {
-    action: "up"
-  });
-  runSynologyInstallPlan(plan, getOption(args, "--python", "python3")!);
-  writeScaledPoolSizes(configPath, decisions);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
@@ -431,20 +452,33 @@ async function drainPoolCommand(args: string[]): Promise<void> {
   }
 
   const definition = resolveDrainPoolDefinition(args, env, poolKey);
-  const report = await drainRunnerPool({
-    apiUrl: env.githubApiUrl,
-    token: env.githubPat!,
-    organization: definition.organization,
-    runnerGroup: definition.runnerGroup,
-    poolKey: definition.key,
-    runnerNames: definition.runnerNames,
-    timeoutSeconds: parseDurationSeconds(getOption(args, "--timeout", "300")!, "--timeout"),
-    intervalSeconds: parseDurationSeconds(getOption(args, "--interval", "5")!, "--interval"),
-    onProgress:
-      format === "text"
-        ? (progress) => writeDrainProgress(definition.plane, progress)
-        : undefined
-  });
+  const report = await withControllerAction(
+    {
+      command: "drain-pool",
+      action: "drain",
+      plane: definition.plane,
+      pool: definition.key
+    },
+    () =>
+      drainRunnerPool({
+        apiUrl: env.githubApiUrl,
+        token: env.githubPat!,
+        organization: definition.organization,
+        runnerGroup: definition.runnerGroup,
+        poolKey: definition.key,
+        runnerNames: definition.runnerNames,
+        timeoutSeconds: parseDurationSeconds(getOption(args, "--timeout", "300")!, "--timeout"),
+        intervalSeconds: parseDurationSeconds(getOption(args, "--interval", "5")!, "--interval"),
+        onProgress: (progress) => writeDrainProgress(definition.plane, progress)
+      }),
+    (report) => ({
+      drainStatus: report.status,
+      total: report.total,
+      cordoned: report.cordoned.length,
+      busy: report.busy.length,
+      missing: report.missing.length
+    })
+  );
 
   if (format === "json") {
     process.stdout.write(`${JSON.stringify({ ...report, plane: definition.plane }, null, 2)}\n`);
@@ -773,6 +807,14 @@ async function installSynologyProject(args: string[]): Promise<void> {
   });
 
   if (dryRun) {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "install-synology-project",
+      action: "install",
+      plane: "synology",
+      pool: "all",
+      dryRun: true,
+      status: "dry-run"
+    });
     process.stdout.write(
       `${JSON.stringify(summarizeSynologyInstallPlan(plan), null, 2)}\n`
     );
@@ -780,7 +822,15 @@ async function installSynologyProject(args: string[]): Promise<void> {
   }
 
   const python = getOption(args, "--python", "python3")!;
-  runSynologyInstallPlan(plan, python);
+  await withControllerAction({
+    command: "install-synology-project",
+    action: "install",
+    plane: "synology",
+    pool: "all",
+    dryRun: false
+  }, () => {
+    runSynologyInstallPlan(plan, python);
+  });
 }
 
 async function installLinuxDockerProject(args: string[]): Promise<void> {
@@ -798,13 +848,29 @@ async function installLinuxDockerProject(args: string[]): Promise<void> {
   });
 
   if (dryRun) {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "install-linux-docker-project",
+      action: "install",
+      plane: "linux-docker",
+      pool: "all",
+      dryRun: true,
+      status: "dry-run"
+    });
     process.stdout.write(
       `${JSON.stringify(summarizeLinuxDockerInstallPlan(plan), null, 2)}\n`
     );
     return;
   }
 
-  runLinuxDockerInstall(plan);
+  await withControllerAction({
+    command: "install-linux-docker-project",
+    action: "install",
+    plane: "linux-docker",
+    pool: "all",
+    dryRun: false
+  }, () => {
+    runLinuxDockerInstall(plan);
+  });
 }
 
 async function teardownSynologyProject(args: string[]): Promise<void> {
@@ -823,24 +889,40 @@ async function teardownSynologyProject(args: string[]): Promise<void> {
   });
 
   if (dryRun) {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "teardown-synology-project",
+      action: "teardown",
+      plane: "synology",
+      pool: "all",
+      dryRun: true,
+      status: "dry-run"
+    });
     process.stdout.write(
       `${JSON.stringify(summarizeSynologyInstallPlan(plan), null, 2)}\n`
     );
     return;
   }
 
-  await drainBeforeTeardown(args, env, [
-    ...config.pools.map((pool) => ({
-      plane: "synology" as const,
-      key: pool.key,
-      organization: pool.organization,
-      runnerGroup: pool.runnerGroup,
-      runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
-    }))
-  ]);
+  await withControllerAction({
+    command: "teardown-synology-project",
+    action: "teardown",
+    plane: "synology",
+    pool: "all",
+    dryRun: false
+  }, async () => {
+    await drainBeforeTeardown(args, env, [
+      ...config.pools.map((pool) => ({
+        plane: "synology" as const,
+        key: pool.key,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+      }))
+    ]);
 
-  const python = getOption(args, "--python", "python3")!;
-  runSynologyInstallPlan(plan, python);
+    const python = getOption(args, "--python", "python3")!;
+    runSynologyInstallPlan(plan, python);
+  });
 }
 
 function runSynologyInstallPlan(
@@ -878,23 +960,39 @@ async function teardownLinuxDockerProject(args: string[]): Promise<void> {
   });
 
   if (dryRun) {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "teardown-linux-docker-project",
+      action: "teardown",
+      plane: "linux-docker",
+      pool: "all",
+      dryRun: true,
+      status: "dry-run"
+    });
     process.stdout.write(
       `${JSON.stringify(summarizeLinuxDockerInstallPlan(plan), null, 2)}\n`
     );
     return;
   }
 
-  await drainBeforeTeardown(args, env, [
-    ...config.pools.map((pool) => ({
-      plane: "linux-docker" as const,
-      key: pool.key,
-      organization: pool.organization,
-      runnerGroup: pool.runnerGroup,
-      runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
-    }))
-  ]);
+  await withControllerAction({
+    command: "teardown-linux-docker-project",
+    action: "teardown",
+    plane: "linux-docker",
+    pool: "all",
+    dryRun: false
+  }, async () => {
+    await drainBeforeTeardown(args, env, [
+      ...config.pools.map((pool) => ({
+        plane: "linux-docker" as const,
+        key: pool.key,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+      }))
+    ]);
 
-  runLinuxDockerInstall(plan);
+    runLinuxDockerInstall(plan);
+  });
 }
 
 async function installWindowsDockerProject(args: string[]): Promise<void> {
@@ -912,13 +1010,29 @@ async function installWindowsDockerProject(args: string[]): Promise<void> {
   });
 
   if (dryRun) {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "install-windows-project",
+      action: "install",
+      plane: "windows-docker",
+      pool: "all",
+      dryRun: true,
+      status: "dry-run"
+    });
     process.stdout.write(
       `${JSON.stringify(summarizeWindowsDockerInstallPlan(plan), null, 2)}\n`
     );
     return;
   }
 
-  runWindowsDockerInstall(plan);
+  await withControllerAction({
+    command: "install-windows-project",
+    action: "install",
+    plane: "windows-docker",
+    pool: "all",
+    dryRun: false
+  }, () => {
+    runWindowsDockerInstall(plan);
+  });
 }
 
 async function teardownWindowsDockerProject(args: string[]): Promise<void> {
@@ -936,23 +1050,39 @@ async function teardownWindowsDockerProject(args: string[]): Promise<void> {
   });
 
   if (dryRun) {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "teardown-windows-project",
+      action: "teardown",
+      plane: "windows-docker",
+      pool: "all",
+      dryRun: true,
+      status: "dry-run"
+    });
     process.stdout.write(
       `${JSON.stringify(summarizeWindowsDockerInstallPlan(plan), null, 2)}\n`
     );
     return;
   }
 
-  await drainBeforeTeardown(args, env, [
-    ...config.pools.map((pool) => ({
-      plane: "windows-docker" as const,
-      key: pool.key,
-      organization: pool.organization,
-      runnerGroup: pool.runnerGroup,
-      runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
-    }))
-  ]);
+  await withControllerAction({
+    command: "teardown-windows-project",
+    action: "teardown",
+    plane: "windows-docker",
+    pool: "all",
+    dryRun: false
+  }, async () => {
+    await drainBeforeTeardown(args, env, [
+      ...config.pools.map((pool) => ({
+        plane: "windows-docker" as const,
+        key: pool.key,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+      }))
+    ]);
 
-  runWindowsDockerInstall(plan);
+    runWindowsDockerInstall(plan);
+  });
 }
 
 async function validateImage(args: string[]): Promise<void> {
@@ -1157,14 +1287,31 @@ async function installLumeProject(args: string[]): Promise<void> {
   let supervisorPid: number | undefined;
 
   if (!dryRun) {
-    const existingPid = readPidFile(defaultLumeProjectPidFile(config));
-    if (existingPid && isProcessRunning(existingPid)) {
-      status = "already-running";
-      supervisorPid = existingPid;
-    } else {
-      supervisorPid = startLumeSupervisor(configPath, getOption(args, "--env", ".env")!, config);
-      status = "started";
-    }
+    await withControllerAction({
+      command: "install-lume-project",
+      action: "install",
+      plane: "lume",
+      pool: config.pool.key,
+      dryRun: false
+    }, () => {
+      const existingPid = readPidFile(defaultLumeProjectPidFile(config));
+      if (existingPid && isProcessRunning(existingPid)) {
+        status = "already-running";
+        supervisorPid = existingPid;
+      } else {
+        supervisorPid = startLumeSupervisor(configPath, getOption(args, "--env", ".env")!, config);
+        status = "started";
+      }
+    }, () => ({ lifecycleStatus: status, supervisorPid }));
+  } else {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "install-lume-project",
+      action: "install",
+      plane: "lume",
+      pool: config.pool.key,
+      dryRun: true,
+      status: "dry-run"
+    });
   }
 
   const result = buildLumeProjectResult({
@@ -1195,42 +1342,64 @@ async function teardownLumeProject(args: string[]): Promise<void> {
   let drain: LumeProjectResult["drain"];
 
   if (!dryRun) {
-    const drainReport = await drainRunnerPool({
-      apiUrl: env.githubApiUrl,
-      token: env.githubPat!,
-      organization: config.pool.organization,
-      runnerGroup: config.pool.runnerGroup,
-      poolKey: config.pool.key,
-      runnerNames: config.slots.map((slot) => slot.runnerName),
-      timeoutSeconds: parseDurationSeconds(
-        getOption(args, "--drain-timeout", getOption(args, "--timeout", "300"))!,
-        "--drain-timeout"
-      ),
-      intervalSeconds: parseDurationSeconds(
-        getOption(args, "--drain-interval", getOption(args, "--interval", "5"))!,
-        "--drain-interval"
-      ),
-      onProgress: (progress) => writeDrainProgress("lume", progress)
+    await withControllerAction({
+      command: "teardown-lume-project",
+      action: "teardown",
+      plane: "lume",
+      pool: config.pool.key,
+      dryRun: false
+    }, async () => {
+      const drainReport = await drainRunnerPool({
+        apiUrl: env.githubApiUrl,
+        token: env.githubPat!,
+        organization: config.pool.organization,
+        runnerGroup: config.pool.runnerGroup,
+        poolKey: config.pool.key,
+        runnerNames: config.slots.map((slot) => slot.runnerName),
+        timeoutSeconds: parseDurationSeconds(
+          getOption(args, "--drain-timeout", getOption(args, "--timeout", "300"))!,
+          "--drain-timeout"
+        ),
+        intervalSeconds: parseDurationSeconds(
+          getOption(args, "--drain-interval", getOption(args, "--interval", "5"))!,
+          "--drain-interval"
+        ),
+        onProgress: (progress) => writeDrainProgress("lume", progress)
+      });
+
+      if (drainReport.status === "timeout") {
+        throw new Error(
+          `timed out waiting for ${drainReport.busy.join(", ")} to become idle before tearing down ${config.pool.key}`
+        );
+      }
+
+      drain = {
+        status: drainReport.status,
+        cordoned: drainReport.cordoned,
+        busy: drainReport.busy,
+        missing: drainReport.missing
+      };
+      stopLumeSupervisor(config);
+      for (const slot of config.slots) {
+        stopLumeWorker(slot.workerPidFile);
+        runLumeSlotTeardown(configPath, getOption(args, "--env", ".env")!, slot.index);
+        fs.rmSync(slot.hostDir, { recursive: true, force: true });
+      }
+    }, () => ({
+      drainStatus: drain?.status,
+      cordoned: drain?.cordoned.length ?? 0,
+      busy: drain?.busy.length ?? 0,
+      missing: drain?.missing.length ?? 0
+    }));
+  } else {
+    emitControllerAction("info", "controller action dry-run", {
+      command: "teardown-lume-project",
+      action: "teardown",
+      plane: "lume",
+      pool: config.pool.key,
+      dryRun: true,
+      status: "dry-run"
     });
-
-    if (drainReport.status === "timeout") {
-      throw new Error(
-        `timed out waiting for ${drainReport.busy.join(", ")} to become idle before tearing down ${config.pool.key}`
-      );
-    }
-
-    drain = {
-      status: drainReport.status,
-      cordoned: drainReport.cordoned,
-      busy: drainReport.busy,
-      missing: drainReport.missing
-    };
-    stopLumeSupervisor(config);
-    for (const slot of config.slots) {
-      stopLumeWorker(slot.workerPidFile);
-      runLumeSlotTeardown(configPath, getOption(args, "--env", ".env")!, slot.index);
-      fs.rmSync(slot.hostDir, { recursive: true, force: true });
-    }
   }
 
   const result = buildLumeProjectResult({
@@ -1247,6 +1416,50 @@ async function teardownLumeProject(args: string[]): Promise<void> {
 function getConfigAgeSeconds(configPath: string): number {
   const stats = fs.statSync(path.resolve(configPath));
   return Math.max(0, Math.floor((Date.now() - stats.mtimeMs) / 1000));
+}
+
+interface ControllerActionFields extends LogFields {
+  command: string;
+  action: string;
+}
+
+async function withControllerAction<T>(
+  fields: ControllerActionFields,
+  callback: () => T | Promise<T>,
+  completedFields: (result: Awaited<T>) => LogFields = () => ({})
+): Promise<Awaited<T>> {
+  emitControllerAction("info", "controller action started", {
+    ...fields,
+    status: "started"
+  });
+
+  try {
+    const result = await callback();
+    emitControllerAction("info", "controller action completed", {
+      ...fields,
+      ...completedFields(result),
+      status: "completed"
+    });
+    return result;
+  } catch (error) {
+    emitControllerAction("error", "controller action failed", {
+      ...fields,
+      status: "failed",
+      error
+    });
+    throw error;
+  }
+}
+
+function emitControllerAction(
+  level: LogLevel,
+  msg: string,
+  fields: ControllerActionFields
+): void {
+  log[level](msg, {
+    component: "controller",
+    ...fields
+  });
 }
 
 function applyAutoscaleDecisions(
@@ -1483,14 +1696,24 @@ function buildIndexedRunnerNames(
 }
 
 function writeDrainProgress(plane: DrainPlane, progress: DrainProgress): void {
-  process.stderr.write(
-    [
-      `drain ${plane}/${progress.poolKey}:`,
-      `${progress.status},`,
-      `${progress.busy.length} busy,`,
-      `${progress.cordoned.length} cordoned,`,
-      `${progress.missing.length} already absent`
-    ].join(" ") + "\n"
+  emitControllerAction(
+    progress.status === "timeout" ? "warn" : "info",
+    `drain ${plane}/${progress.poolKey}: ${progress.status}`,
+    {
+      command: "drain-pool",
+      action: "drain",
+      plane,
+      pool: progress.poolKey,
+      drainStatus: progress.status,
+      iteration: progress.iteration,
+      total: progress.total,
+      cordoned: progress.cordoned.length,
+      busy: progress.busy.length,
+      missing: progress.missing.length,
+      cordonedRunners: progress.cordoned,
+      busyRunners: progress.busy,
+      missingRunners: progress.missing
+    }
   );
 }
 

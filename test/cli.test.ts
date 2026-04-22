@@ -132,6 +132,22 @@ describe("cli integration", () => {
       };
       expect(payload.options.action).toBe(entry.expectedAction);
       expect(payload.envFilePreview).toContain("GITHUB_PAT=<redacted>");
+      const logs = parseJsonLogLines(result.stderr);
+      if (entry.extraArgs?.includes("--dry-run")) {
+        expect(logs).toEqual([
+          expect.objectContaining({
+            component: "controller",
+            command: entry.command,
+            action: entry.expectedAction === "down" ? "teardown" : "install",
+            plane: "synology",
+            pool: "all",
+            status: "dry-run",
+            dryRun: true
+          })
+        ]);
+      } else {
+        expect(logs).toEqual([]);
+      }
     }
   });
 
@@ -197,6 +213,29 @@ describe("cli integration", () => {
 
     expect(result.error).toBeUndefined();
     expect(fs.readFileSync(fixture.synologyConfigPath, "utf8")).toBe(before);
+    expect(parseJsonLogLines(result.stderr)).toEqual([
+      expect.objectContaining({
+        component: "controller",
+        command: "scale",
+        action: "autoscale",
+        plane: "synology",
+        pool: "synology-private",
+        status: "started",
+        dryRun: true
+      }),
+      expect.objectContaining({
+        component: "controller",
+        command: "scale",
+        action: "autoscale",
+        plane: "synology",
+        pool: "synology-private",
+        status: "completed",
+        decisionCount: 1,
+        scaleUp: 1,
+        scaleDown: 0,
+        drains: 0
+      })
+    ]);
     expect(JSON.parse(result.stdout)).toEqual(
       expect.objectContaining({
         dryRun: true,
@@ -473,6 +512,41 @@ describe("cli integration", () => {
         busy: []
       })
     );
+    expect(parseJsonLogLines(result.stderr)).toEqual([
+      expect.objectContaining({
+        component: "controller",
+        command: "drain-pool",
+        action: "drain",
+        plane: "synology",
+        pool: "synology-private",
+        status: "started"
+      }),
+      expect.objectContaining({
+        component: "controller",
+        command: "drain-pool",
+        action: "drain",
+        plane: "synology",
+        pool: "synology-private",
+        msg: "drain synology/synology-private: drained",
+        drainStatus: "drained",
+        cordoned: 1,
+        busy: 0,
+        missing: 0
+      }),
+      expect.objectContaining({
+        component: "controller",
+        command: "drain-pool",
+        action: "drain",
+        plane: "synology",
+        pool: "synology-private",
+        status: "completed",
+        drainStatus: "drained",
+        total: 1,
+        cordoned: 1,
+        busy: 0,
+        missing: 0
+      })
+    ]);
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "https://api.github.com/orgs/example/actions/runners/101",
@@ -1459,6 +1533,14 @@ async function invokeCli(args: string[]): Promise<CliResult> {
   process.exitCode = previousExitCode;
 
   return { stdout, stderr, exitCode, error };
+}
+
+function parseJsonLogLines(stderr: string): Array<Record<string, unknown>> {
+  return stderr
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 async function withEnv<T>(

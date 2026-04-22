@@ -380,7 +380,7 @@ pnpm smoke-test
 
 ## Observability
 
-`pnpm doctor` keeps its normal stdout report, and also emits one structured JSON log line per check to stderr. Each line includes `level`, `msg`, `plane`, `pool`, and `ts` fields so log collectors can ingest the output without parsing the human report.
+`pnpm doctor` keeps its normal stdout report, and also emits one structured JSON log line per check to stderr. Controller commands such as `scale`, `drain-pool`, and project install or teardown commands also log action lifecycle and drain progress as JSON lines on stderr. Each line includes `level`, `msg`, `plane`, `pool`, and `ts` fields so log collectors can ingest the output without parsing the human report.
 
 Metrics are opt-in. Set `METRICS_ENDPOINT` to an HTTP endpoint to receive Prometheus text-format samples for doctor check results, pool slot counts, and runner token fetch duration measurements:
 
