@@ -356,6 +356,22 @@ describe("cli integration", () => {
     expect(result.stdout).toBe("");
   });
 
+  test("rejects token rotation when the replacement PAT matches the current PAT", async () => {
+    const fixture = createCliFixture();
+    fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=secret\n", "utf8");
+
+    const result = await invokeCli([
+      "rotate-token",
+      "--env",
+      fixture.envPath
+    ]);
+
+    expect(result.error).toEqual(
+      new Error("NEW_GITHUB_PAT must differ from GITHUB_PAT")
+    );
+    expect(result.stdout).toBe("");
+  });
+
   test("rejects an unknown token rotation plane", async () => {
     const fixture = createCliFixture();
     fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=replacement-secret\n", "utf8");

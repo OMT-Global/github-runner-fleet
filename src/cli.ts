@@ -375,6 +375,9 @@ async function rotateTokenCommand(args: string[]): Promise<void> {
       `${newTokenEnv} is required; export the replacement PAT and pass --new-token-env if you use a different variable`
     );
   }
+  if (env.githubPat && newToken === env.githubPat) {
+    throw new Error(`${newTokenEnv} must differ from GITHUB_PAT`);
+  }
 
   const plane = getRotationPlane(args);
   const poolFilter = getOption(args, "--pool");
@@ -461,6 +464,7 @@ async function rotateTokenCommand(args: string[]): Promise<void> {
         const installPlan = buildSynologyInstallPlan(config, rotatedEnv, compose, {
           action: "up"
         });
+        assertGeneratedPatRotation("Synology", installPlan.envFileContent, newToken);
         runSynologyInstallPlan(installPlan, getOption(args, "--python", "python3")!);
       }
 
@@ -476,6 +480,7 @@ async function rotateTokenCommand(args: string[]): Promise<void> {
         const installPlan = buildLinuxDockerInstallPlan(config, rotatedEnv, compose, {
           action: "up"
         });
+        assertGeneratedPatRotation("Linux Docker", installPlan.envFileContent, newToken);
         runLinuxDockerInstall(installPlan);
       }
     });
@@ -1850,6 +1855,51 @@ function buildTokenRotationPlan(
             ]
     }))
   };
+}
+
+function assertGeneratedPatRotation(
+  planeName: string,
+  envFileContent: string,
+  expectedToken: string
+): void {
+  const generatedPat = parseGeneratedDotEnvValue(envFileContent, "GITHUB_PAT");
+  if (generatedPat !== expectedToken) {
+    throw new Error(`${planeName} rotation did not generate env content with the replacement PAT`);
+  }
+}
+
+function parseGeneratedDotEnvValue(content: string, key: string): string | undefined {
+  const line = content
+    .split("\n")
+    .find((entry) => entry.startsWith(`${key}=`));
+  if (!line) {
+    return undefined;
+  }
+
+  const rawValue = line.slice(key.length + 1);
+  if (!rawValue.startsWith('"') || !rawValue.endsWith('"')) {
+    return rawValue;
+  }
+
+  const quotedValue = rawValue.slice(1, -1);
+  let parsed = "";
+  for (let index = 0; index < quotedValue.length; index += 1) {
+    const character = quotedValue[index];
+    if (character !== "\\" || index === quotedValue.length - 1) {
+      parsed += character;
+      continue;
+    }
+
+    const next = quotedValue[index + 1];
+    index += 1;
+    if (next === "n") {
+      parsed += "\n";
+    } else {
+      parsed += next;
+    }
+  }
+
+  return parsed;
 }
 
 async function withPatOverride<T>(
