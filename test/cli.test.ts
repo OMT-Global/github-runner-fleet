@@ -8,6 +8,8 @@ const tempPaths: string[] = [];
 
 const cleanEnv: Record<string, string | undefined> = {
   GITHUB_PAT: undefined,
+  GITHUB_PAT_NEXT: undefined,
+  NEW_GITHUB_PAT: undefined,
   GITHUB_TOKEN: undefined,
   GH_TOKEN: undefined,
   GITHUB_API_URL: undefined,
@@ -248,6 +250,99 @@ describe("cli integration", () => {
             queuedJobs: 1
           })
         ]
+      })
+    );
+  });
+
+  test("builds a token rotation dry-run plan after validating the replacement PAT", async () => {
+    const fixture = createCliFixture();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [
+              {
+                id: 7,
+                name: "synology-private",
+                visibility: "all",
+                default: false
+              },
+              {
+                id: 8,
+                name: "linux-private",
+                visibility: "selected",
+                default: false
+              },
+              {
+                id: 9,
+                name: "macos-private",
+                visibility: "selected",
+                default: false
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ token: "registration-token" })
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=replacement-secret\n", "utf8");
+
+    const result = await invokeCli([
+      "rotate-token",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--linux-config",
+      fixture.linuxConfigPath,
+      "--lume-config",
+      fixture.lumeConfigPath
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).toContain('"command":"rotate-token"');
+    const payload = JSON.parse(result.stdout) as {
+      dryRun: boolean;
+      tokenEnv: string;
+      validation: { registrationTokenOrganizations: string[] };
+      pools: Array<{ plane: string; key: string; runnerNames: string[] }>;
+      drains: unknown[];
+    };
+    expect(payload.dryRun).toBe(true);
+    expect(payload.tokenEnv).toBe("NEW_GITHUB_PAT");
+    expect(payload.validation.registrationTokenOrganizations).toEqual(["example"]);
+    expect(payload.pools).toEqual([
+      expect.objectContaining({
+        plane: "synology",
+        key: "synology-private",
+        runnerNames: ["synology-private-runner-01"]
+      }),
+      expect.objectContaining({
+        plane: "linux-docker",
+        key: "linux-private",
+        runnerNames: ["linux-private-runner-01"]
+      }),
+      expect.objectContaining({
+        plane: "lume",
+        key: "macos-private",
+        runnerNames: ["macos-runner-slot-01"]
+      })
+    ]);
+    expect(payload.drains).toEqual([]);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/orgs/example/actions/runners/registration-token",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer replacement-secret"
+        })
       })
     );
   });

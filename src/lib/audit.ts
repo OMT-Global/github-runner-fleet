@@ -8,7 +8,8 @@ export const AUDIT_EVENTS = [
   "runner_job_start",
   "runner_deregistered",
   "runner_evicted",
-  "token_fetch_failed"
+  "token_fetch_failed",
+  "runner_token_rotated"
 ] as const;
 
 export type AuditEvent = (typeof AUDIT_EVENTS)[number];

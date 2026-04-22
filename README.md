@@ -270,6 +270,7 @@ If you want the repository release and GHCR image tag to stay aligned, merge the
 
 - Each service handles one job, de-registers, and restarts cleanly.
 - GitHub registration and removal both use short-lived tokens minted from the configured PAT.
+- Rotate PATs with `NEW_GITHUB_PAT=... pnpm rotate-token -- --dry-run` first. The command validates that the replacement PAT can see configured runner groups and mint organization registration tokens before any pool changes. Use `--apply` to drain Synology/Linux Docker runners while they are idle, redeploy with the replacement PAT, and emit `runner_token_rotated` audit entries. Lume pools are validated only because each VM receives the configured PAT on boot.
 - Public and private repos use separate runner groups and labels.
 - `repositoryAccess: all` is the org-wide mode for a runner group.
 - `repositoryAccess: selected` requires `allowedRepositories` and documents the intended selected-repo set for that pool.

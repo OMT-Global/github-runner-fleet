@@ -60,9 +60,11 @@ import {
   type DriftReport
 } from "./lib/drift.js";
 import {
+  buildRegistrationTokenRequest,
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
   fetchLatestRunnerRelease,
+  fetchRunnerToken,
   getQueuedJobCount,
   verifyContainerImageTag,
   verifyRunnerGroups
@@ -106,6 +108,9 @@ export async function main(
       break;
     case "prune-stale-runners":
       await pruneStaleRunnersCommand(args);
+      break;
+    case "rotate-token":
+      await rotateTokenCommand(args);
       break;
     case "validate-linux-docker-config":
       await validateLinuxDockerConfig(args);
@@ -348,6 +353,146 @@ async function pruneStaleRunnersCommand(args: string[]): Promise<void> {
       ? `${JSON.stringify(report, null, 2)}\n`
       : renderPruneStaleRunnersReport(report)
   );
+}
+
+async function rotateTokenCommand(args: string[]): Promise<void> {
+  if (args.includes("--apply") && args.includes("--dry-run")) {
+    throw new Error("pass either --apply or --dry-run, not both");
+  }
+
+  const apply = args.includes("--apply");
+  const dryRun = !apply;
+  const envPath = getOption(args, "--env", ".env")!;
+  const env = loadDeploymentEnv({
+    envPath,
+    requirePat: apply
+  });
+  const newTokenEnv = resolveNewTokenEnvName(args);
+  const newToken =
+    process.env[newTokenEnv]?.trim() || env.raw[newTokenEnv]?.trim();
+  if (!newToken) {
+    throw new Error(
+      `${newTokenEnv} is required; export the replacement PAT and pass --new-token-env if you use a different variable`
+    );
+  }
+
+  const plane = getRotationPlane(args);
+  const poolFilter = getOption(args, "--pool");
+  const definitions = collectTokenRotationDefinitions(args, env, plane).filter(
+    (definition) => !poolFilter || definition.key === poolFilter
+  );
+  if (definitions.length === 0) {
+    throw new Error(poolFilter ? `unknown pool: ${poolFilter}` : "no runner pools found");
+  }
+
+  const actionFields = {
+    command: "rotate-token",
+    action: "rotate-token",
+    plane: plane ?? "all",
+    pool: poolFilter ?? "all",
+    dryRun
+  };
+  const report = await withControllerAction(actionFields, async () => {
+    const runnerGroups = await verifyRunnerGroups(
+      env.githubApiUrl,
+      newToken,
+      definitions.map((definition) => ({
+        poolKey: definition.key,
+        organization: definition.organization,
+        runnerGroup: definition.runnerGroup
+      }))
+    );
+    const validatedOrganizations = await validateRegistrationTokenScopes(
+      env.githubApiUrl,
+      newToken,
+      definitions
+    );
+    const plan = buildTokenRotationPlan(dryRun, newTokenEnv, definitions, {
+      runnerGroups,
+      validatedOrganizations
+    });
+
+    if (dryRun) {
+      return {
+        ...plan,
+        drains: []
+      };
+    }
+
+    const timeoutSeconds = parseDurationSeconds(
+      getOption(args, "--drain-timeout", getOption(args, "--timeout", "300"))!,
+      "--drain-timeout"
+    );
+    const intervalSeconds = parseDurationSeconds(
+      getOption(args, "--drain-interval", getOption(args, "--interval", "5"))!,
+      "--drain-interval"
+    );
+    const drains: DrainReport[] = [];
+
+    for (const definition of definitions.filter(
+      (entry) => entry.plane !== "lume"
+    )) {
+      const drainReport = await drainRunnerPool({
+        apiUrl: env.githubApiUrl,
+        token: env.githubPat!,
+        organization: definition.organization,
+        runnerGroup: definition.runnerGroup,
+        poolKey: definition.key,
+        runnerNames: definition.runnerNames,
+        timeoutSeconds,
+        intervalSeconds,
+        onProgress: (progress) => writeDrainProgress(definition.plane, progress)
+      });
+      drains.push(drainReport);
+      if (drainReport.status === "timeout") {
+        throw new Error(
+          `timed out waiting for ${drainReport.busy.join(", ")} to become idle before rotating ${definition.key}`
+        );
+      }
+    }
+
+    await withPatOverride(newToken, async () => {
+      if (definitions.some((definition) => definition.plane === "synology")) {
+        const rotatedEnv = loadDeploymentEnv({ envPath, requirePat: true });
+        const configPath = getOption(args, "--config", "config/pools.yaml")!;
+        const config = loadConfig(configPath, rotatedEnv);
+        emitWarnings(config);
+        const compose = renderCompose(config, rotatedEnv);
+        const installPlan = buildSynologyInstallPlan(config, rotatedEnv, compose, {
+          action: "up"
+        });
+        runSynologyInstallPlan(installPlan, getOption(args, "--python", "python3")!);
+      }
+
+      if (definitions.some((definition) => definition.plane === "linux-docker")) {
+        const rotatedEnv = loadDeploymentEnv({ envPath, requirePat: true });
+        const configPath = getOption(
+          args,
+          "--linux-config",
+          "config/linux-docker-runners.yaml"
+        )!;
+        const config = loadLinuxDockerConfig(configPath, rotatedEnv);
+        const compose = renderLinuxDockerCompose(config, rotatedEnv);
+        const installPlan = buildLinuxDockerInstallPlan(config, rotatedEnv, compose, {
+          action: "up"
+        });
+        runLinuxDockerInstall(installPlan);
+      }
+    });
+
+    writeTokenRotationAudit(definitions);
+    return {
+      ...plan,
+      drains
+    };
+  }, (report) => ({
+    pools: report.pools.length,
+    runners: report.pools.reduce((count, pool) => count + pool.runnerNames.length, 0),
+    validatedOrganizations: report.validation.registrationTokenOrganizations.length,
+    drains: report.drains.length
+  }));
+
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
 async function auditLogCommand(args: string[]): Promise<void> {
@@ -1556,6 +1701,7 @@ function writeScaledPoolSizes(
 }
 
 type DrainPlane = "synology" | "linux-docker" | "windows-docker" | "lume";
+type TokenRotationPlane = Exclude<DrainPlane, "windows-docker">;
 
 interface DrainPoolDefinition {
   plane: DrainPlane;
@@ -1563,6 +1709,180 @@ interface DrainPoolDefinition {
   organization: string;
   runnerGroup: string;
   runnerNames: string[];
+}
+
+interface TokenRotationPoolDefinition {
+  plane: TokenRotationPlane;
+  key: string;
+  organization: string;
+  runnerGroup: string;
+  runnerNames: string[];
+}
+
+interface TokenRotationValidation {
+  runnerGroups: Awaited<ReturnType<typeof verifyRunnerGroups>>;
+  validatedOrganizations: string[];
+}
+
+function resolveNewTokenEnvName(args: string[]): string {
+  return getOption(
+    args,
+    "--new-token-env",
+    process.env.GITHUB_PAT_NEXT ? "GITHUB_PAT_NEXT" : "NEW_GITHUB_PAT"
+  )!;
+}
+
+function getRotationPlane(args: string[]): TokenRotationPlane | undefined {
+  const plane = getOption(args, "--plane") as TokenRotationPlane | undefined;
+  if (plane && !["synology", "linux-docker", "lume"].includes(plane)) {
+    throw new Error(`unknown rotate-token plane: ${plane}`);
+  }
+  return plane;
+}
+
+function collectTokenRotationDefinitions(
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>,
+  requestedPlane?: TokenRotationPlane
+): TokenRotationPoolDefinition[] {
+  const definitions: TokenRotationPoolDefinition[] = [];
+
+  if (shouldLoadDrainConfig(args, "--config", requestedPlane, "synology")) {
+    const configPath = getOption(args, "--config", "config/pools.yaml")!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadConfig(configPath, env);
+      emitWarnings(config);
+      definitions.push(
+        ...config.pools.map((pool) => ({
+          plane: "synology" as const,
+          key: pool.key,
+          organization: pool.organization,
+          runnerGroup: pool.runnerGroup,
+          runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+        }))
+      );
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--linux-config", requestedPlane, "linux-docker")) {
+    const configPath = getOption(
+      args,
+      "--linux-config",
+      "config/linux-docker-runners.yaml"
+    )!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadLinuxDockerConfig(configPath, env);
+      definitions.push(
+        ...config.pools.map((pool) => ({
+          plane: "linux-docker" as const,
+          key: pool.key,
+          organization: pool.organization,
+          runnerGroup: pool.runnerGroup,
+          runnerNames: buildIndexedRunnerNames(pool.key, 1, pool.size)
+        }))
+      );
+    }
+  }
+
+  if (shouldLoadDrainConfig(args, "--lume-config", requestedPlane, "lume")) {
+    const configPath = getOption(args, "--lume-config", "config/lume-runners.yaml")!;
+    if (fs.existsSync(path.resolve(configPath))) {
+      const config = loadLumeConfig(configPath, env);
+      definitions.push({
+        plane: "lume",
+        key: config.pool.key,
+        organization: config.pool.organization,
+        runnerGroup: config.pool.runnerGroup,
+        runnerNames: config.slots.map((slot) => slot.runnerName)
+      });
+    }
+  }
+
+  return definitions;
+}
+
+async function validateRegistrationTokenScopes(
+  apiUrl: string,
+  token: string,
+  definitions: TokenRotationPoolDefinition[]
+): Promise<string[]> {
+  const organizations = [...new Set(definitions.map((entry) => entry.organization))].sort();
+  for (const organization of organizations) {
+    await fetchRunnerToken(
+      buildRegistrationTokenRequest(apiUrl, organization, token),
+      undefined,
+      { plane: "rotate-token" }
+    );
+  }
+  return organizations;
+}
+
+function buildTokenRotationPlan(
+  dryRun: boolean,
+  tokenEnv: string,
+  definitions: TokenRotationPoolDefinition[],
+  validation: TokenRotationValidation
+) {
+  return {
+    dryRun,
+    tokenEnv,
+    validation: {
+      runnerGroups: validation.runnerGroups,
+      registrationTokenOrganizations: validation.validatedOrganizations
+    },
+    pools: definitions.map((definition) => ({
+      plane: definition.plane,
+      key: definition.key,
+      organization: definition.organization,
+      runnerGroup: definition.runnerGroup,
+      runnerNames: definition.runnerNames,
+      actions:
+        definition.plane === "lume"
+          ? [
+              "validated replacement PAT can mint registration tokens",
+              "no host restart required; Lume guests receive the configured PAT on each VM boot"
+            ]
+          : [
+              "validated replacement PAT can mint registration tokens",
+              "wait for configured runners to become idle and deregister each idle runner",
+              "redeploy the plane with the replacement PAT in the generated env file",
+              "verify the previous PAT is absent from regenerated project env files and replacement runners register"
+            ]
+    }))
+  };
+}
+
+async function withPatOverride<T>(
+  githubPat: string,
+  callback: () => T | Promise<T>
+): Promise<T> {
+  const previous = process.env.GITHUB_PAT;
+  process.env.GITHUB_PAT = githubPat;
+  try {
+    return await callback();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.GITHUB_PAT;
+    } else {
+      process.env.GITHUB_PAT = previous;
+    }
+  }
+}
+
+function writeTokenRotationAudit(
+  definitions: TokenRotationPoolDefinition[]
+): void {
+  for (const definition of definitions) {
+    for (const runnerName of definition.runnerNames) {
+      writeAuditRecord({
+        event: "runner_token_rotated",
+        runner_name: runnerName,
+        pool: definition.key,
+        plane: definition.plane,
+        org: definition.organization
+      });
+    }
+  }
 }
 
 async function drainBeforeTeardown(
@@ -2307,6 +2627,7 @@ function printUsage(): void {
   pnpm config-diff [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm drain-pool -- --pool synology-private [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--timeout 15m] [--interval 5] [--format text|json]
   pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
+  pnpm rotate-token [--plane synology|linux-docker|lume] [--pool synology-private] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--new-token-env NEW_GITHUB_PAT] [--dry-run|--apply] [--drain-timeout 15m] [--drain-interval 5]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]

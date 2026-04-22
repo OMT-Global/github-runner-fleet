@@ -40,6 +40,7 @@
     "test:coverage": "vitest run --coverage",
     "mutation-test": "stryker run",
     "prune-stale-runners": "tsx src/cli.ts prune-stale-runners",
+    "rotate-token": "tsx src/cli.ts rotate-token",
     "validate-config": "tsx src/cli.ts validate-config",
     "validate-linux-docker-config": "tsx src/cli.ts validate-linux-docker-config",
     "validate-linux-docker-github": "tsx src/cli.ts validate-linux-docker-github",
