@@ -176,6 +176,8 @@ run_smoke_case() {
 
   grep -q "POST /orgs/test-org/actions/runners/registration-token" "${LOG_DIR}/mock-api.log"
   grep -q "POST /orgs/test-org/actions/runners/remove-token" "${LOG_DIR}/mock-api.log"
+  grep -q -- "--token registration-token" "${state_dir}/config-invocations.log"
+  grep -q -- "remove --token remove-token" "${state_dir}/config-invocations.log"
   grep -q -- "--runnergroup synology-private --ephemeral --disableupdate" "${state_dir}/config-invocations.log"
   grep -q "config path: /tmp/runner-state/runner-home" "${state_dir}/config-context.log"
   grep -q "run path: /tmp/runner-state/runner-home" "${state_dir}/run-context.log"
