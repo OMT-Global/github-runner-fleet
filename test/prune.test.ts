@@ -162,6 +162,33 @@ describe("stale runner pruning", () => {
     ]);
     expect(report.stale.map((runner) => runner.name)).toEqual(["old-runner"]);
   });
+
+  test("reports none when GitHub returns no expected runner groups", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ runner_groups: [] }))
+      .mockResolvedValueOnce(jsonResponse({ runners: [] }));
+
+    await expect(
+      pruneStaleRunners({
+        apiUrl: "https://api.github.test",
+        token: "token",
+        pools: [
+          {
+            plane: "synology",
+            key: "synology-private",
+            organization: "example",
+            runnerGroup: "synology-private",
+            runnerNames: ["synology-private-runner-01"]
+          }
+        ],
+        apply: false,
+        fetchImpl
+      })
+    ).rejects.toThrow(
+      "pool synology-private expects runner group synology-private in organization example, but GitHub returned: none"
+    );
+  });
 });
 
 function runnerGroups() {
