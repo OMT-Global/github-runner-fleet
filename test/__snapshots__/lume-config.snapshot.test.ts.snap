@@ -7,6 +7,7 @@ exports[`loadLumeConfig snapshots > locks the full Lume runner manifest 1`] = `
     "configPath": "<fixture>/lume-runners.yaml",
     "envFile": "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
     "ipswPath": "/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw",
+    "reconcileStateFile": "/Users/tester/Library/Application Support/github-runner-fleet/lume/reconcile-state.json",
   },
   "pool": {
     "cpu": 6,

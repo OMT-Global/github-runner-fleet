@@ -56,6 +56,9 @@ pool:
     expect(config.host.ipswPath).toBe(
       "/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw"
     );
+    expect(config.host.reconcileStateFile).toBe(
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/reconcile-state.json"
+    );
   });
 
   test("renders shell exports for a specific slot", () => {
@@ -81,6 +84,9 @@ pool:
     expect(shellExports).toContain("export RUNNER_NAME='macos-runner-slot-01'");
     expect(shellExports).toContain(
       "export LUME_HOST_IPSW_PATH='/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw'"
+    );
+    expect(shellExports).toContain(
+      "export LUME_RECONCILE_STATE_FILE='/Users/tester/Library/Application Support/github-runner-fleet/lume/reconcile-state.json'"
     );
     expect(shellExports).toContain(
       "export RUNNER_LABELS='self-hosted,macos,arm64,private'"
