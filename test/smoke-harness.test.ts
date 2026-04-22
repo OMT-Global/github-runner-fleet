@@ -80,6 +80,7 @@ describe("runner registration smoke harness", () => {
     const workDir = path.join(tempRoot, "_work");
     fs.mkdirSync(runnerHome, { recursive: true });
     fs.mkdirSync(workDir, { recursive: true });
+    const resolvedRunnerHome = fs.realpathSync(runnerHome);
 
     const env = {
       ...process.env,
@@ -129,7 +130,9 @@ describe("runner registration smoke harness", () => {
     expect(fs.readFileSync(path.join(tempRoot, "config-invocations.log"), "utf8"))
       .toContain("remove --token remove-token");
     expect(fs.readFileSync(path.join(tempRoot, "config-context.log"), "utf8"))
-      .toContain("config path: " + runnerHome);
+      .toContain("config path: " + resolvedRunnerHome);
+    expect(fs.readFileSync(path.join(tempRoot, "run-context.log"), "utf8"))
+      .toContain("run path: " + resolvedRunnerHome);
     expect(fs.readFileSync(path.join(tempRoot, "run-context.log"), "utf8"))
       .toContain("run mode: runner");
     expect(fs.existsSync(path.join(runnerHome, ".runner"))).toBe(true);
