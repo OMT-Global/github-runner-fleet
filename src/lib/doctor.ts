@@ -10,6 +10,10 @@ import {
 import { log, type LogLevel } from "./logger.js";
 import { loadLumeConfig } from "./lume-config.js";
 import {
+  defaultLumeProjectResultPath,
+  loadLumeProjectResult
+} from "./lume-project.js";
+import {
   doctorCheckResult,
   emitMetrics,
   poolSlotCount,
@@ -344,6 +348,36 @@ async function runLumeDoctor(input: {
           detail: `${config.host.envFile} does not exist yet`
         }
   );
+
+  const projectResultPath = defaultLumeProjectResultPath(config);
+  const projectResult = loadLumeProjectResult(projectResultPath);
+  if (projectResult) {
+    const healthy =
+      projectResult.action === "install" &&
+      (projectResult.status === "started" ||
+        projectResult.status === "already-running");
+    checks.push({
+      id: "lume-project-result",
+      target: "lume",
+      status: healthy ? "pass" : "warn",
+      summary: `latest Lume project result action=${projectResult.action} status=${projectResult.status}`,
+      detail: `recorded ${projectResult.recordedAt} at ${projectResult.resultPath}`,
+      data: {
+        pool: {
+          key: projectResult.pool.key,
+          size: projectResult.pool.size
+        }
+      }
+    });
+  } else {
+    checks.push({
+      id: "lume-project-result",
+      target: "lume",
+      status: "warn",
+      summary: "Lume project result artifact is missing",
+      detail: `run install-lume-project to create ${projectResultPath}`
+    });
+  }
 
   if (!input.env.githubPat) {
     checks.push({

@@ -193,6 +193,10 @@ jobs:
           cp .env.example /tmp/lume.env
           pnpm validate-lume-config -- --config config/lume-runners.yaml --env /tmp/lume.env
           pnpm render-lume-runner-manifest -- --config config/lume-runners.yaml --env /tmp/lume.env --slot 1
+      - name: Exercise Lume project lifecycle
+        run: |
+          pnpm install-lume-project -- --lume-config config/lume-runners.yaml --env /tmp/lume.env --format json --status-output /tmp/lume-project-result.json --dry-run
+          pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env /tmp/lume.env --format json --status-output /tmp/lume-project-result.json --dry-run
       - name: Validate Lume shell scripts
         run: |
           bash -n scripts/lib/github-runner-common.sh

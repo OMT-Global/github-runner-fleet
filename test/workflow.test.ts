@@ -267,6 +267,9 @@ describe("CI workflow", () => {
     const renderStep = steps.find(
       (step) => step.name === "Render Lume runner manifest"
     );
+    const lifecycleStep = steps.find(
+      (step) => step.name === "Exercise Lume project lifecycle"
+    );
     const syntaxStep = steps.find(
       (step) => step.name === "Validate Lume shell scripts"
     );
@@ -274,6 +277,8 @@ describe("CI workflow", () => {
     expect(lumeJob["runs-on"]).toBe("macos-latest");
     expect(String(renderStep?.run)).toContain("pnpm validate-lume-config");
     expect(String(renderStep?.run)).toContain("pnpm render-lume-runner-manifest");
+    expect(String(lifecycleStep?.run)).toContain("pnpm install-lume-project");
+    expect(String(lifecycleStep?.run)).toContain("pnpm teardown-lume-project");
     expect(String(syntaxStep?.run)).toContain("bash -n scripts/guest/macos-runner-bootstrap.sh");
     expect(String(syntaxStep?.run)).toContain("bash -n scripts/lume/reconcile-pool.sh");
   });

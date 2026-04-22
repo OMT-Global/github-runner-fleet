@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
@@ -35,6 +35,15 @@ import {
   loadLumeConfig,
   renderLumeShellExports
 } from "./lib/lume-config.js";
+import {
+  buildLumeProjectResult,
+  defaultLumeProjectLogFile,
+  defaultLumeProjectPidFile,
+  defaultLumeProjectResultPath,
+  formatLumeProjectResultText,
+  saveLumeProjectResult,
+  type LumeProjectResult
+} from "./lib/lume-project.js";
 import { renderDoctorReport, runDoctor, type DoctorMode } from "./lib/doctor.js";
 import {
   collectGitHubActualPoolState,
@@ -151,6 +160,12 @@ export async function main(
       break;
     case "render-lume-runner-manifest":
       await renderLumeRunnerManifest(args);
+      break;
+    case "install-lume-project":
+      await installLumeProject(args);
+      break;
+    case "teardown-lume-project":
+      await teardownLumeProject(args);
       break;
     default:
       printUsage();
@@ -1083,6 +1098,111 @@ async function renderLumeRunnerManifest(args: string[]): Promise<void> {
   process.stdout.write(`${JSON.stringify(config, null, 2)}\n`);
 }
 
+async function installLumeProject(args: string[]): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const format = getLumeProjectFormat(args);
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: !dryRun
+  });
+  const configPath = getLumeConfigPath(args);
+  const config = loadLumeConfig(configPath, env);
+  const resultPath = getOption(
+    args,
+    "--status-output",
+    defaultLumeProjectResultPath(config)
+  )!;
+  let status: LumeProjectResult["status"] = "dry-run";
+  let supervisorPid: number | undefined;
+
+  if (!dryRun) {
+    const existingPid = readPidFile(defaultLumeProjectPidFile(config));
+    if (existingPid && isProcessRunning(existingPid)) {
+      status = "already-running";
+      supervisorPid = existingPid;
+    } else {
+      supervisorPid = startLumeSupervisor(configPath, getOption(args, "--env", ".env")!, config);
+      status = "started";
+    }
+  }
+
+  const result = buildLumeProjectResult({
+    action: "install",
+    status,
+    config,
+    resultPath,
+    supervisorPid
+  });
+  saveLumeProjectResult(result);
+  writeLumeProjectResult(result, format);
+}
+
+async function teardownLumeProject(args: string[]): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const format = getLumeProjectFormat(args);
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: !dryRun
+  });
+  const configPath = getLumeConfigPath(args);
+  const config = loadLumeConfig(configPath, env);
+  const resultPath = getOption(
+    args,
+    "--status-output",
+    defaultLumeProjectResultPath(config)
+  )!;
+  let drain: LumeProjectResult["drain"];
+
+  if (!dryRun) {
+    const drainReport = await drainRunnerPool({
+      apiUrl: env.githubApiUrl,
+      token: env.githubPat!,
+      organization: config.pool.organization,
+      runnerGroup: config.pool.runnerGroup,
+      poolKey: config.pool.key,
+      runnerNames: config.slots.map((slot) => slot.runnerName),
+      timeoutSeconds: parseDurationSeconds(
+        getOption(args, "--drain-timeout", getOption(args, "--timeout", "300"))!,
+        "--drain-timeout"
+      ),
+      intervalSeconds: parseDurationSeconds(
+        getOption(args, "--drain-interval", getOption(args, "--interval", "5"))!,
+        "--drain-interval"
+      ),
+      onProgress: (progress) => writeDrainProgress("lume", progress)
+    });
+
+    if (drainReport.status === "timeout") {
+      throw new Error(
+        `timed out waiting for ${drainReport.busy.join(", ")} to become idle before tearing down ${config.pool.key}`
+      );
+    }
+
+    drain = {
+      status: drainReport.status,
+      cordoned: drainReport.cordoned,
+      busy: drainReport.busy,
+      missing: drainReport.missing
+    };
+    stopLumeSupervisor(config);
+    for (const slot of config.slots) {
+      stopLumeWorker(slot.workerPidFile);
+      runLumeSlotTeardown(configPath, getOption(args, "--env", ".env")!, slot.index);
+      fs.rmSync(slot.hostDir, { recursive: true, force: true });
+    }
+  }
+
+  const result = buildLumeProjectResult({
+    action: "teardown",
+    status: dryRun ? "dry-run" : "stopped",
+    config,
+    resultPath,
+    drain
+  });
+  saveLumeProjectResult(result);
+  writeLumeProjectResult(result, format);
+}
+
 function getConfigAgeSeconds(configPath: string): number {
   const stats = fs.statSync(path.resolve(configPath));
   return Math.max(0, Math.floor((Date.now() - stats.mtimeMs) / 1000));
@@ -1372,6 +1492,22 @@ function getDoctorMode(args: string[]): DoctorMode {
   return "full";
 }
 
+function getLumeConfigPath(args: string[]): string {
+  return getOption(
+    args,
+    "--lume-config",
+    getOption(args, "--config", "config/lume-runners.yaml")
+  )!;
+}
+
+function getLumeProjectFormat(args: string[]): "json" | "text" {
+  const format = getOption(args, "--format", "text")!;
+  if (format !== "json" && format !== "text") {
+    throw new Error(`unknown Lume project format: ${format}`);
+  }
+  return format;
+}
+
 function getOption(
   args: string[],
   flag: string,
@@ -1554,6 +1690,107 @@ function runWindowsDockerInstall(
   }
 }
 
+function startLumeSupervisor(
+  configPath: string,
+  envPath: string,
+  config: ReturnType<typeof loadLumeConfig>
+): number {
+  const pidFile = defaultLumeProjectPidFile(config);
+  const logFile = defaultLumeProjectLogFile(config);
+  fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+
+  const output = fs.openSync(logFile, "a");
+  const child = spawn(
+    "bash",
+    [
+      path.resolve("scripts/lume/reconcile-pool.sh"),
+      "--config",
+      path.resolve(configPath),
+      "--env",
+      path.resolve(envPath)
+    ],
+    {
+      detached: true,
+      env: process.env,
+      stdio: ["ignore", output, output]
+    }
+  );
+  if (!child.pid) {
+    fs.closeSync(output);
+    throw new Error("failed to start Lume project supervisor");
+  }
+  child.unref();
+  fs.closeSync(output);
+  fs.writeFileSync(pidFile, `${child.pid}\n`, "utf8");
+  return child.pid;
+}
+
+function stopLumeSupervisor(config: ReturnType<typeof loadLumeConfig>): void {
+  const pidFile = defaultLumeProjectPidFile(config);
+  const pid = readPidFile(pidFile);
+  if (pid && isProcessRunning(pid)) {
+    process.kill(pid, "SIGTERM");
+  }
+  fs.rmSync(pidFile, { force: true });
+}
+
+function stopLumeWorker(pidFile: string): void {
+  const pid = readPidFile(pidFile);
+  if (pid && isProcessRunning(pid)) {
+    process.kill(pid, "SIGTERM");
+  }
+  fs.rmSync(pidFile, { force: true });
+}
+
+function runLumeSlotTeardown(
+  configPath: string,
+  envPath: string,
+  slotIndex: number
+): void {
+  runCommand(
+    "bash",
+    [
+      path.resolve("scripts/lume/destroy-slot.sh"),
+      "--slot",
+      String(slotIndex),
+      "--config",
+      path.resolve(configPath),
+      "--env",
+      path.resolve(envPath)
+    ],
+    `failed to tear down Lume slot ${slotIndex}`
+  );
+}
+
+function readPidFile(pidFile: string): number | undefined {
+  if (!fs.existsSync(pidFile)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function writeLumeProjectResult(
+  result: LumeProjectResult,
+  format: "json" | "text"
+): void {
+  process.stdout.write(
+    format === "json"
+      ? `${JSON.stringify(result, null, 2)}\n`
+      : formatLumeProjectResultText(result)
+  );
+}
+
 function runCommand(
   command: string,
   args: string[],
@@ -1624,6 +1861,8 @@ function printUsage(): void {
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]
   pnpm validate-lume-github [--config config/lume-runners.yaml] [--env .env]
   pnpm render-lume-runner-manifest [--config config/lume-runners.yaml] [--env .env] [--slot 1] [--format json|shell]
+  pnpm install-lume-project [--lume-config config/lume-runners.yaml] [--env .env] [--format text|json] [--status-output path] [--dry-run]
+  pnpm teardown-lume-project [--lume-config config/lume-runners.yaml] [--env .env] [--format text|json] [--status-output path] [--drain-timeout 15m] [--dry-run]
 `);
 }
 
