@@ -339,7 +339,7 @@ bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env
 ```
 
-Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image.
+Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. If you want the macOS/base-image pipeline to stay pinned to a specific GitHub Actions runner build, set `pool.runnerVersion` in `config/lume-runners.yaml`; otherwise it falls back to `RUNNER_VERSION` from the env file.
 
 `create-base-vm.sh` now caches the macOS IPSW under `LUME_RUNNER_BASE_DIR/cache/` by default so rebuilding the base image does not re-download the restore image every time. Override that path with `LUME_RUNNER_IPSW_PATH` if you want the cache elsewhere. If unattended setup drifts or gets interrupted, rerun `scripts/lume/setup-base-vm.sh` against the existing base VM instead of deleting and recreating it.
 

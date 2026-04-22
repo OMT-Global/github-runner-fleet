@@ -61,6 +61,30 @@ pool:
     );
   });
 
+  test("prefers a runner version pinned in lume config over the env default", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "lume-runners.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+pool:
+  key: macos-private
+  size: 1
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+  runnerVersion: 2.340.0
+`,
+      "utf8"
+    );
+
+    const config = loadLumeConfig(configPath, deploymentEnv());
+    const shellExports = renderLumeShellExports(config, 1);
+
+    expect(config.pool.runnerVersion).toBe("2.340.0");
+    expect(shellExports).toContain("export RUNNER_VERSION='2.340.0'");
+  });
+
   test("renders shell exports for a specific slot", () => {
     const directory = createTempDir();
     const configPath = path.join(directory, "lume-runners.yaml");
