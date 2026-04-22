@@ -361,7 +361,8 @@ async function scaleCommand(args: string[]): Promise<void> {
   const report = {
     dryRun,
     cooldownElapsedSeconds,
-    pools: decisions
+    pools: decisions,
+    drains: [] as DrainReport[]
   };
 
   if (dryRun || decisions.every((decision) => decision.action === "none")) {
@@ -382,7 +383,7 @@ async function scaleCommand(args: string[]): Promise<void> {
     (entry) => entry.action === "scale-down"
   )) {
     const pool = config.pools.find((entry) => entry.key === decision.poolKey)!;
-    const report = await drainRunnerPool({
+    const drainReport = await drainRunnerPool({
       apiUrl: env.githubApiUrl,
       token: env.githubPat!,
       organization: pool.organization,
@@ -396,9 +397,10 @@ async function scaleCommand(args: string[]): Promise<void> {
       timeoutSeconds: drainTimeoutSeconds,
       intervalSeconds: drainIntervalSeconds
     });
-    if (report.status === "timeout") {
+    report.drains.push(drainReport);
+    if (drainReport.status === "timeout") {
       throw new Error(
-        `timed out waiting for ${report.busy.join(", ")} to become idle before scaling ${pool.key} down`
+        `timed out waiting for ${drainReport.busy.join(", ")} to become idle before scaling ${pool.key} down`
       );
     }
   }
