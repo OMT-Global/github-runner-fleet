@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  collectGitHubActualRunnerState,
+  compareDesiredActualRunners,
   collectGitHubActualPoolState,
   compareDesiredActualPools,
   desiredPoolsFromConfig
@@ -182,5 +184,140 @@ describe("drift detection", () => {
         fetchMock
       )
     ).resolves.toEqual([{ name: "synology-private", actual: 1 }]);
+  });
+
+  test("diffs missing, stale, and changed runner registrations", () => {
+    expect(
+      compareDesiredActualRunners(
+        [
+          {
+            plane: "synology",
+            poolKey: "synology-private",
+            organization: "example",
+            name: "synology-private-runner-01",
+            runnerGroup: "synology-private",
+            labels: ["synology", "shell-only", "private"]
+          },
+          {
+            plane: "synology",
+            poolKey: "synology-private",
+            organization: "example",
+            name: "synology-private-runner-02",
+            runnerGroup: "synology-private",
+            labels: ["synology", "shell-only", "private"]
+          }
+        ],
+        [
+          {
+            id: 1,
+            organization: "example",
+            name: "synology-private-runner-01",
+            runnerGroup: "wrong-group",
+            labels: ["self-hosted", "synology", "private", "old-label"],
+            status: "online"
+          },
+          {
+            id: 3,
+            organization: "example",
+            name: "synology-private-runner-old",
+            runnerGroup: "synology-private",
+            labels: ["self-hosted", "synology", "private"],
+            status: "offline"
+          }
+        ]
+      )
+    ).toEqual({
+      inSync: false,
+      added: [
+        {
+          organization: "example",
+          name: "synology-private-runner-02",
+          plane: "synology",
+          poolKey: "synology-private",
+          runnerGroup: "synology-private",
+          labels: ["private", "shell-only", "synology"]
+        }
+      ],
+      removed: [
+        {
+          id: 3,
+          organization: "example",
+          name: "synology-private-runner-old",
+          runnerGroup: "synology-private",
+          labels: ["private", "self-hosted", "synology"],
+          status: "offline"
+        }
+      ],
+      changed: [
+        {
+          organization: "example",
+          name: "synology-private-runner-01",
+          plane: "synology",
+          poolKey: "synology-private",
+          runnerGroup: "synology-private",
+          labels: ["private", "shell-only", "synology"],
+          actualRunnerGroup: "wrong-group",
+          actualLabels: ["old-label", "private", "self-hosted", "synology"],
+          missingLabels: ["shell-only"],
+          unexpectedLabels: ["old-label"]
+        }
+      ]
+    });
+  });
+
+  test("collects registered runners with runner group names for config diff", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runner_groups: [{ id: 10, name: "synology-private" }]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            runners: [
+              {
+                id: 1,
+                name: "synology-private-runner-01",
+                status: "online",
+                runner_group_id: 10,
+                labels: [{ name: "self-hosted" }, { name: "synology" }]
+              }
+            ]
+          })
+      });
+
+    await expect(
+      collectGitHubActualRunnerState(
+        "https://api.github.com",
+        "secret",
+        [
+          {
+            plane: "synology",
+            poolKey: "synology-private",
+            organization: "example",
+            name: "synology-private-runner-01",
+            runnerGroup: "synology-private",
+            labels: ["synology"]
+          }
+        ],
+        fetchMock
+      )
+    ).resolves.toEqual([
+      {
+        id: 1,
+        organization: "example",
+        name: "synology-private-runner-01",
+        runnerGroup: "synology-private",
+        labels: ["self-hosted", "synology"],
+        status: "online"
+      }
+    ]);
   });
 });
