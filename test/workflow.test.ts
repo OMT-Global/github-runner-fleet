@@ -24,7 +24,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Run mutation tests"
     );
     const artifactStep = steps.find(
-      (step) => step.uses === "actions/upload-artifact@v6"
+      (step) => step.uses === "actions/upload-artifact@v7"
     );
 
     expect(mutationJob["runs-on"]).toEqual([
