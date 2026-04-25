@@ -12,6 +12,17 @@ STDOUT_PATH="${LOG_DIR}/lume-pool.stdout.log"
 STDERR_PATH="${LOG_DIR}/lume-pool.stderr.log"
 DOMAIN_TARGET="gui/$(id -u)"
 
+usage() {
+  cat <<EOF
+Usage: $(basename "$0")
+
+Install and kickstart the per-user launch agent that reconciles the Lume pool.
+
+This script writes:
+  ${PLIST_PATH}
+EOF
+}
+
 require_command() {
   local command_name="$1"
 
@@ -69,6 +80,20 @@ EOF
 
 main() {
   local rtk_path
+
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      -h|--help)
+        usage
+        return 0
+        ;;
+      *)
+        usage >&2
+        echo "unknown argument: $1" >&2
+        return 1
+        ;;
+    esac
+  fi
 
   require_command launchctl
   require_command plutil

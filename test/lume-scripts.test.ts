@@ -16,7 +16,8 @@ describe("Lume pool scripts", () => {
 
     expect(createSlot).toContain('lume clone "${LUME_VM_BASE_NAME}" "${LUME_VM_NAME}"');
     expect(createSlot).toContain('lume set "${LUME_VM_NAME}" --cpu "${LUME_VM_CPU}"');
-    expect(createSlot).toContain('nohup lume run "${LUME_VM_NAME}" --no-display');
+    expect(createSlot).toContain('spawn_detached');
+    expect(createSlot).toContain('lume run "${LUME_VM_NAME}" --no-display');
     expect(destroySlot).toContain('lume stop "${LUME_VM_NAME}"');
     expect(destroySlot).toContain('lume delete "${LUME_VM_NAME}" --force');
     expect(runSlot).toContain("uploading guest bootstrap assets");
@@ -25,7 +26,10 @@ describe("Lume pool scripts", () => {
     expect(reconcile).toContain("retire_removed_slots_from_state");
     expect(reconcile).toContain("write_reconcile_state");
     expect(reconcile).toContain('reconcile_state_file="${LUME_RECONCILE_STATE_FILE}"');
-    expect(reconcile).toContain('nohup "${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
+    expect(reconcile).toContain('spawn_detached');
+    expect(reconcile).toContain('"${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
+    expect(read("scripts/lume/lib.sh")).toContain("default_guest_runner_path");
+    expect(read("scripts/lume/lib.sh")).toContain("RUNNER_PATH=${runner_path}");
     expect(createBase).toContain('unattended="$(default_lume_unattended_path)"');
     expect(createBase).toContain('ipsw="$(ensure_cached_lume_ipsw "$(resolve_lume_ipsw_path)")"');
     expect(setupBase).toContain('lume stop "${LUME_VM_BASE_NAME}"');
@@ -43,6 +47,27 @@ describe("Lume pool scripts", () => {
     expect(installLaunchDaemons).toContain('launchctl bootstrap system "${plist_path}"');
   });
 
+  test("documents operator-facing lume script usage", () => {
+    const scriptPaths = [
+      "scripts/lume/create-base-vm.sh",
+      "scripts/lume/create-slot.sh",
+      "scripts/lume/destroy-slot.sh",
+      "scripts/lume/install-launch-agent.sh",
+      "scripts/lume/install-system-launch-daemons.sh",
+      "scripts/lume/provision-base-vm.sh",
+      "scripts/lume/reconcile-pool.sh",
+      "scripts/lume/run-slot.sh",
+      "scripts/lume/setup-base-vm.sh",
+      "scripts/lume/status.sh",
+    ];
+
+    for (const relativePath of scriptPaths) {
+      const script = read(relativePath);
+      expect(script, `${relativePath} should define usage text`).toContain("Usage:");
+      expect(script, `${relativePath} should accept --help`).toMatch(/-h\|--help/);
+    }
+  });
+
   test("bootstraps ephemeral macOS runners inside guest VMs", () => {
     const bootstrap = read("scripts/guest/macos-runner-bootstrap.sh");
     const helper = read("scripts/lib/github-runner-common.sh");
@@ -50,6 +75,8 @@ describe("Lume pool scripts", () => {
     expect(bootstrap).toContain("actions-runner-osx-arm64-${RUNNER_VERSION}.tar.gz");
     expect(bootstrap).toContain("--ephemeral");
     expect(bootstrap).toContain("--disableupdate");
+    expect(bootstrap).toContain('if [[ ! -f "${RUNNER_ROOT}/.runner" ]]');
+    expect(bootstrap).toContain('export PATH="${RUNNER_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin}"');
     expect(bootstrap).toContain('cleanup_runner_registration');
     expect(helper).toContain("github_runner_endpoint_base");
     expect(helper).toContain("request_runner_token");

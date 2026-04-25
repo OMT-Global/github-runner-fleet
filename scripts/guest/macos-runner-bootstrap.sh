@@ -48,6 +48,12 @@ prepare_runner_home() {
 }
 
 cleanup_runner() {
+  if [[ ! -f "${RUNNER_ROOT}/.runner" ]]; then
+    log "runner registration already removed by ephemeral listener"
+    cleanup_local_state
+    return 0
+  fi
+
   cleanup_runner_registration "cd '${RUNNER_ROOT}' && ./config.sh remove --token \"\${RUNNER_REMOVE_TOKEN}\""
 }
 
@@ -68,6 +74,8 @@ require_env RUNNER_NAME
 require_env RUNNER_ROOT
 require_env RUNNER_WORK_DIR
 require_env RUNNER_VERSION
+
+export PATH="${RUNNER_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin}"
 
 prepare_runner_home
 cleanup_local_state

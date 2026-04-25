@@ -4,11 +4,28 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
 
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Continuously reconcile the configured Lume slot worker pool.
+
+Options:
+  --config PATH  Runner config file (default: $(default_lume_config_path))
+  --env PATH     Env file with GitHub/Lume settings (default: $(default_lume_env_path))
+  -h, --help     Show this help text
+EOF
+}
+
 config_path="$(default_lume_config_path)"
 env_path="$(default_lume_env_path)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --config)
       config_path="$2"
       shift 2
@@ -18,6 +35,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
+      usage >&2
       echo "unknown argument: $1" >&2
       exit 1
       ;;
@@ -183,9 +201,12 @@ while true; do
     fi
 
     log "starting slot worker ${slot} (${LUME_VM_NAME})"
-    nohup "${SCRIPT_DIR}/run-slot.sh" --slot "${slot}" --config "${config_path}" --env "${env_path}" \
-      >> "${LUME_SLOT_LOG_FILE}" 2>&1 &
-    echo $! > "${LUME_SLOT_WORKER_PID_FILE}"
+    worker_pid="$(
+      spawn_detached \
+        "${LUME_SLOT_LOG_FILE}" \
+        "${SCRIPT_DIR}/run-slot.sh" --slot "${slot}" --config "${config_path}" --env "${env_path}"
+    )"
+    echo "${worker_pid}" > "${LUME_SLOT_WORKER_PID_FILE}"
     write_slot_state_record "${state_records_file}"
   done
 

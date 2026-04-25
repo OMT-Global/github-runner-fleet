@@ -4,12 +4,30 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
 
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") --slot N [options]
+
+Stop and delete one Lume slot VM and clear its tracked VM PID file.
+
+Options:
+  --slot N       Slot number to destroy
+  --config PATH  Runner config file (default: $(default_lume_config_path))
+  --env PATH     Env file with GitHub/Lume settings (default: $(default_lume_env_path))
+  -h, --help     Show this help text
+EOF
+}
+
 slot=""
 config_path="$(default_lume_config_path)"
 env_path="$(default_lume_env_path)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --slot)
       slot="$2"
       shift 2
@@ -23,6 +41,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
+      usage >&2
       echo "unknown argument: $1" >&2
       exit 1
       ;;
@@ -30,6 +49,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${slot}" ]]; then
+  usage >&2
   echo "--slot is required" >&2
   exit 1
 fi
