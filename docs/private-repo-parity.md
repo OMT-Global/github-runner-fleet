@@ -5,7 +5,7 @@ This guide answers two operator questions:
 1. Where should a given GitHub Actions job run?
 2. What still needs GitHub-hosted runners after the self-hosted planes are in place?
 
-Use it alongside `pnpm doctor`, the main [README](../README.md), and the open backlog for gaps that are still intentionally unresolved.
+Use it alongside `pnpm doctor`, `pnpm synology-status`, `pnpm linux-docker-status`, the main [README](../README.md), and the open backlog for gaps that are still intentionally unresolved.
 
 ## Current Runner Classes
 
@@ -23,7 +23,7 @@ These are the main places where GitHub-hosted runners still have broader surface
 - Broad Linux image/tooling coverage:
   even with the Linux Docker plane, GitHub-hosted runners still win when you need the full hosted image catalog without curating your own host baseline.
 - Self-hosted operator ergonomics:
-  the repo is adding better doctor/status surfaces, but GitHub-hosted still wins on out-of-the-box visibility.
+  the repo now has first-class doctor/status entrypoints for Synology and Linux Docker, but GitHub-hosted still wins on out-of-the-box visibility.
 - Public fork trust boundaries:
   keep untrusted PRs on GitHub-hosted runners unless a workflow has been designed very deliberately for that exposure model.
 

@@ -60,6 +60,10 @@ SYNOLOGY_HOST=nas.example.com
 SYNOLOGY_USERNAME=admin
 SYNOLOGY_PASSWORD=secret
 SYNOLOGY_RUNNER_BASE_DIR=${directory}/synology
+LINUX_DOCKER_HOST=docker.example.com
+LINUX_DOCKER_USERNAME=runner
+LINUX_DOCKER_PROJECT_DIR=${directory}/linux-docker
+LINUX_DOCKER_RUNNER_BASE_DIR=${directory}/linux-docker
 LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
 `,
@@ -83,6 +87,26 @@ pools:
     size: 1
     architecture: auto
     runnerRoot: \${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-private
+`,
+      "utf8"
+    );
+
+    const linuxDockerPath = path.join(directory, "linux-docker-runners.yaml");
+    fs.writeFileSync(
+      linuxDockerPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+  - key: linux-docker-private
+    organization: example
+    runnerGroup: linux-docker-private
+    repositoryAccess: all
+    labels: []
+    size: 1
+    architecture: amd64
+    runnerRoot: \${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-private
 `,
       "utf8"
     );
@@ -120,6 +144,12 @@ pool:
                 },
                 {
                   id: 2,
+                  name: "linux-docker-private",
+                  visibility: "selected",
+                  default: false
+                },
+                {
+                  id: 3,
                   name: "macos-private",
                   visibility: "selected",
                   default: false
@@ -155,6 +185,7 @@ pool:
       mode: "full",
       envPath,
       configPath: poolsPath,
+      linuxDockerConfigPath: linuxDockerPath,
       lumeConfigPath: lumePath,
       fetchImpl: fetchMock
     });
@@ -168,6 +199,14 @@ pool:
         }),
         expect.objectContaining({
           id: "synology-image",
+          status: "pass"
+        }),
+        expect.objectContaining({
+          id: "linux-docker-runner-groups",
+          status: "pass"
+        }),
+        expect.objectContaining({
+          id: "linux-docker-image",
           status: "pass"
         }),
         expect.objectContaining({
@@ -229,6 +268,7 @@ pool:
     expect(rendered).toContain("doctor mode: full");
     expect(rendered).toContain("PASS audit-log: audit log path");
     expect(rendered).toContain("PASS synology-image");
+    expect(rendered).toContain("PASS linux-docker-image");
     expect(rendered).toContain("overall: PASS");
   });
 
@@ -453,6 +493,70 @@ pools:
           status: "fail",
           summary: `failed to load ${poolsPath}`,
           detail: "pool synology-private runnerRoot must resolve to an absolute path"
+        })
+      ])
+    );
+  });
+
+  test("fails Linux Docker doctor when required env is missing and skips GitHub checks without a PAT", async () => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    fs.writeFileSync(
+      envPath,
+      `LINUX_DOCKER_PROJECT_DIR=${directory}/linux-docker
+LINUX_DOCKER_RUNNER_BASE_DIR=${directory}/linux-docker
+`,
+      "utf8"
+    );
+
+    const linuxDockerPath = path.join(directory, "linux-docker-runners.yaml");
+    fs.writeFileSync(
+      linuxDockerPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+  - key: linux-docker-private
+    organization: example
+    runnerGroup: linux-docker-private
+    repositoryAccess: all
+    labels: []
+    size: 1
+    architecture: amd64
+    runnerRoot: \${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-private
+`,
+      "utf8"
+    );
+
+    const report = await withEnv(
+      {
+        GITHUB_PAT: undefined,
+        GITHUB_TOKEN: undefined,
+        GH_TOKEN: undefined
+      },
+      () =>
+        runDoctor({
+          mode: "linux-docker",
+          envPath,
+          linuxDockerConfigPath: linuxDockerPath
+        })
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "linux-docker-env",
+          status: "fail"
+        }),
+        expect.objectContaining({
+          id: "linux-docker-runner-groups",
+          status: "skip"
+        }),
+        expect.objectContaining({
+          id: "linux-docker-image",
+          status: "skip"
         })
       ])
     );
