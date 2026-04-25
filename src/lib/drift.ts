@@ -1,5 +1,6 @@
 import type { PoolConfig } from "./config.js";
 import {
+  fetchOrganizationRunnerGroupRunners,
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
   type FetchLike
@@ -240,10 +241,12 @@ export async function collectGitHubActualPoolState(
   const poolsByOrganization = groupByOrganization(desiredPools);
 
   for (const [organization, pools] of poolsByOrganization.entries()) {
-    const [groups, runners] = await Promise.all([
-      fetchOrganizationRunnerGroups(apiUrl, organization, token, fetchImpl),
-      fetchOrganizationRunners(apiUrl, organization, token, fetchImpl)
-    ]);
+    const groups = await fetchOrganizationRunnerGroups(
+      apiUrl,
+      organization,
+      token,
+      fetchImpl
+    );
 
     for (const pool of pools) {
       const group = groups.find((entry) => entry.name === pool.runnerGroup);
@@ -254,12 +257,17 @@ export async function collectGitHubActualPoolState(
         );
       }
 
+      const runners = await fetchOrganizationRunnerGroupRunners(
+        apiUrl,
+        organization,
+        group.id,
+        token,
+        fetchImpl
+      );
+
       actualPools.push({
         name: pool.name,
-        actual: runners.filter(
-          (runner) =>
-            runner.runnerGroupId === group.id && runner.status === "online"
-        ).length
+        actual: runners.filter((runner) => runner.status === "online").length
       });
     }
   }
