@@ -14,6 +14,8 @@ Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Do
 - [Workflow cookbook](docs/workflow-cookbook.md)
 - [Linux Docker examples](docs/linux-docker-pool.md)
 - [Private-repo parity guide](docs/private-repo-parity.md)
+- [Tier A runner policy](docs/tier-a-runner-policy.md)
+- [Tier A rollout ledger](docs/tier-a-rollout-ledger.md)
 - [Release image flow](#publishing-a-release-image)
 - [Roadmap](ROADMAP.md)
 
