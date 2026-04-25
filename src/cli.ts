@@ -29,6 +29,11 @@ import {
   summarizeLinuxDockerInstallPlan
 } from "./lib/linux-docker-install.js";
 import { renderLinuxDockerCompose } from "./lib/linux-docker-compose.js";
+import {
+  buildLinuxDockerStatusReport,
+  formatLinuxDockerStatusText,
+  saveLinuxDockerResult
+} from "./lib/linux-docker-status.js";
 import { loadWindowsDockerConfig } from "./lib/windows-config.js";
 import {
   buildWindowsDockerInstallPlan,
@@ -77,6 +82,11 @@ import {
   buildSynologyInstallPlan,
   summarizeSynologyInstallPlan
 } from "./lib/synology-install.js";
+import {
+  buildSynologyStatusReport,
+  formatSynologyStatusText,
+  saveSynologyResult
+} from "./lib/synology-status.js";
 import { log, type LogFields, type LogLevel } from "./lib/logger.js";
 
 export async function main(
@@ -90,6 +100,12 @@ export async function main(
       break;
     case "doctor":
       await doctorCommand(args);
+      break;
+    case "synology-status":
+      await synologyStatusCommand(args);
+      break;
+    case "linux-docker-status":
+      await linuxDockerStatusCommand(args);
       break;
     case "drift-detect":
       await driftDetectCommand(args);
@@ -234,6 +250,11 @@ async function doctorCommand(args: string[]): Promise<void> {
     mode,
     envPath: getOption(args, "--env", ".env"),
     configPath: getOption(args, "--config", "config/pools.yaml"),
+    linuxDockerConfigPath: getOption(
+      args,
+      "--linux-docker-config",
+      "config/linux-docker-runners.yaml"
+    ),
     lumeConfigPath: getOption(args, "--lume-config", "config/lume-runners.yaml")
   });
 
@@ -246,6 +267,65 @@ async function doctorCommand(args: string[]): Promise<void> {
   }
 
   process.stdout.write(renderDoctorReport(report));
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
+}
+
+async function synologyStatusCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const format = getOption(args, "--format", "text");
+  const config = loadConfig(configPath!, env);
+  emitWarnings(config);
+  const compose = renderCompose(config, env);
+  const report = buildSynologyStatusReport({
+    config,
+    env,
+    composeContent: compose,
+    savedResultPath: getOption(args, "--result")
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else if (format === "text") {
+    process.stdout.write(formatSynologyStatusText(report));
+  } else {
+    throw new Error(`unknown synology-status format: ${format}`);
+  }
+
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
+}
+
+async function linuxDockerStatusCommand(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false
+  });
+  const configPath = getOption(args, "--config", "config/linux-docker-runners.yaml");
+  const format = getOption(args, "--format", "text");
+  const config = loadLinuxDockerConfig(configPath!, env);
+  const compose = renderLinuxDockerCompose(config, env);
+  const report = buildLinuxDockerStatusReport({
+    config,
+    env,
+    composeContent: compose,
+    savedResultPath: getOption(args, "--result")
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else if (format === "text") {
+    process.stdout.write(formatLinuxDockerStatusText(report));
+  } else {
+    throw new Error(`unknown linux-docker-status format: ${format}`);
+  }
+
   if (!report.ok) {
     process.exitCode = 1;
   }
@@ -987,6 +1067,7 @@ async function renderWindowsDockerProjectManifest(args: string[]): Promise<void>
 
 async function installSynologyProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const statusOutput = getOption(args, "--status-output");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
     requirePat: !dryRun
@@ -1023,12 +1104,16 @@ async function installSynologyProject(args: string[]): Promise<void> {
     pool: "all",
     dryRun: false
   }, () => {
-    runSynologyInstallPlan(plan, python);
+    const output = runSynologyInstallPlan(plan, python);
+    if (statusOutput) {
+      saveSynologyResult(statusOutput, "up", output);
+    }
   });
 }
 
 async function installLinuxDockerProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const statusOutput = getOption(args, "--status-output");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
     requirePat: !dryRun
@@ -1063,12 +1148,45 @@ async function installLinuxDockerProject(args: string[]): Promise<void> {
     pool: "all",
     dryRun: false
   }, () => {
-    runLinuxDockerInstall(plan);
+    try {
+      const composePsOutput = runLinuxDockerInstall(plan);
+      if (statusOutput) {
+        saveLinuxDockerResult(statusOutput, {
+          ok: true,
+          action: "up",
+          remoteLogPath: buildLinuxDockerRemoteLogPath(plan),
+          composePsOutput,
+          connection: plan.connection,
+          project: {
+            name: plan.project.name,
+            directory: plan.project.directory
+          },
+          options: { ...plan.options }
+        });
+      }
+    } catch (error) {
+      if (statusOutput) {
+        saveLinuxDockerResult(statusOutput, {
+          ok: false,
+          action: "up",
+          remoteLogPath: buildLinuxDockerRemoteLogPath(plan),
+          error: formatError(error),
+          connection: plan.connection,
+          project: {
+            name: plan.project.name,
+            directory: plan.project.directory
+          },
+          options: { ...plan.options }
+        });
+      }
+      throw error;
+    }
   });
 }
 
 async function teardownSynologyProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const statusOutput = getOption(args, "--status-output");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
     requirePat: !dryRun
@@ -1115,14 +1233,17 @@ async function teardownSynologyProject(args: string[]): Promise<void> {
     ]);
 
     const python = getOption(args, "--python", "python3")!;
-    runSynologyInstallPlan(plan, python);
+    const output = runSynologyInstallPlan(plan, python);
+    if (statusOutput) {
+      saveSynologyResult(statusOutput, "down", output);
+    }
   });
 }
 
 function runSynologyInstallPlan(
   plan: ReturnType<typeof buildSynologyInstallPlan>,
   python: string
-): void {
+): string {
   const scriptPath = path.resolve("scripts/install-synology-project.py");
   const result = spawnSync(python, [scriptPath], {
     input: JSON.stringify(plan),
@@ -1137,10 +1258,12 @@ function runSynologyInstallPlan(
   }
 
   process.stdout.write(result.stdout);
+  return result.stdout;
 }
 
 async function teardownLinuxDockerProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const statusOutput = getOption(args, "--status-output");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
     requirePat: !dryRun
@@ -1185,7 +1308,39 @@ async function teardownLinuxDockerProject(args: string[]): Promise<void> {
       }))
     ]);
 
-    runLinuxDockerInstall(plan);
+    try {
+      const composePsOutput = runLinuxDockerInstall(plan);
+      if (statusOutput) {
+        saveLinuxDockerResult(statusOutput, {
+          ok: true,
+          action: "down",
+          remoteLogPath: buildLinuxDockerRemoteLogPath(plan),
+          composePsOutput,
+          connection: plan.connection,
+          project: {
+            name: plan.project.name,
+            directory: plan.project.directory
+          },
+          options: { ...plan.options }
+        });
+      }
+    } catch (error) {
+      if (statusOutput) {
+        saveLinuxDockerResult(statusOutput, {
+          ok: false,
+          action: "down",
+          remoteLogPath: buildLinuxDockerRemoteLogPath(plan),
+          error: formatError(error),
+          connection: plan.connection,
+          project: {
+            name: plan.project.name,
+            directory: plan.project.directory
+          },
+          options: { ...plan.options }
+        });
+      }
+      throw error;
+    }
   });
 }
 
@@ -2306,6 +2461,7 @@ function getDoctorMode(args: string[]): DoctorMode {
   const optionFlags = new Set([
     "--env",
     "--config",
+    "--linux-docker-config",
     "--lume-config",
     "--format"
   ]);
@@ -2321,7 +2477,7 @@ function getDoctorMode(args: string[]): DoctorMode {
       continue;
     }
 
-    if (arg === "full" || arg === "synology" || arg === "lume") {
+    if (arg === "full" || arg === "synology" || arg === "linux-docker" || arg === "lume") {
       return arg;
     }
 
@@ -2400,19 +2556,20 @@ function parseDurationSeconds(value: string, optionName: string): number {
 
 function runLinuxDockerInstall(
   plan: ReturnType<typeof buildLinuxDockerInstallPlan>
-): void {
+): string {
   const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), "linux-docker-install-"));
   const composePath = path.join(stagingDir, plan.project.composeFileName);
   const envPath = path.join(stagingDir, plan.project.envFileName);
   const scriptPath = path.join(stagingDir, plan.project.deploymentScriptName);
   const remote = `${plan.connection.username}@${plan.connection.host}`;
+  let output = "";
 
   try {
     fs.writeFileSync(composePath, `${plan.composeContent}\n`, "utf8");
     fs.writeFileSync(envPath, plan.envFileContent, "utf8");
     fs.writeFileSync(scriptPath, plan.deploymentScript, "utf8");
 
-    runCommand(
+    output += runCommand(
       "ssh",
       [
         "-p",
@@ -2428,7 +2585,7 @@ function runLinuxDockerInstall(
       "failed to prepare remote Linux Docker host"
     );
 
-    runCommand(
+    output += runCommand(
       "scp",
       [
         "-P",
@@ -2441,7 +2598,7 @@ function runLinuxDockerInstall(
       "failed to upload Linux Docker project files"
     );
 
-    runCommand(
+    output += runCommand(
       "ssh",
       [
         "-p",
@@ -2460,6 +2617,8 @@ function runLinuxDockerInstall(
   } finally {
     fs.rmSync(stagingDir, { recursive: true, force: true });
   }
+
+  return output.trim();
 }
 
 function runWindowsDockerInstall(
@@ -2634,7 +2793,7 @@ function runCommand(
   command: string,
   args: string[],
   errorPrefix: string
-): void {
+): string {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     env: process.env
@@ -2651,6 +2810,8 @@ function runCommand(
   if (result.stdout) {
     process.stdout.write(result.stdout);
   }
+
+  return result.stdout ?? "";
 }
 
 function shellQuote(value: string): string {
@@ -2659,6 +2820,16 @@ function shellQuote(value: string): string {
 
 function shellEscapeRemotePath(value: string): string {
   return value.replace(/(["\\$`])/g, "\\$1");
+}
+
+function buildLinuxDockerRemoteLogPath(
+  plan: ReturnType<typeof buildLinuxDockerInstallPlan>
+): string {
+  return path.posix.join(plan.project.directory, "logs", plan.project.logFileName);
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function windowsRemotePath(value: string): string {
@@ -2671,7 +2842,9 @@ function powerShellQuote(value: string): string {
 
 function printUsage(): void {
   process.stderr.write(`Usage:
-  pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm doctor [full|synology|linux-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-docker-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm synology-status [--config config/pools.yaml] [--env .env] [--result .tmp/synology-status.json] [--format text|json]
+  pnpm linux-docker-status [--config config/linux-docker-runners.yaml] [--env .env] [--result .tmp/linux-docker-status.json] [--format text|json]
   pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm config-diff [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
@@ -2691,13 +2864,13 @@ function printUsage(): void {
   pnpm render-windows-compose [--config config/windows-runners.yaml] [--env .env] [--output docker-compose.windows.yml]
   pnpm render-windows-project-manifest [--config config/windows-runners.yaml] [--env .env]
   pnpm render-compose [--config config/pools.yaml] [--env .env] [--output docker-compose.generated.yml]
-  pnpm install-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run]
-  pnpm teardown-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--dry-run] [--drain] [--drain-timeout 15m]
+  pnpm install-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--status-output .tmp/linux-docker-status.json] [--dry-run]
+  pnpm teardown-linux-docker-project [--config config/linux-docker-runners.yaml] [--env .env] [--status-output .tmp/linux-docker-status.json] [--dry-run] [--drain] [--drain-timeout 15m]
   pnpm install-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run]
   pnpm teardown-windows-project [--config config/windows-runners.yaml] [--env .env] [--dry-run] [--drain] [--drain-timeout 15m]
   pnpm render-synology-project-manifest [--config config/pools.yaml] [--env .env]
-  pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--python python3]
-  pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--dry-run] [--drain] [--drain-timeout 15m] [--python python3]
+  pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--status-output .tmp/synology-status.json] [--dry-run] [--python python3]
+  pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--status-output .tmp/synology-status.json] [--dry-run] [--drain] [--drain-timeout 15m] [--python python3]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
   pnpm runner-release-manifest [--current 2.333.0] [--env .env]
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]
