@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-if [[ "${EUID}" -ne 0 ]]; then
-  echo "run as root: sudo $0" >&2
-  exit 1
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
@@ -21,18 +16,41 @@ POOL_PLIST_PATH="${DAEMON_DIR}/${POOL_LABEL}.plist"
 USER_LUME_AGENT_PATH="${TARGET_HOME}/Library/LaunchAgents/com.trycua.lume_daemon.plist"
 DISABLE_USER_LUME_AGENT="false"
 
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Install root-owned launchd services for Lume itself and the system-wide pool reconciler.
+
+Options:
+  --disable-user-lume-agent  Disable the per-user Lume launch agent if present
+  -h, --help                 Show this help text
+EOF
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --disable-user-lume-agent)
       DISABLE_USER_LUME_AGENT="true"
       shift
       ;;
     *)
+      usage >&2
       echo "unknown argument: $1" >&2
       exit 1
       ;;
   esac
 done
+
+if [[ "${EUID}" -ne 0 ]]; then
+  usage >&2
+  echo "run as root: sudo $0" >&2
+  exit 1
+fi
 
 require_command() {
   local command_name="$1"
