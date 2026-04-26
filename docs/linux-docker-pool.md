@@ -25,15 +25,19 @@ This plane exists for private-repo workflows that need real Linux Docker semanti
 ## Operator Commands
 
 ```bash
+pnpm doctor -- linux-docker --env .env --linux-docker-config config/linux-docker-runners.yaml
 pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env
 pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env
+pnpm linux-docker-status -- --config config/linux-docker-runners.yaml --env .env --result .tmp/linux-docker-status.json
 pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env .env --output docker-compose.linux-docker.yml
 pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env
-pnpm install-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
-pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env
+pnpm install-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env --status-output .tmp/linux-docker-status.json
+pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml --env .env --status-output .tmp/linux-docker-status.json
 ```
 
 `install-linux-docker-project` and `teardown-linux-docker-project` use `ssh` and `scp` to stage the compose project on `LINUX_DOCKER_HOST`, then run a generated deployment script on that host. Use SSH keys or agent forwarding; do not bake credentials into the runner image.
+
+Use `pnpm doctor -- linux-docker ...` for preflight validation and `pnpm linux-docker-status ...` to inspect the latest saved install or teardown result after a remote run.
 
 ## Example Workflow Placements
 
