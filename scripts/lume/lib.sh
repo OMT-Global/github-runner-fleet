@@ -17,6 +17,10 @@ default_lume_unattended_path() {
   printf '%s/scripts/lume/unattended-sequoia.yml' "${REPO_ROOT}"
 }
 
+default_guest_runner_path() {
+  printf '%s\n' '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin'
+}
+
 load_slot_env() {
   local slot="$1"
   local config_path="$2"
@@ -94,11 +98,16 @@ clone_args() {
 
 wait_for_ssh() {
   local attempt
+  local ssh_output
+  local ssh_exit
 
   for attempt in $(seq 1 60); do
-    if lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 10 "true" >/dev/null 2>&1; then
+    # Use 'if' to suppress set -e so a failed SSH attempt does not abort the loop.
+    if ssh_output="$(lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 10 "true" 2>&1)"; then
       return 0
     fi
+    ssh_exit=$?
+    log "wait_for_ssh attempt ${attempt}/60: exit=${ssh_exit} output=[${ssh_output}]"
     sleep 5
   done
 
@@ -129,8 +138,10 @@ upload_env_file() {
 render_guest_runner_env() {
   local env_path="$1"
   local temp_env
+  local runner_path
 
   temp_env="$(mktemp)"
+  runner_path="${RUNNER_PATH:-$(default_guest_runner_path)}"
   (
     set -a
     # shellcheck disable=SC1090
@@ -147,6 +158,7 @@ RUNNER_LABELS=${RUNNER_LABELS}
 RUNNER_NAME=${RUNNER_NAME}
 RUNNER_ROOT=${RUNNER_ROOT}
 RUNNER_WORK_DIR=${RUNNER_WORK_DIR}
+RUNNER_PATH=${runner_path}
 RUNNER_VERSION=${RUNNER_VERSION}
 RUNNER_DOWNLOAD_URL=${RUNNER_DOWNLOAD_URL:-}
 EOF
@@ -157,4 +169,36 @@ EOF
 
 vm_exists() {
   lume get "${LUME_VM_NAME}" --format json $(storage_args) >/dev/null 2>&1
+}
+
+spawn_detached() {
+  local log_path="$1"
+  shift
+
+  python3 - "${log_path}" "$@" <<'PY'
+import os
+import sys
+
+log_path = sys.argv[1]
+command = sys.argv[2:]
+
+pid = os.fork()
+if pid:
+    print(pid)
+    sys.exit(0)
+
+os.setsid()
+
+stdin_fd = os.open("/dev/null", os.O_RDONLY)
+log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+
+os.dup2(stdin_fd, 0)
+os.dup2(log_fd, 1)
+os.dup2(log_fd, 2)
+
+os.close(stdin_fd)
+os.close(log_fd)
+
+os.execvp(command[0], command)
+PY
 }

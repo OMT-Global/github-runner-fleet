@@ -4,6 +4,22 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
 
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Run unattended first-boot setup against the existing Lume base VM.
+
+Options:
+  --config PATH      Runner config file (default: $(default_lume_config_path))
+  --env PATH         Env file with GitHub/Lume settings (default: $(default_lume_env_path))
+  --unattended PATH  Unattended setup plist (default: $(default_lume_unattended_path))
+  --debug            Enable Lume setup debug output
+  --debug-dir PATH   Directory for Lume setup debug artifacts
+  -h, --help         Show this help text
+EOF
+}
+
 config_path="$(default_lume_config_path)"
 env_path="$(default_lume_env_path)"
 unattended="$(default_lume_unattended_path)"
@@ -12,6 +28,10 @@ debug_dir=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
     --config)
       config_path="$2"
       shift 2
@@ -33,6 +53,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
+      usage >&2
       echo "unknown argument: $1" >&2
       exit 1
       ;;
