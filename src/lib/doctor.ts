@@ -7,6 +7,7 @@ import {
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./github.js";
+import { loadLinuxDockerConfig } from "./linux-docker-config.js";
 import { log, type LogLevel } from "./logger.js";
 import { loadLumeConfig } from "./lume-config.js";
 import {
@@ -20,12 +21,12 @@ import {
   type MetricSample
 } from "./metrics.js";
 
-export type DoctorMode = "full" | "synology" | "lume";
+export type DoctorMode = "full" | "synology" | "linux-docker" | "lume";
 export type DoctorCheckStatus = "pass" | "warn" | "fail" | "skip";
 
 export interface DoctorCheck {
   id: string;
-  target: "synology" | "lume";
+  target: "synology" | "linux-docker" | "lume";
   status: DoctorCheckStatus;
   summary: string;
   detail?: string;
@@ -42,6 +43,7 @@ export interface RunDoctorOptions {
   mode?: DoctorMode;
   envPath?: string;
   configPath?: string;
+  linuxDockerConfigPath?: string;
   lumeConfigPath?: string;
   fetchImpl?: FetchLike;
 }
@@ -52,6 +54,8 @@ export async function runDoctor(
   const mode = options.mode ?? "full";
   const envPath = options.envPath ?? ".env";
   const configPath = options.configPath ?? "config/pools.yaml";
+  const linuxDockerConfigPath =
+    options.linuxDockerConfigPath ?? "config/linux-docker-runners.yaml";
   const lumeConfigPath = options.lumeConfigPath ?? "config/lume-runners.yaml";
   const fetchImpl = options.fetchImpl;
   const env = loadDeploymentEnv({
@@ -67,6 +71,15 @@ export async function runDoctor(
       fetchImpl
     });
     checks.push(...synologyChecks);
+  }
+
+  if (mode === "full" || mode === "linux-docker") {
+    const linuxDockerChecks = await runLinuxDockerDoctor({
+      env,
+      configPath: linuxDockerConfigPath,
+      fetchImpl
+    });
+    checks.push(...linuxDockerChecks);
   }
 
   if (mode === "full" || mode === "lume") {
@@ -247,6 +260,142 @@ async function runSynologyDoctor(input: {
     checks.push({
       id: "synology-image",
       target: "synology",
+      status: "fail",
+      summary: `failed image verification for ${imageRef}`,
+      detail: formatError(error)
+    });
+  }
+
+  return checks;
+}
+
+async function runLinuxDockerDoctor(input: {
+  env: ReturnType<typeof loadDeploymentEnv>;
+  configPath: string;
+  fetchImpl?: FetchLike;
+}): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+  const missingDeploymentEnv = [
+    ["GITHUB_PAT", input.env.githubPat],
+    ["LINUX_DOCKER_HOST", input.env.linuxDockerHost],
+    ["LINUX_DOCKER_USERNAME", input.env.linuxDockerUsername]
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  checks.push(
+    missingDeploymentEnv.length === 0
+      ? {
+          id: "linux-docker-env",
+          target: "linux-docker",
+          status: "pass",
+          summary: "required Linux Docker deployment env is configured"
+        }
+      : {
+          id: "linux-docker-env",
+          target: "linux-docker",
+          status: "fail",
+          summary: "required Linux Docker deployment env is incomplete",
+          detail: `missing ${missingDeploymentEnv.join(", ")}`
+        }
+  );
+
+  let config: ReturnType<typeof loadLinuxDockerConfig> | undefined;
+  try {
+    config = loadLinuxDockerConfig(input.configPath, input.env);
+    checks.push({
+      id: "linux-docker-config",
+      target: "linux-docker",
+      status: "pass",
+      summary: `loaded ${input.configPath} with ${config.pools.length} pool${config.pools.length === 1 ? "" : "s"}`,
+      data: {
+        pools: config.pools.map((pool) => ({
+          key: pool.key,
+          size: pool.size
+        }))
+      }
+    });
+  } catch (error) {
+    checks.push({
+      id: "linux-docker-config",
+      target: "linux-docker",
+      status: "fail",
+      summary: `failed to load ${input.configPath}`,
+      detail: formatError(error)
+    });
+    return checks;
+  }
+
+  checks.push({
+    id: "linux-docker-host-root",
+    target: "linux-docker",
+    status: "pass",
+    summary: `Linux Docker project root resolves to ${input.env.linuxDockerProjectDir}`
+  });
+
+  if (!input.env.githubPat) {
+    checks.push({
+      id: "linux-docker-runner-groups",
+      target: "linux-docker",
+      status: "skip",
+      summary: "skipped Linux Docker runner-group verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    checks.push({
+      id: "linux-docker-image",
+      target: "linux-docker",
+      status: "skip",
+      summary: "skipped Linux Docker image verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    return checks;
+  }
+
+  try {
+    const pools = await verifyRunnerGroups(
+      input.env.githubApiUrl,
+      input.env.githubPat,
+      config.pools.map((pool) => ({
+        poolKey: pool.key,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup
+      })),
+      input.fetchImpl
+    );
+    checks.push({
+      id: "linux-docker-runner-groups",
+      target: "linux-docker",
+      status: "pass",
+      summary: `verified ${pools.length} Linux Docker runner group${pools.length === 1 ? "" : "s"} in GitHub`
+    });
+  } catch (error) {
+    checks.push({
+      id: "linux-docker-runner-groups",
+      target: "linux-docker",
+      status: "fail",
+      summary: "failed Linux Docker runner-group verification",
+      detail: formatError(error)
+    });
+  }
+
+  const imageRef = `${config.image.repository}:${config.image.tag}`;
+  try {
+    const image = await verifyContainerImageTag(
+      input.env.githubApiUrl,
+      input.env.githubPat,
+      imageRef,
+      input.fetchImpl
+    );
+    checks.push({
+      id: "linux-docker-image",
+      target: "linux-docker",
+      status: "pass",
+      summary: `verified ${image.imageRef} in GitHub Packages`
+    });
+  } catch (error) {
+    checks.push({
+      id: "linux-docker-image",
+      target: "linux-docker",
       status: "fail",
       summary: `failed image verification for ${imageRef}`,
       detail: formatError(error)
@@ -485,6 +634,16 @@ function poolSlotMetricsForCheck(check: DoctorCheck): MetricSample[] {
     return check.data.pools.map((pool) =>
       poolSlotCount({
         plane: "synology",
+        pool: pool.key,
+        count: pool.size
+      })
+    );
+  }
+
+  if (check.target === "linux-docker" && isSynologyConfigData(check.data)) {
+    return check.data.pools.map((pool) =>
+      poolSlotCount({
+        plane: "linux-docker",
         pool: pool.key,
         count: pool.size
       })
