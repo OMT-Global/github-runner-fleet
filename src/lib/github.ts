@@ -332,6 +332,77 @@ export async function fetchOrganizationRunners(
   }
 }
 
+export async function fetchOrganizationRunnerGroupRunners(
+  apiUrl: string,
+  organization: string,
+  runnerGroupId: number,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<GitHubRunner[]> {
+  const runners: GitHubRunner[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const response = await fetchImpl(
+      `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups/${runnerGroupId}/runners?per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      }
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GitHub runner group runner lookup failed for ${organization}/${runnerGroupId} with ${response.status}: ${body}`
+      );
+    }
+
+    const payload = JSON.parse(body) as {
+      runners?: Array<{
+        id?: number;
+        name?: string;
+        status?: string;
+        busy?: boolean;
+        runner_group_id?: number;
+        labels?: Array<{ name?: string }>;
+      }>;
+    };
+
+    if (!Array.isArray(payload.runners)) {
+      throw new Error(
+        `GitHub runner group runner response for ${organization}/${runnerGroupId} did not include runners`
+      );
+    }
+
+    runners.push(
+      ...payload.runners.map((runner) => {
+        if (typeof runner.id !== "number" || !runner.name || !runner.status) {
+          throw new Error(
+            `GitHub runner group runner response for ${organization}/${runnerGroupId} included an invalid runner entry`
+          );
+        }
+
+        return {
+          id: runner.id,
+          name: runner.name,
+          status: runner.status,
+          busy: runner.busy,
+          runnerGroupId: runner.runner_group_id ?? runnerGroupId,
+          labels: Array.isArray(runner.labels)
+            ? runner.labels
+                .map((label) => label.name)
+                .filter((name): name is string => typeof name === "string")
+            : []
+        };
+      })
+    );
+
+    if (payload.runners.length < 100) {
+      return runners;
+    }
+  }
+}
+
 export async function deleteOrganizationRunner(
   apiUrl: string,
   organization: string,

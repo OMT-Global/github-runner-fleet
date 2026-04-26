@@ -150,20 +150,12 @@ describe("drift detection", () => {
               {
                 id: 1,
                 name: "runner-1",
-                status: "online",
-                runner_group_id: 10
+                status: "online"
               },
               {
                 id: 2,
                 name: "runner-2",
-                status: "offline",
-                runner_group_id: 10
-              },
-              {
-                id: 3,
-                name: "runner-3",
-                status: "online",
-                runner_group_id: 11
+                status: "offline"
               }
             ]
           })
