@@ -28,8 +28,13 @@ pools:
     runnerGroup: synology-public
     repositoryAccess: selected
     allowedRepositories:
+      - omt-global/apw-cli
       - omt-global/axiom
+      - omt-global/bootstrap
+      - omt-global/gh-attest
       - omt-global/github-runner-fleet
+      - omt-global/home-tv-channel-list
+      - omt-global/Screensaver
     labels:
       - synology
       - shell-only
