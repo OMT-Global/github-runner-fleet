@@ -201,6 +201,52 @@ describe("CI workflow", () => {
     expect(workflow.jobs.test_public_fork_pr["runs-on"]).toBe("ubuntu-latest");
   });
 
+  test("keeps PR fast checks on self-hosted only for same-repo PRs", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/pr-fast-ci.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const selfHostedJobs = [
+      workflow.jobs["fast-checks"],
+      workflow.jobs["validate-secrets"]
+    ];
+    for (const job of selfHostedJobs) {
+      expect(job["runs-on"]).toEqual([
+        "self-hosted",
+        "synology",
+        "shell-only",
+        "public"
+      ]);
+      expect(String(job.if)).toContain(
+        "github.event.pull_request.head.repo.full_name == github.repository"
+      );
+    }
+
+    expect(workflow.jobs.changes["runs-on"]).toBe("ubuntu-latest");
+    expect(workflow.jobs["hosted-fork-fast-checks"]["runs-on"]).toBe(
+      "ubuntu-latest"
+    );
+    expect(String(workflow.jobs["hosted-fork-fast-checks"].if)).toContain(
+      "github.event.pull_request.head.repo.full_name != github.repository"
+    );
+    expect(workflow.jobs["hosted-fork-validate-secrets"]["runs-on"]).toBe(
+      "ubuntu-latest"
+    );
+    expect(String(workflow.jobs["hosted-fork-validate-secrets"].if)).toContain(
+      "github.event.pull_request.head.repo.full_name != github.repository"
+    );
+    expect(workflow.jobs["ci-gate"].needs).toEqual(
+      expect.arrayContaining([
+        "fast-checks",
+        "validate-secrets",
+        "hosted-fork-fast-checks",
+        "hosted-fork-validate-secrets"
+      ])
+    );
+  });
+
   test("renders the Linux Docker contract on hosted Linux before operators provision the pool", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")

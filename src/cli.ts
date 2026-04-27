@@ -234,6 +234,8 @@ async function doctorCommand(args: string[]): Promise<void> {
     mode,
     envPath: getOption(args, "--env", ".env"),
     configPath: getOption(args, "--config", "config/pools.yaml"),
+    linuxConfigPath: getOption(args, "--linux-config", "config/linux-docker-runners.yaml"),
+    windowsConfigPath: getOption(args, "--windows-config", "config/windows-runners.yaml"),
     lumeConfigPath: getOption(args, "--lume-config", "config/lume-runners.yaml")
   });
 
@@ -2321,7 +2323,13 @@ function getDoctorMode(args: string[]): DoctorMode {
       continue;
     }
 
-    if (arg === "full" || arg === "synology" || arg === "lume") {
+    if (
+      arg === "full" ||
+      arg === "synology" ||
+      arg === "linux-docker" ||
+      arg === "windows-docker" ||
+      arg === "lume"
+    ) {
       return arg;
     }
 
@@ -2671,7 +2679,7 @@ function powerShellQuote(value: string): string {
 
 function printUsage(): void {
   process.stderr.write(`Usage:
-  pnpm doctor [full|synology|lume] [--env .env] [--config config/pools.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm doctor [full|synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm config-diff [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]

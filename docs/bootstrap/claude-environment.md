@@ -9,7 +9,7 @@
 ## Claude Code On The Web
 
 - Hosted entrypoint: `https://claude.ai/code`
-- Repo: `OMT-Global/synology-github-runner`
+- Repo: `OMT-Global/github-runner-fleet`
 - Setup script: `bash scripts/claude-cloud/setup.sh`
 - Network access: start with limited access; only expand it when a task truly needs more than registries and GitHub
 - Environment variables: configure them in the Claude environment UI as `.env`-style key-value pairs
@@ -52,5 +52,5 @@
 
     ## Project
 
-    - Repository: `OMT-Global/synology-github-runner`
+    - Repository: `OMT-Global/github-runner-fleet`
     - Default branch: `main`

@@ -2123,6 +2123,7 @@ WINDOWS_DOCKER_USERNAME=administrator
 WINDOWS_DOCKER_PROJECT_DIR=C:\\github-runner-fleet\\windows-docker
 LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${directory}/lume/runner.env
+LUME_GUEST_PASSWORD=secret
 RUNNER_VERSION=2.333.0
 COMPOSE_PROJECT_NAME=github-runner-fleet-test
 `,

@@ -60,8 +60,15 @@ SYNOLOGY_HOST=nas.example.com
 SYNOLOGY_USERNAME=admin
 SYNOLOGY_PASSWORD=secret
 SYNOLOGY_RUNNER_BASE_DIR=${directory}/synology
+LINUX_DOCKER_HOST=docker-host.example.com
+LINUX_DOCKER_USERNAME=runner
+LINUX_DOCKER_RUNNER_BASE_DIR=${directory}/linux-docker
+WINDOWS_DOCKER_HOST=windows-host.example.com
+WINDOWS_DOCKER_USERNAME=administrator
+WINDOWS_DOCKER_RUNNER_BASE_DIR=C:\\github-runner-fleet\\windows-docker
 LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
+LUME_GUEST_PASSWORD=secret
 `,
       "utf8"
     );
@@ -104,6 +111,49 @@ pool:
       "utf8"
     );
 
+    const linuxConfigPath = path.join(directory, "linux-docker-runners.yaml");
+    fs.writeFileSync(
+      linuxConfigPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+  - key: linux-docker-private
+    organization: example
+    runnerGroup: linux-docker-private
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/private-app
+    labels: []
+    size: 1
+    architecture: amd64
+    runnerRoot: \${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-private
+`,
+      "utf8"
+    );
+
+    const windowsConfigPath = path.join(directory, "windows-runners.yaml");
+    fs.writeFileSync(
+      windowsConfigPath,
+      `version: 1
+plane: windows-docker
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9-windows
+pools:
+  - key: windows-private
+    organization: example
+    runnerGroup: windows-private
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/windows-app
+    host: windows-host.example.com
+    sshUser: administrator
+`,
+      "utf8"
+    );
+
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/actions/runner-groups")) {
         return {
@@ -120,6 +170,18 @@ pool:
                 },
                 {
                   id: 2,
+                  name: "linux-docker-private",
+                  visibility: "selected",
+                  default: false
+                },
+                {
+                  id: 3,
+                  name: "windows-private",
+                  visibility: "selected",
+                  default: false
+                },
+                {
+                  id: 4,
                   name: "macos-private",
                   visibility: "selected",
                   default: false
@@ -155,6 +217,8 @@ pool:
       mode: "full",
       envPath,
       configPath: poolsPath,
+      linuxConfigPath,
+      windowsConfigPath,
       lumeConfigPath: lumePath,
       fetchImpl: fetchMock
     });
@@ -168,6 +232,14 @@ pool:
         }),
         expect.objectContaining({
           id: "synology-image",
+          status: "pass"
+        }),
+        expect.objectContaining({
+          id: "linux-docker-runner-groups",
+          status: "pass"
+        }),
+        expect.objectContaining({
+          id: "windows-docker-runner-groups",
           status: "pass"
         }),
         expect.objectContaining({
@@ -468,6 +540,7 @@ pools:
       `GITHUB_PAT=secret
 LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
+LUME_GUEST_PASSWORD=secret
 `,
       "utf8"
     );
@@ -568,6 +641,7 @@ pool:
       `GITHUB_PAT=secret
 LUME_RUNNER_BASE_DIR=${lumeBaseDir}
 LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
+LUME_GUEST_PASSWORD=secret
 `,
       "utf8"
     );
@@ -637,6 +711,7 @@ pool:
       envPath,
       `LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
+LUME_GUEST_PASSWORD=secret
 `,
       "utf8"
     );
@@ -699,6 +774,7 @@ pool:
       envPath,
       `GITHUB_PAT=secret
 LUME_RUNNER_BASE_DIR=${directory}/lume
+LUME_GUEST_PASSWORD=secret
 `,
       "utf8"
     );

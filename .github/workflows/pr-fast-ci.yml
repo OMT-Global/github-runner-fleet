@@ -23,7 +23,7 @@ defaults:
 jobs:
   changes:
     name: Detect Relevant Changes
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-latest
     outputs:
       app: ${{ steps.filter.outputs.app }}
       ci: ${{ steps.filter.outputs.ci }}
@@ -62,6 +62,7 @@ jobs:
     needs: changes
     if: >-
       github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       (needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true')
     steps:
       - uses: actions/checkout@v6
@@ -75,7 +76,51 @@ jobs:
     name: Validate Secrets
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     timeout-minutes: 10
-    if: github.event.pull_request.draft == false
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Scan repository for secret patterns
+        run: bash scripts/check-detect-secrets.sh --all-files
+
+  hosted-fork-fast-checks:
+    name: Hosted Fork Fast Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: changes
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      (needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  hosted-fork-validate-secrets:
+    name: Hosted Fork Validate Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v6
         with:
@@ -91,6 +136,8 @@ jobs:
       - changes
       - fast-checks
       - validate-secrets
+      - hosted-fork-fast-checks
+      - hosted-fork-validate-secrets
     steps:
       - name: Check required PR jobs
         env:
@@ -98,6 +145,8 @@ jobs:
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
             validate-secrets=${{ needs.validate-secrets.result }}
+            hosted-fork-fast-checks=${{ needs.hosted-fork-fast-checks.result }}
+            hosted-fork-validate-secrets=${{ needs.hosted-fork-validate-secrets.result }}
         run: |
           failed=0
           for entry in $RESULTS; do

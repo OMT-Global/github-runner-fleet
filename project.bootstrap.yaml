@@ -1,7 +1,7 @@
 version: 1
 project:
-  name: synology-github-runner
-  description: Shell-only GitHub self-hosted runner pools for Synology NAS deployments.
+  name: github-runner-fleet
+  description: Self-hosted GitHub runner fleet for Synology, Linux Docker, Windows Docker, and Lume macOS planes.
   visibility: public
   owner: OMT-Global
   defaultBranch: main
@@ -24,7 +24,7 @@ repo:
 archetype:
   kind: generic-empty
   packageManager: npm
-  moduleName: synology_github_runner
+  moduleName: github_runner_fleet
 github:
   createRepo: false
   reviewers:

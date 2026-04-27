@@ -39,11 +39,16 @@ describe("renderCompose", () => {
     ]);
     expect(privateService.security_opt).toEqual(["no-new-privileges:true"]);
     expect(privateService.cap_drop).toEqual(["ALL"]);
+    expect(privateService).not.toHaveProperty("ports");
+    expect(privateService).not.toHaveProperty("privileged");
+    expect(JSON.stringify(privateService.volumes)).not.toContain(
+      "/var/run/docker.sock"
+    );
     expect(privateService).not.toHaveProperty("init");
     expect(privateService).not.toHaveProperty("platform");
     expect(privateService).not.toHaveProperty("cpus");
     expect(privateService).not.toHaveProperty("pids_limit");
-    expect(JSON.stringify(privateService)).not.toContain("/var/run/docker.sock");
+    expect(JSON.stringify(privateService)).not.toContain("docker_engine");
 
     const publicService = payload.services["synology-public-runner-01"];
     expect(publicService.environment).toMatchObject({

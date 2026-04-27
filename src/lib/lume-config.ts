@@ -3,6 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import { z } from "zod";
 import type { DeploymentEnv } from "./env.js";
+import { interpolateEnv, uniqueRunnerLabels } from "./runner-plane.js";
 
 export interface LumePoolConfig {
   key: string;
@@ -70,7 +71,7 @@ const poolSchema = z.object({
   network: z.string().min(1).default("nat"),
   storage: z.string().min(1).optional(),
   guestUser: z.string().min(1).default("lume"),
-  guestPassword: z.string().min(1).default("lume"),
+  guestPassword: z.string().min(1).optional(),
   guestRunnerRoot: z.string().min(1).default("/Users/lume/actions-runner"),
   guestWorkRoot: z.string().min(1).default("/Users/lume/actions-runner/_work"),
   runnerVersion: z.string().min(1).optional()
@@ -88,7 +89,7 @@ export function loadLumeConfig(
   const absolutePath = path.resolve(configPath);
   const source = fs.readFileSync(absolutePath, "utf8");
   const parsed = YAML.parse(source);
-  const interpolated = interpolate(parsed, env.raw);
+  const interpolated = interpolateEnv(parsed, env.raw);
   const result = configSchema.parse(interpolated);
 
   if (!path.isAbsolute(env.lumeRunnerBaseDir)) {
@@ -100,8 +101,16 @@ export function loadLumeConfig(
   }
 
   const normalizedLabels = normalizeLabels(result.pool.labels);
+  const guestPassword =
+    result.pool.guestPassword ?? env.raw.LUME_GUEST_PASSWORD?.trim();
+  if (!guestPassword) {
+    throw new Error(
+      "Lume guestPassword must be set in config or LUME_GUEST_PASSWORD"
+    );
+  }
   const pool: LumePoolConfig = {
     ...result.pool,
+    guestPassword,
     labels: normalizedLabels,
     runnerVersion: result.pool.runnerVersion ?? env.runnerVersion
   };
@@ -206,40 +215,7 @@ function buildSlots(pool: LumePoolConfig, baseDir: string): LumeSlotManifest[] {
 }
 
 function normalizeLabels(labels: string[]): string[] {
-  return [...new Set(["self-hosted", "macos", "arm64", "private", ...labels])];
-}
-
-function interpolate(value: unknown, env: Record<string, string>): unknown {
-  if (typeof value === "string") {
-    return value.replace(
-      /\$\{([A-Z0-9_]+)(?::-(.*?))?\}/g,
-      (_match, name: string, defaultValue?: string) => {
-        const envValue = env[name];
-        if (envValue !== undefined) {
-          return envValue;
-        }
-        if (defaultValue !== undefined) {
-          return defaultValue;
-        }
-        throw new Error(`missing environment value for ${name}`);
-      }
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => interpolate(item, env));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [
-        key,
-        interpolate(nestedValue, env)
-      ])
-    );
-  }
-
-  return value;
+  return uniqueRunnerLabels(["self-hosted", "macos", "arm64", "private"], labels);
 }
 
 function shellQuote(value: string): string {

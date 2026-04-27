@@ -8,6 +8,13 @@ import type {
   RunnerPlatform
 } from "./config.js";
 import type { DeploymentEnv } from "./env.js";
+import {
+  interpolateEnv,
+  repositoryPattern,
+  uniqueRunnerLabels,
+  validateDockerRepositoryAccess,
+  validateRepositoryOwner
+} from "./runner-plane.js";
 
 export interface LinuxDockerPoolConfig {
   key: string;
@@ -32,8 +39,6 @@ export interface ResolvedLinuxDockerConfig {
   };
   pools: LinuxDockerPoolConfig[];
 }
-
-const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 const poolSchema = z
   .object({
@@ -92,7 +97,7 @@ export function loadLinuxDockerConfig(
   const absolutePath = path.resolve(configPath);
   const source = fs.readFileSync(absolutePath, "utf8");
   const parsed = YAML.parse(source);
-  const interpolated = interpolate(parsed, env.raw);
+  const interpolated = interpolateEnv(parsed, env.raw);
   const result = configSchema.parse(interpolated);
 
   const seenKeys = new Set<string>();
@@ -103,15 +108,19 @@ export function loadLinuxDockerConfig(
     seenKeys.add(pool.key);
 
     if (pool.repositoryAccess === "selected") {
-      for (const repository of pool.allowedRepositories) {
-        const [owner] = repository.split("/");
-        if (owner !== pool.organization) {
-          throw new Error(
-            `linux-docker pool ${pool.key} includes ${repository}, which is outside organization ${pool.organization}`
-          );
-        }
-      }
+      validateRepositoryOwner({
+        plane: "linux-docker",
+        poolKey: pool.key,
+        organization: pool.organization,
+        repositories: pool.allowedRepositories
+      });
     }
+    validateDockerRepositoryAccess({
+      plane: "linux-docker",
+      poolKey: pool.key,
+      repositoryAccess: pool.repositoryAccess,
+      env: env.raw
+    });
 
     if (!path.isAbsolute(pool.runnerRoot)) {
       throw new Error(
@@ -122,7 +131,10 @@ export function loadLinuxDockerConfig(
     return {
       ...pool,
       visibility: "private" as const,
-      labels: uniqueLabels(pool.labels),
+      labels: uniqueRunnerLabels(
+        ["linux", "docker-capable", "private"],
+        pool.labels
+      ),
       resources: {
         cpus: pool.resources.cpus,
         memory: pool.resources.memory,
@@ -137,41 +149,4 @@ export function loadLinuxDockerConfig(
     image: result.image,
     pools
   };
-}
-
-function uniqueLabels(labels: string[]): string[] {
-  return [...new Set(["linux", "docker-capable", "private", ...labels])];
-}
-
-function interpolate(value: unknown, env: Record<string, string>): unknown {
-  if (typeof value === "string") {
-    return value.replace(
-      /\$\{([A-Z0-9_]+)(?::-(.*?))?\}/g,
-      (_match, name: string, defaultValue?: string) => {
-        const envValue = env[name];
-        if (envValue !== undefined) {
-          return envValue;
-        }
-        if (defaultValue !== undefined) {
-          return defaultValue;
-        }
-        throw new Error(`missing environment value for ${name}`);
-      }
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => interpolate(item, env));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [
-        key,
-        interpolate(nestedValue, env)
-      ])
-    );
-  }
-
-  return value;
 }

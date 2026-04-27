@@ -4,6 +4,7 @@ import type {
   ResolvedLinuxDockerConfig
 } from "./linux-docker-config.js";
 import type { DeploymentEnv } from "./env.js";
+import { buildCommonRunnerEnv } from "./runner-plane.js";
 
 export function renderLinuxDockerCompose(
   config: ResolvedLinuxDockerConfig,
@@ -53,26 +54,22 @@ function renderService(
   const runnerTempDir = `${runnerStateDir}/_temp`;
   const runnerToolCache = `${runnerStateDir}/toolcache`;
   const environment: Record<string, string> = {
-    GITHUB_PAT: "${GITHUB_PAT}",
-    GITHUB_API_URL: "${GITHUB_API_URL:-https://api.github.com}",
-    GITHUB_ORG: pool.organization,
-    RUNNER_SCOPE: "organization",
-    RUNNER_NAME: buildLinuxDockerServiceName(pool, index),
-    RUNNER_GROUP: pool.runnerGroup,
-    FLEET_POOL_KEY: pool.key,
-    FLEET_PLANE: "linux-docker",
-    RUNNER_LABELS: pool.labels.join(","),
-    RUNNER_VISIBILITY: pool.visibility,
-    RUNNER_REPOSITORY_ACCESS: pool.repositoryAccess,
-    RUNNER_STATE_DIR: runnerStateDir,
-    RUNNER_LOG_DIR: `${runnerStateDir}/logs`,
-    RUNNER_WORK_DIR: runnerWorkDir,
-    RUNNER_TEMP: runnerTempDir,
-    RUNNER_TOOL_CACHE: runnerToolCache,
-    AGENT_TOOLSDIRECTORY: runnerToolCache,
+    ...buildCommonRunnerEnv({
+      organization: pool.organization,
+      runnerName: buildLinuxDockerServiceName(pool, index),
+      runnerGroup: pool.runnerGroup,
+      poolKey: pool.key,
+      plane: "linux-docker",
+      labels: pool.labels,
+      visibility: pool.visibility,
+      repositoryAccess: pool.repositoryAccess,
+      runnerStateDir,
+      runnerLogDir: `${runnerStateDir}/logs`,
+      runnerWorkDir,
+      runnerTemp: runnerTempDir,
+      runnerToolCache
+    }),
     RUNNER_EXEC_MODE_OVERRIDE: "root",
-    RUNNER_EPHEMERAL: "true",
-    RUNNER_DISABLE_UPDATE: "true",
     DOCKER_HOST: "unix:///var/run/docker.sock"
   };
 

@@ -11,7 +11,9 @@ describe("workflow cookbook docs", () => {
 
     expect(cookbook).toContain("## Runner compatibility matrix");
     expect(cookbook).toContain("| Node install, lint, test, build | Yes |");
-    expect(cookbook).toContain("| Public fork pull requests | No | No | Yes |");
+    expect(cookbook).toContain(
+      "| Public fork pull requests | No | No | No | No | Yes |"
+    );
 
     expect(cookbook).toContain("## Recipe: trusted Node job on the Synology shell-only pool");
     expect(cookbook).toContain("## Recipe: trusted jobs on self-hosted, fork PRs on GitHub-hosted");
@@ -19,7 +21,9 @@ describe("workflow cookbook docs", () => {
     expect(cookbook).toContain("## Recipe: Terraform validation on the Synology shell-only pool");
     expect(cookbook).toContain("## Recipe: Lume macOS contract job");
 
-    expect(cookbook).toContain("OMT-Global/synology-github-runner/actions/setup-shell-safe-node@main");
+    expect(cookbook).toContain("OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main");
+    expect(cookbook).toContain("[self-hosted, linux, docker-capable, private]");
+    expect(cookbook).toContain("[self-hosted, windows, docker-capable, private]");
     expect(cookbook).toContain("actions/setup-python@v6");
     expect(cookbook).toContain("github.event.pull_request.head.repo.full_name != github.repository");
     expect(cookbook).toContain("runs-on: ubuntu-latest");

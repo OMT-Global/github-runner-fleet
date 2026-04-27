@@ -116,9 +116,30 @@ pool:
       "export RUNNER_LABELS='self-hosted,macos,arm64,private'"
     );
   });
+
+  test("requires the guest password from config or LUME_GUEST_PASSWORD", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "lume-runners.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+pool:
+  key: macos-private
+  size: 1
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+`,
+      "utf8"
+    );
+
+    expect(() =>
+      loadLumeConfig(configPath, deploymentEnv({ LUME_GUEST_PASSWORD: "" }))
+    ).toThrow(/LUME_GUEST_PASSWORD/);
+  });
 });
 
-function deploymentEnv(): DeploymentEnv {
+function deploymentEnv(raw: Record<string, string> = {}): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
     githubPat: undefined,
@@ -165,8 +186,10 @@ function deploymentEnv(): DeploymentEnv {
         "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
       LUME_RUNNER_IPSW_PATH:
         "/Users/tester/Library/Application Support/github-runner-fleet/lume/cache/latest.ipsw",
+      LUME_GUEST_PASSWORD: "secret",
       COMPOSE_PROJECT_NAME: "github-runner-fleet",
-      RUNNER_VERSION: "2.333.0"
+      RUNNER_VERSION: "2.333.0",
+      ...raw
     }
   };
 }
