@@ -621,6 +621,70 @@ pools:
     );
   });
 
+  test("fails Windows Docker doctor when required env is missing and skips GitHub checks without a PAT", async () => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    fs.writeFileSync(
+      envPath,
+      `WINDOWS_DOCKER_RUNNER_BASE_DIR=C:\\github-runner-fleet\\windows-docker
+`,
+      "utf8"
+    );
+
+    const windowsConfigPath = path.join(directory, "windows-runners.yaml");
+    fs.writeFileSync(
+      windowsConfigPath,
+      `version: 1
+plane: windows-docker
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9-windows
+pools:
+  - key: windows-private
+    organization: example
+    runnerGroup: windows-private
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/windows-app
+    host: windows-host.example.com
+    sshUser: administrator
+`,
+      "utf8"
+    );
+
+    const report = await withEnv(
+      {
+        GITHUB_PAT: undefined,
+        GITHUB_TOKEN: undefined,
+        GH_TOKEN: undefined
+      },
+      () =>
+        runDoctor({
+          mode: "windows-docker",
+          envPath,
+          windowsConfigPath
+        })
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "windows-docker-env",
+          status: "fail"
+        }),
+        expect.objectContaining({
+          id: "windows-docker-config",
+          status: "pass"
+        }),
+        expect.objectContaining({
+          id: "windows-docker-runner-groups",
+          status: "skip"
+        })
+      ])
+    );
+  });
+
   test("warns in Lume mode when the runner env file is missing", async () => {
     const directory = createTempDir();
     const envPath = path.join(directory, ".env");
