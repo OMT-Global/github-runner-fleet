@@ -130,7 +130,7 @@ jobs:
 
   ci-gate:
     name: CI Gate
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-latest
     if: always()
     needs:
       - changes

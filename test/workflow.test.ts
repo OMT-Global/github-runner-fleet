@@ -245,6 +245,7 @@ describe("CI workflow", () => {
         "hosted-fork-validate-secrets"
       ])
     );
+    expect(workflow.jobs["ci-gate"]["runs-on"]).toBe("ubuntu-latest");
   });
 
   test("renders the Linux Docker contract on hosted Linux before operators provision the pool", () => {
