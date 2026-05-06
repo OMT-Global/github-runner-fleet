@@ -1,6 +1,10 @@
 import YAML from "yaml";
 import type { DeploymentEnv } from "./env.js";
-import type { PoolConfig, ResolvedConfig } from "./config.js";
+import {
+  renderTelemetryEnvironment,
+  type PoolConfig,
+  type ResolvedConfig
+} from "./config.js";
 
 export function renderCompose(
   config: ResolvedConfig,
@@ -60,7 +64,18 @@ function renderService(pool: PoolConfig, index: number): Record<string, unknown>
     RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
     AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache",
     RUNNER_EPHEMERAL: "true",
-    RUNNER_DISABLE_UPDATE: "true"
+    RUNNER_DISABLE_UPDATE: "true",
+    ...renderTelemetryEnvironment(pool.telemetry, {
+      serviceName: "github-runner-fleet.synology",
+      resourceAttributes: {
+        "deployment.environment": pool.visibility,
+        "github.organization": pool.organization,
+        "runner.group": pool.runnerGroup,
+        "runner.name": buildRunnerName(pool, index),
+        "runner.pool": pool.key,
+        "runner.plane": "synology"
+      }
+    })
   };
 
   if (pool.repositoryAccess === "selected") {

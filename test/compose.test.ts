@@ -55,6 +55,40 @@ describe("renderCompose", () => {
     expect(publicService).not.toHaveProperty("cpus");
     expect(publicService).not.toHaveProperty("pids_limit");
   });
+
+  test("renders OTEL environment when telemetry is enabled for a pool", () => {
+    const config = configFixture();
+    config.pools[0].telemetry = {
+      enabled: true,
+      endpoint: "https://otel.example.com:4318",
+      protocol: "http/protobuf",
+      serviceName: "synology-private-runners",
+      tracesExporter: "none",
+      metricsExporter: "otlp",
+      logsExporter: "otlp",
+      resourceAttributes: {
+        "service.namespace": "runner-fleet"
+      }
+    };
+
+    const compose = renderCompose(config, envFixture());
+    const payload = YAML.parse(compose.split("\n").slice(2).join("\n")) as {
+      services: Record<string, Record<string, unknown>>;
+    };
+
+    expect(
+      payload.services["synology-private-runner-01"].environment
+    ).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel.example.com:4318",
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+      OTEL_SERVICE_NAME: "synology-private-runners",
+      OTEL_TRACES_EXPORTER: "none",
+      OTEL_METRICS_EXPORTER: "otlp",
+      OTEL_LOGS_EXPORTER: "otlp",
+      OTEL_RESOURCE_ATTRIBUTES:
+        "deployment.environment=private,github.organization=example,runner.group=synology-private,runner.name=synology-private-runner-01,runner.pool=synology-private,runner.plane=synology,service.namespace=runner-fleet"
+    });
+  });
 });
 
 function configFixture(): ResolvedConfig {

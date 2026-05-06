@@ -20,6 +20,13 @@ pools:
       cooldownSeconds: 120
     architecture: auto
     runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-private
+    # telemetry:
+    #   enabled: true
+    #   endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    #   protocol: http/protobuf
+    #   headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+    #   resourceAttributes:
+    #     service.namespace: github-runner-fleet
     resources:
       memory: 2g
   - key: synology-public
