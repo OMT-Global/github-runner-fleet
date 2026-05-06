@@ -2,7 +2,7 @@
 
 Configure the Codex Web environment in Codex settings for:
 
-- Repo: `OMT-Global/synology-github-runner`
+- Repo: `OMT-Global/github-runner-fleet`
 - Base image: `universal`
 - Setup mode: manual setup script
 - Setup script: `bash scripts/codex-cloud/setup.sh`

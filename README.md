@@ -114,6 +114,25 @@ The Synology shell-only class supports shell jobs, JavaScript actions, composite
 - [docker/runner-entrypoint.sh](docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
 - [src/cli.ts](src/cli.ts): config validation, compose rendering, and runner release helpers
 
+## Runner Telemetry
+
+Each runner pool can opt into OpenTelemetry by adding a `telemetry` block. When enabled, rendered Compose services and Lume runner exports include standard `OTEL_*` variables for the runner process. The collector endpoint stays configurable through deployment env interpolation, so the same non-secret pool config can point to different remote targets per host or environment.
+
+```yaml
+telemetry:
+  enabled: true
+  endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+  protocol: http/protobuf
+  headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  tracesExporter: otlp
+  metricsExporter: otlp
+  logsExporter: otlp
+  resourceAttributes:
+    service.namespace: github-runner-fleet
+```
+
+Supported options are `endpoint`, `protocol` (`grpc` or `http/protobuf`), `headers`, `serviceName`, `tracesExporter`, `metricsExporter`, `logsExporter`, and `resourceAttributes`. Keep auth-bearing headers in `.env` or the target host environment, not in committed config. If `telemetry.enabled` is `true`, validation requires `endpoint`.
+
 ## Synology Quick Start
 
 1. Copy `.env.example` to `.env` and set `GITHUB_PAT`.
@@ -361,12 +380,17 @@ If launchd reports `Bootstrap failed: 5: Input/output error`, check the disabled
 - Do not add Compose `init: true` for these services. The image already uses `tini`, and double-init setups on Synology produce noisy subreaper warnings.
 - For public pools, use DSM firewall rules to reduce unnecessary LAN reachability.
 - Keep the Docker socket restricted to the dedicated Linux Docker host. Do not mount it into the Synology shell-only plane.
+- Keep external fork pull requests on GitHub-hosted runners; self-hosted runner groups are for trusted same-repository or explicitly allowed private workflows.
+- Treat Docker-capable runner groups as host-control boundaries because they mount the Docker socket or Windows named pipe.
+- Keep `LUME_GUEST_PASSWORD` out of git and rotate the base VM guest credential when rebuilding or resealing Lume images.
 
 ## Useful Commands
 
 ```bash
 pnpm doctor -- full --env .env
 pnpm doctor -- synology --env .env
+pnpm doctor -- linux-docker --env .env
+pnpm doctor -- windows-docker --env .env
 pnpm doctor -- lume --env .env
 pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env
 pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env
@@ -425,7 +449,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 
 ## Troubleshooting Starting Points
 
-- `pnpm doctor -- full --env .env` for one preflight/status summary across Synology and Lume checks
+- `pnpm doctor -- full --env .env` for one preflight/status summary across Synology, Linux Docker, Windows Docker, and Lume checks
 - `pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux pool schema and label validation
 - `pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux runner-group verification
 - `pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env` for the remote Linux Docker install plan before you push it

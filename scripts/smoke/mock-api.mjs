@@ -4,6 +4,7 @@ import path from "node:path";
 
 const logPath = process.env.MOCK_LOG_PATH ?? "/tmp/mock-api.log";
 const port = Number(process.env.MOCK_PORT ?? "8080");
+const host = process.env.MOCK_HOST ?? "0.0.0.0";
 fs.mkdirSync(path.dirname(logPath), { recursive: true });
 
 const server = http.createServer((req, res) => {
@@ -29,10 +30,10 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: "not found" }));
 });
 
-server.listen(port, "0.0.0.0", () => {
+server.listen(port, host, () => {
   fs.appendFileSync(
     logPath,
-    `${new Date().toISOString()} listening 0.0.0.0:${port}\n`,
+    `${new Date().toISOString()} listening ${host}:${port}\n`,
     "utf8"
   );
 });

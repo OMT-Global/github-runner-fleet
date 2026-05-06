@@ -3,6 +3,12 @@ import path from "node:path";
 import YAML from "yaml";
 import { z } from "zod";
 import type { DeploymentEnv } from "./env.js";
+import { interpolateEnv, uniqueRunnerLabels } from "./runner-plane.js";
+import {
+  renderTelemetryEnvironment,
+  telemetrySchema,
+  type TelemetryConfig
+} from "./telemetry.js";
 
 export interface LumePoolConfig {
   key: string;
@@ -23,6 +29,7 @@ export interface LumePoolConfig {
   guestRunnerRoot: string;
   guestWorkRoot: string;
   runnerVersion: string;
+  telemetry?: TelemetryConfig;
 }
 
 export interface LumeSlotManifest {
@@ -70,10 +77,11 @@ const poolSchema = z.object({
   network: z.string().min(1).default("nat"),
   storage: z.string().min(1).optional(),
   guestUser: z.string().min(1).default("lume"),
-  guestPassword: z.string().min(1).default("lume"),
+  guestPassword: z.string().min(1).optional(),
   guestRunnerRoot: z.string().min(1).default("/Users/lume/actions-runner"),
   guestWorkRoot: z.string().min(1).default("/Users/lume/actions-runner/_work"),
-  runnerVersion: z.string().min(1).optional()
+  runnerVersion: z.string().min(1).optional(),
+  telemetry: telemetrySchema
 });
 
 const configSchema = z.object({
@@ -88,7 +96,7 @@ export function loadLumeConfig(
   const absolutePath = path.resolve(configPath);
   const source = fs.readFileSync(absolutePath, "utf8");
   const parsed = YAML.parse(source);
-  const interpolated = interpolate(parsed, env.raw);
+  const interpolated = interpolateEnv(parsed, env.raw);
   const result = configSchema.parse(interpolated);
 
   if (!path.isAbsolute(env.lumeRunnerBaseDir)) {
@@ -100,10 +108,20 @@ export function loadLumeConfig(
   }
 
   const normalizedLabels = normalizeLabels(result.pool.labels);
+  const { telemetry, ...poolValues } = result.pool;
+  const guestPassword =
+    result.pool.guestPassword ?? env.raw.LUME_GUEST_PASSWORD?.trim();
+  if (!guestPassword) {
+    throw new Error(
+      "Lume guestPassword must be set in config or LUME_GUEST_PASSWORD"
+    );
+  }
   const pool: LumePoolConfig = {
-    ...result.pool,
+    ...poolValues,
+    guestPassword,
     labels: normalizedLabels,
-    runnerVersion: result.pool.runnerVersion ?? env.runnerVersion
+    runnerVersion: poolValues.runnerVersion ?? env.runnerVersion,
+    ...(telemetry.enabled ? { telemetry } : {})
   };
 
   const host = {
@@ -161,6 +179,17 @@ export function renderLumeShellExports(
     LUME_SLOT_KEY: slot.slotKey,
     LUME_VM_NAME: slot.vmName,
     RUNNER_NAME: slot.runnerName,
+    ...renderTelemetryEnvironment(config.pool.telemetry, {
+      serviceName: "github-runner-fleet.lume",
+      resourceAttributes: {
+        "github.organization": config.pool.organization,
+        "runner.group": config.pool.runnerGroup,
+        "runner.name": slot.runnerName,
+        "runner.pool": config.pool.key,
+        "runner.plane": "lume",
+        "runner.slot": slot.slotKey
+      }
+    }),
     LUME_SLOT_DIR: slot.hostDir,
     LUME_SLOT_WORKER_PID_FILE: slot.workerPidFile,
     LUME_SLOT_VM_PID_FILE: slot.vmPidFile,
@@ -206,40 +235,7 @@ function buildSlots(pool: LumePoolConfig, baseDir: string): LumeSlotManifest[] {
 }
 
 function normalizeLabels(labels: string[]): string[] {
-  return [...new Set(["self-hosted", "macos", "arm64", "private", ...labels])];
-}
-
-function interpolate(value: unknown, env: Record<string, string>): unknown {
-  if (typeof value === "string") {
-    return value.replace(
-      /\$\{([A-Z0-9_]+)(?::-(.*?))?\}/g,
-      (_match, name: string, defaultValue?: string) => {
-        const envValue = env[name];
-        if (envValue !== undefined) {
-          return envValue;
-        }
-        if (defaultValue !== undefined) {
-          return defaultValue;
-        }
-        throw new Error(`missing environment value for ${name}`);
-      }
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => interpolate(item, env));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [
-        key,
-        interpolate(nestedValue, env)
-      ])
-    );
-  }
-
-  return value;
+  return uniqueRunnerLabels(["self-hosted", "macos", "arm64", "private"], labels);
 }
 
 function shellQuote(value: string): string {

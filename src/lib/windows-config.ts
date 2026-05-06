@@ -4,6 +4,14 @@ import YAML from "yaml";
 import { z } from "zod";
 import type { PoolResources, RepositoryAccess } from "./config.js";
 import type { DeploymentEnv } from "./env.js";
+import {
+  interpolateEnv,
+  repositoryPattern,
+  uniqueRunnerLabels,
+  validateDockerRepositoryAccess,
+  validateRepositoryOwner
+} from "./runner-plane.js";
+import { telemetrySchema, type TelemetryConfig } from "./telemetry.js";
 
 export interface WindowsDockerPoolConfig {
   key: string;
@@ -19,6 +27,7 @@ export interface WindowsDockerPoolConfig {
   sshPort: string;
   runnerRoot: string;
   resources: PoolResources;
+  telemetry?: TelemetryConfig;
   imageRef: string;
 }
 
@@ -32,7 +41,6 @@ export interface ResolvedWindowsDockerConfig {
   pools: WindowsDockerPoolConfig[];
 }
 
-const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const windowsAbsolutePathPattern = /^[A-Za-z]:[\\/]/;
 
 const poolSchema = z
@@ -61,7 +69,8 @@ const poolSchema = z
         memory: z.string().min(1).optional(),
         pidsLimit: z.number().int().positive().optional()
       })
-      .default({})
+      .default({}),
+    telemetry: telemetrySchema
   })
   .superRefine((pool, ctx) => {
     if (!pool.key && !pool.name) {
@@ -119,11 +128,12 @@ export function loadWindowsDockerConfig(
   const absolutePath = path.resolve(configPath);
   const source = fs.readFileSync(absolutePath, "utf8");
   const parsed = YAML.parse(source);
-  const interpolated = interpolate(parsed, env.raw);
+  const interpolated = interpolateEnv(parsed, env.raw);
   const result = configSchema.parse(interpolated);
 
   const seenKeys = new Set<string>();
   const pools = result.pools.map((pool) => {
+    const { telemetry } = pool;
     const key = pool.key ?? pool.name!;
     if (seenKeys.has(key)) {
       throw new Error(`duplicate windows-docker pool key: ${key}`);
@@ -133,15 +143,19 @@ export function loadWindowsDockerConfig(
     const allowedRepositories = pool.allowedRepositories ?? pool.repositories ?? [];
     const organization = pool.organization ?? inferOrganization(key, allowedRepositories);
     if (pool.repositoryAccess === "selected") {
-      for (const repository of allowedRepositories) {
-        const [owner] = repository.split("/");
-        if (owner !== organization) {
-          throw new Error(
-            `windows-docker pool ${key} includes ${repository}, which is outside organization ${organization}`
-          );
-        }
-      }
+      validateRepositoryOwner({
+        plane: "windows-docker",
+        poolKey: key,
+        organization,
+        repositories: allowedRepositories
+      });
     }
+    validateDockerRepositoryAccess({
+      plane: "windows-docker",
+      poolKey: key,
+      repositoryAccess: pool.repositoryAccess,
+      env: env.raw
+    });
 
     const runnerRoot = path.win32.normalize(
       pool.runnerRoot ??
@@ -169,7 +183,10 @@ export function loadWindowsDockerConfig(
       runnerGroup: pool.runnerGroup ?? pool.group!,
       repositoryAccess: pool.repositoryAccess,
       allowedRepositories,
-      labels: uniqueLabels(pool.labels),
+      labels: uniqueRunnerLabels(
+        ["windows", "docker-capable", "private"],
+        pool.labels
+      ),
       size: pool.size ?? pool.slots ?? 1,
       host: pool.host ?? env.windowsDockerHost ?? "",
       sshUser: pool.sshUser ?? env.windowsDockerUsername ?? "",
@@ -180,6 +197,7 @@ export function loadWindowsDockerConfig(
         memory: pool.resources.memory,
         pidsLimit: pool.resources.pidsLimit
       },
+      ...(telemetry.enabled ? { telemetry } : {}),
       imageRef
     };
   });
@@ -217,41 +235,4 @@ function validateSingleInstallHost(pools: WindowsDockerPoolConfig[]): void {
       );
     }
   }
-}
-
-function uniqueLabels(labels: string[]): string[] {
-  return [...new Set(["windows", "docker-capable", "private", ...labels])];
-}
-
-function interpolate(value: unknown, env: Record<string, string>): unknown {
-  if (typeof value === "string") {
-    return value.replace(
-      /\$\{([A-Z0-9_]+)(?::-(.*?))?\}/g,
-      (_match, name: string, defaultValue?: string) => {
-        const envValue = env[name];
-        if (envValue !== undefined) {
-          return envValue;
-        }
-        if (defaultValue !== undefined) {
-          return defaultValue;
-        }
-        throw new Error(`missing environment value for ${name}`);
-      }
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => interpolate(item, env));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nestedValue]) => [
-        key,
-        interpolate(nestedValue, env)
-      ])
-    );
-  }
-
-  return value;
 }

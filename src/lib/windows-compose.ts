@@ -5,6 +5,8 @@ import type {
   ResolvedWindowsDockerConfig,
   WindowsDockerPoolConfig
 } from "./windows-config.js";
+import { buildCommonRunnerEnv } from "./runner-plane.js";
+import { renderTelemetryEnvironment } from "./telemetry.js";
 
 export function renderWindowsDockerCompose(
   config: ResolvedWindowsDockerConfig,
@@ -55,24 +57,33 @@ function renderService(
   const runnerToolCache = path.win32.join(runnerStateDir, "toolcache");
   const serviceName = buildWindowsDockerServiceName(pool, index);
   const environment: Record<string, string> = {
-    GITHUB_PAT: "${GITHUB_PAT}",
-    GITHUB_API_URL: "${GITHUB_API_URL:-https://api.github.com}",
-    GITHUB_ORG: pool.organization,
-    RUNNER_SCOPE: "organization",
-    RUNNER_NAME: serviceName,
-    RUNNER_GROUP: pool.runnerGroup,
-    RUNNER_LABELS: pool.labels.join(","),
-    RUNNER_VISIBILITY: pool.visibility,
-    RUNNER_REPOSITORY_ACCESS: pool.repositoryAccess,
-    RUNNER_STATE_DIR: runnerStateDir,
-    RUNNER_LOG_DIR: path.win32.join(runnerStateDir, "logs"),
-    RUNNER_WORK_DIR: runnerWorkDir,
-    RUNNER_TEMP: runnerTempDir,
-    RUNNER_TOOL_CACHE: runnerToolCache,
-    AGENT_TOOLSDIRECTORY: runnerToolCache,
-    RUNNER_EPHEMERAL: "true",
-    RUNNER_DISABLE_UPDATE: "true",
-    DOCKER_HOST: "npipe:////./pipe/docker_engine"
+    ...buildCommonRunnerEnv({
+      organization: pool.organization,
+      runnerName: serviceName,
+      runnerGroup: pool.runnerGroup,
+      poolKey: pool.key,
+      plane: "windows-docker",
+      labels: pool.labels,
+      visibility: pool.visibility,
+      repositoryAccess: pool.repositoryAccess,
+      runnerStateDir,
+      runnerLogDir: path.win32.join(runnerStateDir, "logs"),
+      runnerWorkDir,
+      runnerTemp: runnerTempDir,
+      runnerToolCache
+    }),
+    DOCKER_HOST: "npipe:////./pipe/docker_engine",
+    ...renderTelemetryEnvironment(pool.telemetry, {
+      serviceName: "github-runner-fleet.windows-docker",
+      resourceAttributes: {
+        "deployment.environment": pool.visibility,
+        "github.organization": pool.organization,
+        "runner.group": pool.runnerGroup,
+        "runner.name": serviceName,
+        "runner.pool": pool.key,
+        "runner.plane": "windows-docker"
+      }
+    })
   };
 
   if (pool.repositoryAccess === "selected") {

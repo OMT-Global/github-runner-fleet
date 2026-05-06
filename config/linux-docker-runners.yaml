@@ -15,6 +15,13 @@ pools:
     size: 2
     architecture: amd64
     runnerRoot: ${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-private
+    # telemetry:
+    #   enabled: true
+    #   endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    #   protocol: http/protobuf
+    #   headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+    #   resourceAttributes:
+    #     service.namespace: github-runner-fleet
     resources:
       cpus: "4"
       memory: 8g

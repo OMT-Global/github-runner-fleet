@@ -31,6 +31,33 @@ describe("renderLinuxDockerCompose", () => {
       "com.github-runner-fleet.docker-capable": "true"
     });
   });
+
+  test("renders OTEL environment for Docker-capable runners", () => {
+    const config = configFixture();
+    config.pools[0].telemetry = {
+      enabled: true,
+      endpoint: "grpc://otel.example.com:4317",
+      tracesExporter: "otlp",
+      metricsExporter: "otlp",
+      logsExporter: "none",
+      resourceAttributes: {}
+    };
+
+    const compose = renderLinuxDockerCompose(config, envFixture());
+    const payload = YAML.parse(compose.split("\n").slice(2).join("\n")) as {
+      services: Record<string, Record<string, unknown>>;
+    };
+
+    expect(
+      payload.services["linux-docker-private-runner-01"].environment
+    ).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "grpc://otel.example.com:4317",
+      OTEL_SERVICE_NAME: "github-runner-fleet.linux-docker",
+      OTEL_LOGS_EXPORTER: "none",
+      OTEL_RESOURCE_ATTRIBUTES:
+        "deployment.environment=private,github.organization=example,runner.group=linux-docker-private,runner.name=linux-docker-private-runner-01,runner.pool=linux-docker-private,runner.plane=linux-docker"
+    });
+  });
 });
 
 function configFixture(): ResolvedLinuxDockerConfig {

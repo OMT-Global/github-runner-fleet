@@ -33,7 +33,7 @@ describe("synology status", () => {
       JSON.stringify({
         ok: true,
         project: {
-          name: "synology-github-runner",
+          name: "github-runner-fleet",
           status: "running",
           updated_at: "2026-04-12T08:00:00Z"
         },
@@ -45,7 +45,7 @@ describe("synology status", () => {
             end_time: "2026-04-12T08:00:00Z"
           }
         },
-        remoteLogPath: "/volume1/docker/synology-github-runner/logs/install-project.log"
+        remoteLogPath: "/volume1/docker/github-runner-fleet/logs/install-project.log"
       })
     );
 
@@ -133,7 +133,7 @@ function configFixture(): ResolvedConfig {
   return {
     version: 1,
     image: {
-      repository: "ghcr.io/example/synology-github-runner",
+      repository: "ghcr.io/example/github-runner-fleet",
       tag: "0.1.9"
     },
     pools: [
@@ -147,11 +147,11 @@ function configFixture(): ResolvedConfig {
         labels: ["synology", "shell-only", "private"],
         size: 1,
         architecture: "auto",
-        runnerRoot: "/volume1/docker/synology-github-runner/pools/synology-private",
+        runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-private",
         resources: {
           memory: "2g"
         },
-        imageRef: "ghcr.io/example/synology-github-runner:0.1.9"
+        imageRef: "ghcr.io/example/github-runner-fleet:0.1.9"
       }
     ]
   };
@@ -161,7 +161,7 @@ function envFixture(apiRepo: string): DeploymentEnv {
   return {
     githubPat: "test-pat",
     githubApiUrl: "https://api.github.com",
-    synologyRunnerBaseDir: "/volume1/docker/synology-github-runner",
+    synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
     synologyHost: "nas.example.com",
     synologyPort: "5001",
     synologyUsername: "admin",
@@ -170,17 +170,17 @@ function envFixture(apiRepo: string): DeploymentEnv {
     synologyCertVerify: false,
     synologyDsmVersion: 7,
     synologyApiRepo: apiRepo,
-    synologyProjectDir: "/volume1/docker/synology-github-runner",
+    synologyProjectDir: "/volume1/docker/github-runner-fleet",
     synologyProjectComposeFile: "compose.yaml",
     synologyProjectEnvFile: ".env",
     synologyInstallPullImages: true,
     synologyInstallForceRecreate: true,
     synologyInstallRemoveOrphans: true,
     lumeRunnerBaseDir:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume",
     lumeRunnerEnvFile:
-      "/Users/tester/Library/Application Support/synology-github-runner/lume/runner.env",
-    composeProjectName: "synology-github-runner",
+      "/Users/tester/Library/Application Support/github-runner-fleet/lume/runner.env",
+    composeProjectName: "github-runner-fleet",
     runnerVersion: "2.333.0",
     raw: {}
   };

@@ -1,30 +1,32 @@
 # Shell-safe workflow cookbook
 
-This guide is for downstream repositories that want to consume the runner contracts from this repo without guessing which jobs belong on self-hosted Synology runners, which jobs belong on the Lume macOS pool, and which jobs should stay on GitHub-hosted runners.
+This guide is for downstream repositories that want to consume the runner contracts from this repo without guessing which jobs belong on self-hosted Synology runners, Linux Docker runners, Windows Docker runners, the Lume macOS pool, and GitHub-hosted runners.
 
 ## Runner compatibility matrix
 
-| Job class | Synology shell-only pool | Lume macOS pool | GitHub-hosted runners | Notes |
-| --- | --- | --- | --- | --- |
-| Node install, lint, test, build | Yes | Usually unnecessary | Yes | On Synology, use `OMT-Global/synology-github-runner/actions/setup-shell-safe-node` instead of `actions/setup-node`. |
-| Python 3.12 lint/test | Yes | Optional | Yes | `actions/setup-python@v6` with `python-version: '3.12'` resolves locally on the Synology image. Other Python versions should stay hosted unless you control the full toolchain. |
-| Terraform fmt/validate/init without cloud sidecars | Yes | Optional | Yes | Keep plugin cache under `RUNNER_TEMP` or another writable container-local path. |
-| Docs checks, markdown lint, shell validation | Yes | Optional | Yes | Good fit for the shell-only pool when the job only needs baked-in CLI tools. |
-| Release image builds, Buildx, QEMU, registry publish | No | No | Yes | Keep these on GitHub-hosted runners. |
-| Docker daemon, `docker build`, `docker compose`, service containers | No | No | Yes | The Synology runner class intentionally avoids Docker socket mounts and does not support service containers. |
-| `container:` jobs | No | No | Yes | Route these back to GitHub-hosted runners. |
-| Browser/UI/E2E jobs needing extra distro packages | No | Sometimes | Yes | Prefer hosted runners unless the macOS requirement is explicit and owned. |
-| macOS signing, Xcode builds, Swift/macOS validation | No | Yes | Yes | Use the Lume pool when you need a self-hosted macOS environment. |
-| Public fork pull requests | No | No | Yes | Keep fork PRs on GitHub-hosted runners so untrusted code does not land on self-hosted infrastructure. |
+| Job class | Synology shell-only pool | Linux Docker pool | Windows Docker pool | Lume macOS pool | GitHub-hosted runners | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Node install, lint, test, build | Yes | Yes | Case-by-case | Usually unnecessary | Yes | On Synology, use `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node` instead of `actions/setup-node`. |
+| Python 3.12 lint/test | Yes | Yes | Case-by-case | Optional | Yes | `actions/setup-python@v6` with `python-version: '3.12'` resolves locally on the Synology image. Other Python versions should stay hosted unless you control the full toolchain. |
+| Terraform fmt/validate/init without cloud sidecars | Yes | Yes | Case-by-case | Optional | Yes | Keep plugin cache under `RUNNER_TEMP` or another writable container-local path. |
+| Docs checks, markdown lint, shell validation | Yes | Yes | Case-by-case | Optional | Yes | Good fit for the shell-only pool when the job only needs baked-in CLI tools. |
+| Release image builds, Buildx, QEMU, registry publish | No | Yes | No | No | Yes | Use Linux Docker for trusted private workloads; keep untrusted or public fork builds hosted. |
+| Docker daemon, `docker build`, `docker compose`, service containers | No | Yes | Windows containers only | No | Yes | The Synology runner class intentionally avoids Docker socket mounts and does not support service containers. |
+| `container:` jobs | No | Yes | Windows containers only | No | Yes | Use Docker-capable private planes for trusted repos; use hosted runners for untrusted code. |
+| Browser/UI/E2E jobs needing extra distro packages | No | Case-by-case | Case-by-case | Sometimes | Yes | Prefer hosted runners unless the self-hosted requirement is explicit and owned. |
+| macOS signing, Xcode builds, Swift/macOS validation | No | No | No | Yes | Yes | Use the Lume pool when you need a self-hosted macOS environment. |
+| Public fork pull requests | No | No | No | No | Yes | Keep fork PRs on GitHub-hosted runners so untrusted code does not land on self-hosted infrastructure. |
 
 ## Routing rules
 
 Use these rules when deciding where a workflow job should run:
 
 - Use `runs-on: [self-hosted, synology, shell-only, public]` for trusted shell-safe jobs that can run with the baked-in Linux toolchain.
+- Use `runs-on: [self-hosted, linux, docker-capable, private]` for trusted private Linux jobs that need Docker, `container:`, or service containers.
+- Use `runs-on: [self-hosted, windows, docker-capable, private]` only for trusted private Windows container work.
 - Use `runs-on: [self-hosted, macos, arm64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
 - Keep pull requests from forks on GitHub-hosted runners.
-- Keep any workflow using `container:`, `services:`, browsers, Docker daemon access, Buildx, or extra distro package assumptions on GitHub-hosted runners.
+- Keep any untrusted workflow using `container:`, `services:`, browsers, Docker daemon access, Buildx, or extra distro package assumptions on GitHub-hosted runners.
 - Prefer a split workflow over forcing one runner class to handle incompatible jobs.
 
 ## Recipe: trusted Node job on the Synology shell-only pool
@@ -57,7 +59,7 @@ jobs:
       - uses: pnpm/action-setup@v5
         with:
           version: 10.32.1
-      - uses: OMT-Global/synology-github-runner/actions/setup-shell-safe-node@main
+      - uses: OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main
         with:
           node-version: 24.14.1
       - run: pnpm install --frozen-lockfile
@@ -100,7 +102,7 @@ jobs:
       - uses: pnpm/action-setup@v5
         with:
           version: 10.32.1
-      - uses: OMT-Global/synology-github-runner/actions/setup-shell-safe-node@main
+      - uses: OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main
         with:
           node-version: 24.14.1
       - run: pnpm install --frozen-lockfile
@@ -180,7 +182,7 @@ jobs:
       - run: terraform validate
 ```
 
-This works well for pure CLI Terraform jobs. If the workflow also builds containers, talks to Docker, or needs sidecar services, split those parts back to GitHub-hosted runners.
+This works well for pure CLI Terraform jobs. If the workflow also builds containers, talks to Docker, or needs sidecar services, split those parts onto the Linux Docker private plane for trusted repos or back to GitHub-hosted runners for untrusted code.
 
 ## Recipe: Lume macOS contract job
 
@@ -213,9 +215,9 @@ Use the hosted `macos-latest` image instead when the repository does not need se
 
 ## Force jobs back to GitHub-hosted runners when
 
-- the workflow uses `container:`
-- the workflow uses `services:`
-- the job requires Docker daemon access, Buildx, or QEMU
+- the workflow uses `container:` and is not trusted private work assigned to a Docker-capable plane
+- the workflow uses `services:` and is not trusted private work assigned to a Docker-capable plane
+- the job requires Docker daemon access, Buildx, or QEMU and is not trusted private Linux Docker work
 - the job needs browsers or large sets of distro packages not already present in the runner contract
 - the change comes from a public fork or another untrusted source
 - the job depends on a language/version combination outside the documented self-hosted contract
