@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/install-runtime.sh"
 
 LAUNCH_AGENT_LABEL="com.omt.github-runner-fleet.lume-pool"
 LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
@@ -11,6 +12,8 @@ PLIST_PATH="${LAUNCH_AGENTS_DIR}/${LAUNCH_AGENT_LABEL}.plist"
 STDOUT_PATH="${LOG_DIR}/lume-pool.stdout.log"
 STDERR_PATH="${LOG_DIR}/lume-pool.stderr.log"
 DOMAIN_TARGET="gui/$(id -u)"
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin:${PATH:-}"
 
 usage() {
   cat <<EOF
@@ -34,6 +37,8 @@ require_command() {
 
 write_plist() {
   local rtk_path="$1"
+  local runtime_repo="$2"
+  local runtime_env="$3"
   local temp_path
 
   temp_path="$(mktemp)"
@@ -49,10 +54,10 @@ write_plist() {
     <string>${rtk_path}</string>
     <string>bash</string>
     <string>-lc</string>
-    <string>cd '${REPO_ROOT}' &amp;&amp; exec bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env</string>
+    <string>cd '${runtime_repo}' &amp;&amp; exec bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env '${runtime_env}'</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${REPO_ROOT}</string>
+  <string>${runtime_repo}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -75,11 +80,14 @@ write_plist() {
 EOF
 
   plutil -lint "${temp_path}" >/dev/null
-  mv "${temp_path}" "${PLIST_PATH}"
+  install -m 0644 "${temp_path}" "${PLIST_PATH}"
+  rm -f "${temp_path}"
 }
 
 main() {
   local rtk_path
+  local runtime_repo
+  local runtime_env
 
   if [[ $# -gt 0 ]]; then
     case "$1" in
@@ -100,11 +108,15 @@ main() {
   require_command rtk
 
   rtk_path="$(command -v rtk)"
+  install_lume_controller_runtime "${HOME}"
+  runtime_repo="$(lume_controller_runtime_repo "${HOME}")"
+  runtime_env="$(lume_controller_runtime_env "${HOME}")"
 
   mkdir -p "${LAUNCH_AGENTS_DIR}" "${LOG_DIR}"
-  write_plist "${rtk_path}"
+  write_plist "${rtk_path}" "${runtime_repo}" "${runtime_env}"
 
   launchctl bootout "${DOMAIN_TARGET}" "${PLIST_PATH}" >/dev/null 2>&1 || true
+  launchctl enable "${DOMAIN_TARGET}/${LAUNCH_AGENT_LABEL}"
   launchctl bootstrap "${DOMAIN_TARGET}" "${PLIST_PATH}"
   launchctl enable "${DOMAIN_TARGET}/${LAUNCH_AGENT_LABEL}"
   launchctl kickstart -k "${DOMAIN_TARGET}/${LAUNCH_AGENT_LABEL}"
