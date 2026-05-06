@@ -5,6 +5,7 @@ import type {
   ResolvedWindowsDockerConfig,
   WindowsDockerPoolConfig
 } from "./windows-config.js";
+import { renderTelemetryEnvironment } from "./telemetry.js";
 
 export function renderWindowsDockerCompose(
   config: ResolvedWindowsDockerConfig,
@@ -72,7 +73,18 @@ function renderService(
     AGENT_TOOLSDIRECTORY: runnerToolCache,
     RUNNER_EPHEMERAL: "true",
     RUNNER_DISABLE_UPDATE: "true",
-    DOCKER_HOST: "npipe:////./pipe/docker_engine"
+    DOCKER_HOST: "npipe:////./pipe/docker_engine",
+    ...renderTelemetryEnvironment(pool.telemetry, {
+      serviceName: "github-runner-fleet.windows-docker",
+      resourceAttributes: {
+        "deployment.environment": pool.visibility,
+        "github.organization": pool.organization,
+        "runner.group": pool.runnerGroup,
+        "runner.name": serviceName,
+        "runner.pool": pool.key,
+        "runner.plane": "windows-docker"
+      }
+    })
   };
 
   if (pool.repositoryAccess === "selected") {

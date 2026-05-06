@@ -114,6 +114,25 @@ The Synology shell-only class supports shell jobs, JavaScript actions, composite
 - [docker/runner-entrypoint.sh](docker/runner-entrypoint.sh): ephemeral registration and cleanup flow
 - [src/cli.ts](src/cli.ts): config validation, compose rendering, and runner release helpers
 
+## Runner Telemetry
+
+Each runner pool can opt into OpenTelemetry by adding a `telemetry` block. When enabled, rendered Compose services and Lume runner exports include standard `OTEL_*` variables for the runner process. The collector endpoint stays configurable through deployment env interpolation, so the same non-secret pool config can point to different remote targets per host or environment.
+
+```yaml
+telemetry:
+  enabled: true
+  endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+  protocol: http/protobuf
+  headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  tracesExporter: otlp
+  metricsExporter: otlp
+  logsExporter: otlp
+  resourceAttributes:
+    service.namespace: github-runner-fleet
+```
+
+Supported options are `endpoint`, `protocol` (`grpc` or `http/protobuf`), `headers`, `serviceName`, `tracesExporter`, `metricsExporter`, `logsExporter`, and `resourceAttributes`. Keep auth-bearing headers in `.env` or the target host environment, not in committed config. If `telemetry.enabled` is `true`, validation requires `endpoint`.
+
 ## Synology Quick Start
 
 1. Copy `.env.example` to `.env` and set `GITHUB_PAT`.

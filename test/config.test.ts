@@ -91,6 +91,93 @@ pools:
     });
   });
 
+  test("loads opt-in OTEL telemetry settings", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "pools.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.5
+pools:
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    repositoryAccess: all
+    labels: []
+    size: 1
+    architecture: arm64
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
+    telemetry:
+      enabled: true
+      endpoint: \${OTEL_EXPORTER_OTLP_ENDPOINT}
+      protocol: http/protobuf
+      serviceName: synology-private-runners
+      headers: Authorization=Bearer \${OTEL_EXPORTER_OTLP_TOKEN}
+      metricsExporter: otlp
+      tracesExporter: none
+      logsExporter: otlp
+      resourceAttributes:
+        service.namespace: runner-fleet
+`,
+      "utf8"
+    );
+
+    const config = loadConfig(
+      configPath,
+      deploymentEnv({
+        OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel.example.com/v1",
+        OTEL_EXPORTER_OTLP_TOKEN: "test-token"
+      })
+    );
+
+    expect(config.pools[0].telemetry).toMatchObject({
+      enabled: true,
+      endpoint: "https://otel.example.com/v1",
+      protocol: "http/protobuf",
+      serviceName: "synology-private-runners",
+      headers: "Authorization=Bearer test-token",
+      tracesExporter: "none",
+      resourceAttributes: {
+        "service.namespace": "runner-fleet"
+      }
+    });
+  });
+
+  test("requires telemetry endpoint when telemetry is enabled", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "pools.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.5
+pools:
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    repositoryAccess: all
+    labels: []
+    size: 1
+    architecture: arm64
+    runnerRoot: /volume1/docker/github-runner-fleet/pools/synology-private
+    telemetry:
+      enabled: true
+`,
+      "utf8"
+    );
+
+    expect(() => loadConfig(configPath, deploymentEnv())).toThrow(
+      /endpoint is required when telemetry\.enabled is true/
+    );
+  });
+
   test("rejects autoscaling bounds with min greater than max", () => {
     const directory = createTempDir();
     const configPath = path.join(directory, "pools.yaml");
@@ -361,7 +448,7 @@ pools:
   });
 });
 
-function deploymentEnv(): DeploymentEnv {
+function deploymentEnv(raw: Record<string, string> = {}): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
     synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
@@ -397,7 +484,8 @@ function deploymentEnv(): DeploymentEnv {
     runnerVersion: "2.327.1",
     raw: {
       SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet",
-      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker"
+      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker",
+      ...raw
     }
   };
 }

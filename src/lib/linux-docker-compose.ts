@@ -4,6 +4,7 @@ import type {
   ResolvedLinuxDockerConfig
 } from "./linux-docker-config.js";
 import type { DeploymentEnv } from "./env.js";
+import { renderTelemetryEnvironment } from "./telemetry.js";
 
 export function renderLinuxDockerCompose(
   config: ResolvedLinuxDockerConfig,
@@ -73,7 +74,18 @@ function renderService(
     RUNNER_EXEC_MODE_OVERRIDE: "root",
     RUNNER_EPHEMERAL: "true",
     RUNNER_DISABLE_UPDATE: "true",
-    DOCKER_HOST: "unix:///var/run/docker.sock"
+    DOCKER_HOST: "unix:///var/run/docker.sock",
+    ...renderTelemetryEnvironment(pool.telemetry, {
+      serviceName: "github-runner-fleet.linux-docker",
+      resourceAttributes: {
+        "deployment.environment": pool.visibility,
+        "github.organization": pool.organization,
+        "runner.group": pool.runnerGroup,
+        "runner.name": buildLinuxDockerServiceName(pool, index),
+        "runner.pool": pool.key,
+        "runner.plane": "linux-docker"
+      }
+    })
   };
 
   if (pool.repositoryAccess === "selected") {

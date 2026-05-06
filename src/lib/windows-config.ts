@@ -4,6 +4,7 @@ import YAML from "yaml";
 import { z } from "zod";
 import type { PoolResources, RepositoryAccess } from "./config.js";
 import type { DeploymentEnv } from "./env.js";
+import { telemetrySchema, type TelemetryConfig } from "./telemetry.js";
 
 export interface WindowsDockerPoolConfig {
   key: string;
@@ -19,6 +20,7 @@ export interface WindowsDockerPoolConfig {
   sshPort: string;
   runnerRoot: string;
   resources: PoolResources;
+  telemetry?: TelemetryConfig;
   imageRef: string;
 }
 
@@ -61,7 +63,8 @@ const poolSchema = z
         memory: z.string().min(1).optional(),
         pidsLimit: z.number().int().positive().optional()
       })
-      .default({})
+      .default({}),
+    telemetry: telemetrySchema
   })
   .superRefine((pool, ctx) => {
     if (!pool.key && !pool.name) {
@@ -124,6 +127,7 @@ export function loadWindowsDockerConfig(
 
   const seenKeys = new Set<string>();
   const pools = result.pools.map((pool) => {
+    const { telemetry } = pool;
     const key = pool.key ?? pool.name!;
     if (seenKeys.has(key)) {
       throw new Error(`duplicate windows-docker pool key: ${key}`);
@@ -180,6 +184,7 @@ export function loadWindowsDockerConfig(
         memory: pool.resources.memory,
         pidsLimit: pool.resources.pidsLimit
       },
+      ...(telemetry.enabled ? { telemetry } : {}),
       imageRef
     };
   });

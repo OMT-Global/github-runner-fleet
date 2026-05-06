@@ -29,4 +29,12 @@ describe("runner version helpers", () => {
       outdated: true
     });
   });
+
+  test("keeps current runner versions marked up to date", () => {
+    expect(summarizeRunnerVersion("v2.327.1", "2.327.1")).toEqual({
+      current: "2.327.1",
+      latest: "2.327.1",
+      outdated: false
+    });
+  });
 });

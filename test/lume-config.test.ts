@@ -116,6 +116,42 @@ pool:
       "export RUNNER_LABELS='self-hosted,macos,arm64,private'"
     );
   });
+
+  test("renders OTEL shell exports when telemetry is enabled", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "lume-runners.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+pool:
+  key: macos-private
+  size: 1
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+  telemetry:
+    enabled: true
+    endpoint: https://otel.example.com:4318
+    protocol: http/protobuf
+    resourceAttributes:
+      service.namespace: runner-fleet
+`,
+      "utf8"
+    );
+
+    const config = loadLumeConfig(configPath, deploymentEnv());
+    const shellExports = renderLumeShellExports(config, 1);
+
+    expect(shellExports).toContain(
+      "export OTEL_EXPORTER_OTLP_ENDPOINT='https://otel.example.com:4318'"
+    );
+    expect(shellExports).toContain(
+      "export OTEL_EXPORTER_OTLP_PROTOCOL='http/protobuf'"
+    );
+    expect(shellExports).toContain(
+      "export OTEL_RESOURCE_ATTRIBUTES='github.organization=omt-global,runner.group=macos-private,runner.name=macos-runner-slot-01,runner.pool=macos-private,runner.plane=lume,runner.slot=slot-01,service.namespace=runner-fleet'"
+    );
+  });
 });
 
 function deploymentEnv(): DeploymentEnv {

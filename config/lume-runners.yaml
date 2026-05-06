@@ -21,3 +21,10 @@ pool:
   guestRunnerRoot: /Users/lume/actions-runner
   guestWorkRoot: /Users/lume/actions-runner/_work
   runnerVersion: 2.333.0
+  # telemetry:
+  #   enabled: true
+  #   endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+  #   protocol: http/protobuf
+  #   headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  #   resourceAttributes:
+  #     service.namespace: github-runner-fleet
