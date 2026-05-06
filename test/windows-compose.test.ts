@@ -34,6 +34,32 @@ describe("renderWindowsDockerCompose", () => {
       "com.github-runner-fleet.docker-capable": "true"
     });
   });
+
+  test("renders OTEL environment for Windows Docker runners", () => {
+    const config = configFixture();
+    config.pools[0].telemetry = {
+      enabled: true,
+      endpoint: "https://otel.example.com:4318",
+      protocol: "http/protobuf",
+      tracesExporter: "otlp",
+      metricsExporter: "none",
+      logsExporter: "otlp",
+      resourceAttributes: {}
+    };
+
+    const compose = renderWindowsDockerCompose(config, envFixture());
+    const payload = YAML.parse(compose.split("\n").slice(2).join("\n")) as {
+      services: Record<string, Record<string, unknown>>;
+    };
+
+    expect(payload.services["windows-private-runner-01"].environment).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel.example.com:4318",
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+      OTEL_METRICS_EXPORTER: "none",
+      OTEL_RESOURCE_ATTRIBUTES:
+        "deployment.environment=private,github.organization=example,runner.group=windows-private,runner.name=windows-private-runner-01,runner.pool=windows-private,runner.plane=windows-docker"
+    });
+  });
 });
 
 function configFixture(): ResolvedWindowsDockerConfig {

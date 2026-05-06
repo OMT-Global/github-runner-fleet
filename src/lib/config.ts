@@ -4,6 +4,11 @@ import YAML from "yaml";
 import { z } from "zod";
 import type { DeploymentEnv } from "./env.js";
 import type { RunnerArchitecture } from "./runner-version.js";
+import {
+  renderTelemetryEnvironment,
+  telemetrySchema,
+  type TelemetryConfig
+} from "./telemetry.js";
 
 export type RunnerVisibility = "private" | "public";
 export type RepositoryAccess = "all" | "selected";
@@ -35,6 +40,7 @@ export interface PoolConfig {
   runnerRoot: string;
   resources: PoolResources;
   scaling?: PoolScaling;
+  telemetry?: TelemetryConfig;
   imageRef: string;
 }
 
@@ -97,7 +103,8 @@ const poolSchema = z
         queueThreshold: z.number().int().min(1),
         cooldownSeconds: z.number().int().min(0)
       })
-      .optional()
+      .optional(),
+    telemetry: telemetrySchema
   })
   .superRefine((pool, ctx) => {
     if (pool.repositoryAccess === "selected" && pool.allowedRepositories.length === 0) {
@@ -148,6 +155,7 @@ export function loadConfig(
 
   const seenKeys = new Set<string>();
   const pools = result.pools.map((pool) => {
+    const { telemetry, ...poolValues } = pool;
     if (seenKeys.has(pool.key)) {
       throw new Error(`duplicate pool key: ${pool.key}`);
     }
@@ -171,7 +179,7 @@ export function loadConfig(
     }
 
     return {
-      ...pool,
+      ...poolValues,
       labels: uniqueLabels(pool.labels, pool.visibility),
       resources: {
         cpus: pool.resources.cpus,
@@ -179,6 +187,7 @@ export function loadConfig(
         pidsLimit: pool.resources.pidsLimit
       },
       scaling: pool.scaling,
+      ...(telemetry.enabled ? { telemetry } : {}),
       imageRef: `${result.image.repository}:${result.image.tag}`
     };
   });
@@ -189,6 +198,8 @@ export function loadConfig(
     pools
   };
 }
+
+export { renderTelemetryEnvironment };
 
 function uniqueLabels(
   labels: string[],

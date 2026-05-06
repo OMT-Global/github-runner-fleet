@@ -15,6 +15,7 @@ import {
   validateDockerRepositoryAccess,
   validateRepositoryOwner
 } from "./runner-plane.js";
+import { telemetrySchema, type TelemetryConfig } from "./telemetry.js";
 
 export interface LinuxDockerPoolConfig {
   key: string;
@@ -28,6 +29,7 @@ export interface LinuxDockerPoolConfig {
   architecture: RunnerPlatform;
   runnerRoot: string;
   resources: PoolResources;
+  telemetry?: TelemetryConfig;
   imageRef: string;
 }
 
@@ -59,7 +61,8 @@ const poolSchema = z
         memory: z.string().min(1).optional(),
         pidsLimit: z.number().int().positive().optional()
       })
-      .default({})
+      .default({}),
+    telemetry: telemetrySchema
   })
   .superRefine((pool, ctx) => {
     if (pool.repositoryAccess === "selected" && pool.allowedRepositories.length === 0) {
@@ -102,6 +105,7 @@ export function loadLinuxDockerConfig(
 
   const seenKeys = new Set<string>();
   const pools = result.pools.map((pool) => {
+    const { telemetry, ...poolValues } = pool;
     if (seenKeys.has(pool.key)) {
       throw new Error(`duplicate linux-docker pool key: ${pool.key}`);
     }
@@ -129,7 +133,7 @@ export function loadLinuxDockerConfig(
     }
 
     return {
-      ...pool,
+      ...poolValues,
       visibility: "private" as const,
       labels: uniqueRunnerLabels(
         ["linux", "docker-capable", "private"],
@@ -140,6 +144,7 @@ export function loadLinuxDockerConfig(
         memory: pool.resources.memory,
         pidsLimit: pool.resources.pidsLimit
       },
+      ...(telemetry.enabled ? { telemetry } : {}),
       imageRef: `${result.image.repository}:${result.image.tag}`
     };
   });

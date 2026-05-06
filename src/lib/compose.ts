@@ -2,6 +2,7 @@ import YAML from "yaml";
 import type { DeploymentEnv } from "./env.js";
 import type { PoolConfig, ResolvedConfig } from "./config.js";
 import { buildCommonRunnerEnv } from "./runner-plane.js";
+import { renderTelemetryEnvironment } from "./config.js";
 
 export function renderCompose(
   config: ResolvedConfig,
@@ -42,21 +43,34 @@ export function buildRunnerStateDir(pool: PoolConfig, index: number): string {
 
 function renderService(pool: PoolConfig, index: number): Record<string, unknown> {
   const runnerStateDir = buildRunnerStateDir(pool, index);
-  const environment = buildCommonRunnerEnv({
-    organization: pool.organization,
-    runnerName: buildRunnerName(pool, index),
-    runnerGroup: pool.runnerGroup,
-    poolKey: pool.key,
-    plane: "synology",
-    labels: pool.labels,
-    visibility: pool.visibility,
-    repositoryAccess: pool.repositoryAccess,
-    runnerStateDir,
-    runnerLogDir: `${runnerStateDir}/logs`,
-    runnerWorkDir: "/tmp/github-runner-work",
-    runnerTemp: "/tmp/github-runner-temp",
-    runnerToolCache: "/opt/hostedtoolcache"
-  });
+  const environment = {
+    ...buildCommonRunnerEnv({
+      organization: pool.organization,
+      runnerName: buildRunnerName(pool, index),
+      runnerGroup: pool.runnerGroup,
+      poolKey: pool.key,
+      plane: "synology",
+      labels: pool.labels,
+      visibility: pool.visibility,
+      repositoryAccess: pool.repositoryAccess,
+      runnerStateDir,
+      runnerLogDir: `${runnerStateDir}/logs`,
+      runnerWorkDir: "/tmp/github-runner-work",
+      runnerTemp: "/tmp/github-runner-temp",
+      runnerToolCache: "/opt/hostedtoolcache"
+    }),
+    ...renderTelemetryEnvironment(pool.telemetry, {
+      serviceName: "github-runner-fleet.synology",
+      resourceAttributes: {
+        "deployment.environment": pool.visibility,
+        "github.organization": pool.organization,
+        "runner.group": pool.runnerGroup,
+        "runner.name": buildRunnerName(pool, index),
+        "runner.pool": pool.key,
+        "runner.plane": "synology"
+      }
+    })
+  };
 
   if (pool.repositoryAccess === "selected") {
     environment.RUNNER_ALLOWED_REPOSITORIES = pool.allowedRepositories.join(",");
