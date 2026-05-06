@@ -99,13 +99,17 @@ pools:
   - key: windows-one
     organization: example
     runnerGroup: windows-one
-    repositoryAccess: all
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/windows-one
     host: windows-one.example.com
     sshUser: administrator
   - key: windows-two
     organization: example
     runnerGroup: windows-two
-    repositoryAccess: all
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/windows-two
     host: windows-two.example.com
     sshUser: administrator
 `,
@@ -116,9 +120,44 @@ pools:
       /must target the same host/
     );
   });
+
+  test("rejects repositoryAccess all unless break-glass is explicit", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "windows-runners.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+plane: windows-docker
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9-windows
+pools:
+  - key: windows-private
+    organization: example
+    runnerGroup: windows-private
+    repositoryAccess: all
+    host: windows-host.example.com
+    sshUser: administrator
+`,
+      "utf8"
+    );
+
+    expect(() => loadWindowsDockerConfig(configPath, deploymentEnv())).toThrow(
+      /WINDOWS_DOCKER_ALLOW_ALL_REPOSITORIES=true/
+    );
+    expect(
+      loadWindowsDockerConfig(
+        configPath,
+        deploymentEnv({
+          WINDOWS_DOCKER_ALLOW_ALL_REPOSITORIES: "true"
+        })
+      ).pools[0].repositoryAccess
+    ).toBe("all");
+  });
 });
 
-function deploymentEnv(): DeploymentEnv {
+function deploymentEnv(raw: Record<string, string> = {}): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
     synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
@@ -163,7 +202,8 @@ function deploymentEnv(): DeploymentEnv {
     composeProjectName: "github-runner-fleet",
     runnerVersion: "2.333.0",
     raw: {
-      WINDOWS_DOCKER_RUNNER_BASE_DIR: "C:\\github-runner-fleet\\windows-docker"
+      WINDOWS_DOCKER_RUNNER_BASE_DIR: "C:\\github-runner-fleet\\windows-docker",
+      ...raw
     }
   };
 }

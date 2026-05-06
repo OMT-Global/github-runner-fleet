@@ -18,11 +18,11 @@ function makeTempRoot() {
   return tempRoot;
 }
 
-async function waitForReady(logPath: string, port: number) {
+async function waitForReady(logPath: string, host: string, port: number) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (
       fs.existsSync(logPath) &&
-      fs.readFileSync(logPath, "utf8").includes(`listening 0.0.0.0:${port}`)
+      fs.readFileSync(logPath, "utf8").includes(`listening ${host}:${port}`)
     ) {
       return;
     }
@@ -38,9 +38,11 @@ describe("runner registration smoke harness", () => {
     const tempRoot = makeTempRoot();
     const logPath = path.join(tempRoot, "mock-api.log");
     const port = 18080 + Number(process.env.VITEST_POOL_ID ?? "0");
+    const host = "127.0.0.1";
     const server = spawn("node", ["scripts/smoke/mock-api.mjs"], {
       env: {
         ...process.env,
+        MOCK_HOST: host,
         MOCK_LOG_PATH: logPath,
         MOCK_PORT: String(port),
       },
@@ -48,7 +50,7 @@ describe("runner registration smoke harness", () => {
     });
 
     try {
-      await waitForReady(logPath, port);
+      await waitForReady(logPath, host, port);
 
       await expect(
         fetch(

@@ -29,9 +29,9 @@ services:
       RUNNER_TEMP: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/_temp
       RUNNER_TOOL_CACHE: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/toolcache
       AGENT_TOOLSDIRECTORY: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/toolcache
-      RUNNER_EXEC_MODE_OVERRIDE: root
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
+      RUNNER_EXEC_MODE_OVERRIDE: root
       DOCKER_HOST: unix:///var/run/docker.sock
       RUNNER_ALLOWED_REPOSITORIES: example/private-app
     volumes:
@@ -72,9 +72,9 @@ services:
       RUNNER_TEMP: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02/_temp
       RUNNER_TOOL_CACHE: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02/toolcache
       AGENT_TOOLSDIRECTORY: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02/toolcache
-      RUNNER_EXEC_MODE_OVERRIDE: root
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
+      RUNNER_EXEC_MODE_OVERRIDE: root
       DOCKER_HOST: unix:///var/run/docker.sock
       RUNNER_ALLOWED_REPOSITORIES: example/private-app
     volumes:

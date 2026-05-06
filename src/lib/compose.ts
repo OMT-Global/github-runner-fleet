@@ -1,10 +1,8 @@
 import YAML from "yaml";
 import type { DeploymentEnv } from "./env.js";
-import {
-  renderTelemetryEnvironment,
-  type PoolConfig,
-  type ResolvedConfig
-} from "./config.js";
+import type { PoolConfig, ResolvedConfig } from "./config.js";
+import { buildCommonRunnerEnv } from "./runner-plane.js";
+import { renderTelemetryEnvironment } from "./config.js";
 
 export function renderCompose(
   config: ResolvedConfig,
@@ -45,26 +43,22 @@ export function buildRunnerStateDir(pool: PoolConfig, index: number): string {
 
 function renderService(pool: PoolConfig, index: number): Record<string, unknown> {
   const runnerStateDir = buildRunnerStateDir(pool, index);
-  const environment: Record<string, string> = {
-    GITHUB_PAT: "${GITHUB_PAT}",
-    GITHUB_API_URL: "${GITHUB_API_URL:-https://api.github.com}",
-    GITHUB_ORG: pool.organization,
-    RUNNER_SCOPE: "organization",
-    RUNNER_NAME: buildRunnerName(pool, index),
-    RUNNER_GROUP: pool.runnerGroup,
-    FLEET_POOL_KEY: pool.key,
-    FLEET_PLANE: "synology",
-    RUNNER_LABELS: pool.labels.join(","),
-    RUNNER_VISIBILITY: pool.visibility,
-    RUNNER_REPOSITORY_ACCESS: pool.repositoryAccess,
-    RUNNER_STATE_DIR: runnerStateDir,
-    RUNNER_LOG_DIR: `${runnerStateDir}/logs`,
-    RUNNER_WORK_DIR: "/tmp/github-runner-work",
-    RUNNER_TEMP: "/tmp/github-runner-temp",
-    RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
-    AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache",
-    RUNNER_EPHEMERAL: "true",
-    RUNNER_DISABLE_UPDATE: "true",
+  const environment = {
+    ...buildCommonRunnerEnv({
+      organization: pool.organization,
+      runnerName: buildRunnerName(pool, index),
+      runnerGroup: pool.runnerGroup,
+      poolKey: pool.key,
+      plane: "synology",
+      labels: pool.labels,
+      visibility: pool.visibility,
+      repositoryAccess: pool.repositoryAccess,
+      runnerStateDir,
+      runnerLogDir: `${runnerStateDir}/logs`,
+      runnerWorkDir: "/tmp/github-runner-work",
+      runnerTemp: "/tmp/github-runner-temp",
+      runnerToolCache: "/opt/hostedtoolcache"
+    }),
     ...renderTelemetryEnvironment(pool.telemetry, {
       serviceName: "github-runner-fleet.synology",
       resourceAttributes: {

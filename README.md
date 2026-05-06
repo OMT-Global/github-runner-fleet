@@ -373,12 +373,17 @@ Keep the Lume runner env file outside git and locked down with `chmod 600`. The 
 - Do not add Compose `init: true` for these services. The image already uses `tini`, and double-init setups on Synology produce noisy subreaper warnings.
 - For public pools, use DSM firewall rules to reduce unnecessary LAN reachability.
 - Keep the Docker socket restricted to the dedicated Linux Docker host. Do not mount it into the Synology shell-only plane.
+- Keep external fork pull requests on GitHub-hosted runners; self-hosted runner groups are for trusted same-repository or explicitly allowed private workflows.
+- Treat Docker-capable runner groups as host-control boundaries because they mount the Docker socket or Windows named pipe.
+- Keep `LUME_GUEST_PASSWORD` out of git and rotate the base VM guest credential when rebuilding or resealing Lume images.
 
 ## Useful Commands
 
 ```bash
 pnpm doctor -- full --env .env
 pnpm doctor -- synology --env .env
+pnpm doctor -- linux-docker --env .env
+pnpm doctor -- windows-docker --env .env
 pnpm doctor -- lume --env .env
 pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env
 pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env
@@ -437,7 +442,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 
 ## Troubleshooting Starting Points
 
-- `pnpm doctor -- full --env .env` for one preflight/status summary across Synology and Lume checks
+- `pnpm doctor -- full --env .env` for one preflight/status summary across Synology, Linux Docker, Windows Docker, and Lume checks
 - `pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux pool schema and label validation
 - `pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux runner-group verification
 - `pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env` for the remote Linux Docker install plan before you push it

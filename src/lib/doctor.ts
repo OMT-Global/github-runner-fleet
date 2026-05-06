@@ -2,12 +2,13 @@ import fs from "node:fs";
 import { auditLogFileFromEnv } from "./audit.js";
 import { collectConfigWarnings, loadConfig } from "./config.js";
 import { loadDeploymentEnv } from "./env.js";
+import { loadLinuxDockerConfig } from "./linux-docker-config.js";
+import { loadWindowsDockerConfig } from "./windows-config.js";
 import {
   type FetchLike,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./github.js";
-import { loadLinuxDockerConfig } from "./linux-docker-config.js";
 import { log, type LogLevel } from "./logger.js";
 import { loadLumeConfig } from "./lume-config.js";
 import {
@@ -21,12 +22,13 @@ import {
   type MetricSample
 } from "./metrics.js";
 
-export type DoctorMode = "full" | "synology" | "linux-docker" | "lume";
+export type DoctorMode = "full" | "synology" | "linux-docker" | "windows-docker" | "lume";
 export type DoctorCheckStatus = "pass" | "warn" | "fail" | "skip";
+export type DoctorTarget = "synology" | "linux-docker" | "windows-docker" | "lume";
 
 export interface DoctorCheck {
   id: string;
-  target: "synology" | "linux-docker" | "lume";
+  target: DoctorTarget;
   status: DoctorCheckStatus;
   summary: string;
   detail?: string;
@@ -43,7 +45,9 @@ export interface RunDoctorOptions {
   mode?: DoctorMode;
   envPath?: string;
   configPath?: string;
+  linuxConfigPath?: string;
   linuxDockerConfigPath?: string;
+  windowsConfigPath?: string;
   lumeConfigPath?: string;
   fetchImpl?: FetchLike;
 }
@@ -54,8 +58,12 @@ export async function runDoctor(
   const mode = options.mode ?? "full";
   const envPath = options.envPath ?? ".env";
   const configPath = options.configPath ?? "config/pools.yaml";
-  const linuxDockerConfigPath =
-    options.linuxDockerConfigPath ?? "config/linux-docker-runners.yaml";
+  const linuxConfigPath =
+    options.linuxConfigPath ??
+    options.linuxDockerConfigPath ??
+    "config/linux-docker-runners.yaml";
+  const windowsConfigPath =
+    options.windowsConfigPath ?? "config/windows-runners.yaml";
   const lumeConfigPath = options.lumeConfigPath ?? "config/lume-runners.yaml";
   const fetchImpl = options.fetchImpl;
   const env = loadDeploymentEnv({
@@ -76,10 +84,19 @@ export async function runDoctor(
   if (mode === "full" || mode === "linux-docker") {
     const linuxDockerChecks = await runLinuxDockerDoctor({
       env,
-      configPath: linuxDockerConfigPath,
+      configPath: linuxConfigPath,
       fetchImpl
     });
     checks.push(...linuxDockerChecks);
+  }
+
+  if (mode === "full" || mode === "windows-docker") {
+    const windowsDockerChecks = await runWindowsDockerDoctor({
+      env,
+      configPath: windowsConfigPath,
+      fetchImpl
+    });
+    checks.push(...windowsDockerChecks);
   }
 
   if (mode === "full" || mode === "lume") {
@@ -99,6 +116,113 @@ export async function runDoctor(
 
   await emitDoctorObservability(report);
   return report;
+}
+
+async function runWindowsDockerDoctor(input: {
+  env: ReturnType<typeof loadDeploymentEnv>;
+  configPath: string;
+  fetchImpl?: FetchLike;
+}): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+  const missingDeploymentEnv = [
+    ["GITHUB_PAT", input.env.githubPat]
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  checks.push(
+    missingDeploymentEnv.length === 0
+      ? {
+          id: "windows-docker-env",
+          target: "windows-docker",
+          status: "pass",
+          summary: "required Windows Docker GitHub env is configured"
+        }
+      : {
+          id: "windows-docker-env",
+          target: "windows-docker",
+          status: "fail",
+          summary: "required Windows Docker GitHub env is incomplete",
+          detail: `missing ${missingDeploymentEnv.join(", ")}`
+        }
+  );
+
+  let config: ReturnType<typeof loadWindowsDockerConfig> | undefined;
+  try {
+    config = loadWindowsDockerConfig(input.configPath, input.env);
+    const missingHostFields = config.pools.flatMap((pool) => [
+      ...(pool.host ? [] : [`${pool.key}:host`]),
+      ...(pool.sshUser ? [] : [`${pool.key}:sshUser`])
+    ]);
+    checks.push({
+      id: "windows-docker-config",
+      target: "windows-docker",
+      status: missingHostFields.length === 0 ? "pass" : "fail",
+      summary:
+        missingHostFields.length === 0
+          ? `loaded ${input.configPath} with ${config.pools.length} pool${config.pools.length === 1 ? "" : "s"}`
+          : "Windows Docker config is missing target host fields",
+      detail:
+        missingHostFields.length === 0
+          ? undefined
+          : `missing ${missingHostFields.join(", ")}`,
+      data: {
+        pools: config.pools.map((pool) => ({
+          key: pool.key,
+          size: pool.size
+        }))
+      }
+    });
+  } catch (error) {
+    checks.push({
+      id: "windows-docker-config",
+      target: "windows-docker",
+      status: "fail",
+      summary: `failed to load ${input.configPath}`,
+      detail: formatError(error)
+    });
+    return checks;
+  }
+
+  if (!input.env.githubPat) {
+    checks.push({
+      id: "windows-docker-runner-groups",
+      target: "windows-docker",
+      status: "skip",
+      summary: "skipped Windows Docker runner-group verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    return checks;
+  }
+
+  try {
+    const pools = await verifyRunnerGroups(
+      input.env.githubApiUrl,
+      input.env.githubPat,
+      config.pools.map((pool) => ({
+        poolKey: pool.key,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup
+      })),
+      input.fetchImpl
+    );
+    checks.push({
+      id: "windows-docker-runner-groups",
+      target: "windows-docker",
+      status: "pass",
+      summary: `verified ${pools.length} Windows Docker runner group${pools.length === 1 ? "" : "s"} in GitHub`
+    });
+  } catch (error) {
+    checks.push({
+      id: "windows-docker-runner-groups",
+      target: "windows-docker",
+      status: "fail",
+      summary: "failed Windows Docker runner-group verification",
+      detail: formatError(error)
+    });
+  }
+
+  return checks;
 }
 
 export function renderDoctorReport(report: DoctorReport): string {
@@ -630,20 +754,10 @@ function levelForStatus(status: DoctorCheckStatus): LogLevel {
 }
 
 function poolSlotMetricsForCheck(check: DoctorCheck): MetricSample[] {
-  if (check.target === "synology" && isSynologyConfigData(check.data)) {
+  if (isPoolConfigData(check.data)) {
     return check.data.pools.map((pool) =>
       poolSlotCount({
-        plane: "synology",
-        pool: pool.key,
-        count: pool.size
-      })
-    );
-  }
-
-  if (check.target === "linux-docker" && isSynologyConfigData(check.data)) {
-    return check.data.pools.map((pool) =>
-      poolSlotCount({
-        plane: "linux-docker",
+        plane: check.target,
         pool: pool.key,
         count: pool.size
       })
@@ -663,7 +777,7 @@ function poolSlotMetricsForCheck(check: DoctorCheck): MetricSample[] {
   return [];
 }
 
-function isSynologyConfigData(
+function isPoolConfigData(
   value: unknown
 ): value is { pools: Array<{ key: string; size: number }> } {
   return (

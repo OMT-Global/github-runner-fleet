@@ -28,7 +28,9 @@ pools:
   - key: linux-docker-private
     organization: example
     runnerGroup: linux-docker-private
-    repositoryAccess: all
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/private-app
     labels:
       - x64
     size: 1
@@ -80,9 +82,45 @@ pools:
       /outside organization example/
     );
   });
+
+  test("rejects repositoryAccess all unless break-glass is explicit", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "linux-docker-runners.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+  - key: linux-docker-private
+    organization: example
+    runnerGroup: linux-docker-private
+    repositoryAccess: all
+    labels: []
+    size: 1
+    architecture: amd64
+    runnerRoot: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private
+`,
+      "utf8"
+    );
+
+    expect(() => loadLinuxDockerConfig(configPath, deploymentEnv())).toThrow(
+      /LINUX_DOCKER_ALLOW_ALL_REPOSITORIES=true/
+    );
+    expect(
+      loadLinuxDockerConfig(
+        configPath,
+        deploymentEnv({
+          LINUX_DOCKER_ALLOW_ALL_REPOSITORIES: "true"
+        })
+      ).pools[0].repositoryAccess
+    ).toBe("all");
+  });
 });
 
-function deploymentEnv(): DeploymentEnv {
+function deploymentEnv(raw: Record<string, string> = {}): DeploymentEnv {
   return {
     githubApiUrl: "https://api.github.com",
     synologyRunnerBaseDir: "/volume1/docker/github-runner-fleet",
@@ -117,7 +155,8 @@ function deploymentEnv(): DeploymentEnv {
     composeProjectName: "github-runner-fleet",
     runnerVersion: "2.333.0",
     raw: {
-      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker"
+      LINUX_DOCKER_RUNNER_BASE_DIR: "/srv/github-runner-fleet/linux-docker",
+      ...raw
     }
   };
 }

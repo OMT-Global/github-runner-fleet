@@ -250,11 +250,12 @@ async function doctorCommand(args: string[]): Promise<void> {
     mode,
     envPath: getOption(args, "--env", ".env"),
     configPath: getOption(args, "--config", "config/pools.yaml"),
-    linuxDockerConfigPath: getOption(
+    linuxConfigPath: getOption(
       args,
-      "--linux-docker-config",
-      "config/linux-docker-runners.yaml"
+      "--linux-config",
+      getOption(args, "--linux-docker-config", "config/linux-docker-runners.yaml")
     ),
+    windowsConfigPath: getOption(args, "--windows-config", "config/windows-runners.yaml"),
     lumeConfigPath: getOption(args, "--lume-config", "config/lume-runners.yaml")
   });
 
@@ -2461,7 +2462,9 @@ function getDoctorMode(args: string[]): DoctorMode {
   const optionFlags = new Set([
     "--env",
     "--config",
+    "--linux-config",
     "--linux-docker-config",
+    "--windows-config",
     "--lume-config",
     "--format"
   ]);
@@ -2477,7 +2480,13 @@ function getDoctorMode(args: string[]): DoctorMode {
       continue;
     }
 
-    if (arg === "full" || arg === "synology" || arg === "linux-docker" || arg === "lume") {
+    if (
+      arg === "full" ||
+      arg === "synology" ||
+      arg === "linux-docker" ||
+      arg === "windows-docker" ||
+      arg === "lume"
+    ) {
       return arg;
     }
 
@@ -2842,7 +2851,7 @@ function powerShellQuote(value: string): string {
 
 function printUsage(): void {
   process.stderr.write(`Usage:
-  pnpm doctor [full|synology|linux-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-docker-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
+  pnpm doctor [full|synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--linux-docker-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm synology-status [--config config/pools.yaml] [--env .env] [--result .tmp/synology-status.json] [--format text|json]
   pnpm linux-docker-status [--config config/linux-docker-runners.yaml] [--env .env] [--result .tmp/linux-docker-status.json] [--format text|json]
   pnpm audit-log [--file /var/log/runner-fleet/audit.jsonl] [--max-size-bytes 10485760] < event.json
