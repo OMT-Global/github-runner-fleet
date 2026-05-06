@@ -158,4 +158,54 @@ describe("loadDeploymentEnv", () => {
     expect(env.synologySecure).toBe(false);
     expect(env.synologyPort).toBe("5000");
   });
+
+  test("accepts alternate truthy and falsey boolean spellings", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "synology-env-"));
+    tempPaths.push(directory);
+    const envPath = path.join(directory, ".env");
+
+    fs.writeFileSync(
+      envPath,
+      "SYNOLOGY_SECURE=on\nSYNOLOGY_CERT_VERIFY=no\n",
+      "utf8"
+    );
+
+    const env = loadDeploymentEnv({
+      envPath,
+      requirePat: false
+    });
+
+    expect(env.synologySecure).toBe(true);
+    expect(env.synologyCertVerify).toBe(false);
+  });
+
+  test("rejects malformed boolean settings", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "synology-env-"));
+    tempPaths.push(directory);
+    const envPath = path.join(directory, ".env");
+
+    fs.writeFileSync(envPath, "SYNOLOGY_SECURE=maybe\n", "utf8");
+
+    expect(() =>
+      loadDeploymentEnv({
+        envPath,
+        requirePat: false
+      })
+    ).toThrow(/invalid boolean value "maybe"/);
+  });
+
+  test("rejects malformed integer settings", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "synology-env-"));
+    tempPaths.push(directory);
+    const envPath = path.join(directory, ".env");
+
+    fs.writeFileSync(envPath, "SYNOLOGY_DSM_VERSION=seven\n", "utf8");
+
+    expect(() =>
+      loadDeploymentEnv({
+        envPath,
+        requirePat: false
+      })
+    ).toThrow(/invalid integer value "seven"/);
+  });
 });
