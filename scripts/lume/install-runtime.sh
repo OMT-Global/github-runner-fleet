@@ -123,12 +123,12 @@ install_lume_controller_runtime() {
     --exclude '.env' \
     "${REPO_ROOT}/" "${runtime_repo}/"
 
-  if [[ -f "${REPO_ROOT}/.env" ]]; then
-    install -m 0600 "${REPO_ROOT}/.env" "${runtime_env}"
-  elif [[ ! -f "${runtime_env}" ]]; then
-    write_default_runtime_env "${runtime_env}" "${target_home}"
-  else
+  if [[ -f "${runtime_env}" ]]; then
     repair_default_runtime_env "${runtime_env}" "${target_home}"
+  elif [[ -f "${REPO_ROOT}/.env" ]]; then
+    install -m 0600 "${REPO_ROOT}/.env" "${runtime_env}"
+  else
+    write_default_runtime_env "${runtime_env}" "${target_home}"
   fi
 
   if [[ -n "${target_user}" && -n "${target_group}" && "${EUID}" -eq 0 ]]; then

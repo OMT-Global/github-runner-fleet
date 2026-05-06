@@ -45,6 +45,10 @@ describe("Lume pool scripts", () => {
     expect(installRuntime).toContain("rsync -a --delete");
     expect(installRuntime).toContain("pnpm --dir");
     expect(installRuntime).toContain("install_lume_controller_runtime");
+    expect(installRuntime).toContain('if [[ -f "${runtime_env}" ]]');
+    expect(installRuntime.indexOf('if [[ -f "${runtime_env}" ]]')).toBeLessThan(
+      installRuntime.indexOf('install -m 0600 "${REPO_ROOT}/.env" "${runtime_env}"'),
+    );
     expect(installLaunchAgent).toContain('com.omt.github-runner-fleet.lume-pool');
     expect(installLaunchAgent).toContain('source "${SCRIPT_DIR}/install-runtime.sh"');
     expect(installLaunchAgent).toContain('install_lume_controller_runtime "${HOME}"');
