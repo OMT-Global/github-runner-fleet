@@ -11,6 +11,7 @@ describe("Lume pool scripts", () => {
     const createBase = read("scripts/lume/create-base-vm.sh");
     const setupBase = read("scripts/lume/setup-base-vm.sh");
     const provisionBase = read("scripts/lume/provision-base-vm.sh");
+    const installRuntime = read("scripts/lume/install-runtime.sh");
     const installLaunchAgent = read("scripts/lume/install-launch-agent.sh");
     const installLaunchDaemons = read("scripts/lume/install-system-launch-daemons.sh");
 
@@ -24,6 +25,8 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain('guest_env_file="$(render_guest_runner_env "${env_path}")"');
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
     expect(reconcile).toContain("retire_removed_slots_from_state");
+    expect(reconcile).toContain("wait_for_registration_env");
+    expect(reconcile).toContain("missing GITHUB_PAT");
     expect(reconcile).toContain("write_reconcile_state");
     expect(reconcile).toContain('reconcile_state_file="${LUME_RECONCILE_STATE_FILE}"');
     expect(reconcile).toContain('spawn_detached');
@@ -37,14 +40,33 @@ describe("Lume pool scripts", () => {
     expect(provisionBase).toContain("tar -C");
     expect(provisionBase).toContain("sudo -S -p '' tar -xf");
     expect(provisionBase).toContain("sudo -S -p '' xcodebuild -runFirstLaunch");
+    expect(installRuntime).toContain("GITHUB_RUNNER_FLEET_RUNTIME_ROOT");
+    expect(installRuntime).toContain("Library/Application Support/github-runner-fleet/controller");
+    expect(installRuntime).toContain("rsync -a --delete");
+    expect(installRuntime).toContain("pnpm --dir");
+    expect(installRuntime).toContain("install_lume_controller_runtime");
     expect(installLaunchAgent).toContain('com.omt.github-runner-fleet.lume-pool');
-    expect(installLaunchAgent).toContain('scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env');
+    expect(installLaunchAgent).toContain('source "${SCRIPT_DIR}/install-runtime.sh"');
+    expect(installLaunchAgent).toContain('install_lume_controller_runtime "${HOME}"');
+    expect(installLaunchAgent).toContain('scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env \'${runtime_env}\'');
     expect(installLaunchAgent).toContain('launchctl bootstrap "${DOMAIN_TARGET}" "${PLIST_PATH}"');
+    expect(installLaunchAgent.indexOf('launchctl enable "${DOMAIN_TARGET}/${LAUNCH_AGENT_LABEL}"')).toBeLessThan(
+      installLaunchAgent.indexOf('launchctl bootstrap "${DOMAIN_TARGET}" "${PLIST_PATH}"'),
+    );
     expect(installLaunchDaemons).toContain('run as root: sudo $0');
     expect(installLaunchDaemons).toContain('/Library/LaunchDaemons');
     expect(installLaunchDaemons).toContain('com.omt.github-runner-fleet.lume-serve');
     expect(installLaunchDaemons).toContain('com.omt.github-runner-fleet.lume-pool.system');
+    expect(installLaunchDaemons).toContain('disable_user_pool_agent');
+    expect(installLaunchDaemons).toContain('install_lume_controller_runtime "${TARGET_HOME}" "${TARGET_USER}" "${TARGET_GROUP}"');
     expect(installLaunchDaemons).toContain('launchctl bootstrap system "${plist_path}"');
+    expect(installLaunchDaemons.indexOf('launchctl enable "system/${label}"')).toBeLessThan(
+      installLaunchDaemons.indexOf('launchctl bootstrap system "${plist_path}"'),
+    );
+    const installLaunchDaemonsMain = installLaunchDaemons.slice(installLaunchDaemons.indexOf("main() {"));
+    expect(installLaunchDaemonsMain.indexOf('bootstrap_daemon "${POOL_LABEL}" "${POOL_PLIST_PATH}"')).toBeLessThan(
+      installLaunchDaemonsMain.indexOf("disable_user_pool_agent"),
+    );
   });
 
   test("documents operator-facing lume script usage", () => {
@@ -52,6 +74,7 @@ describe("Lume pool scripts", () => {
       "scripts/lume/create-base-vm.sh",
       "scripts/lume/create-slot.sh",
       "scripts/lume/destroy-slot.sh",
+      "scripts/lume/install-runtime.sh",
       "scripts/lume/install-launch-agent.sh",
       "scripts/lume/install-system-launch-daemons.sh",
       "scripts/lume/provision-base-vm.sh",

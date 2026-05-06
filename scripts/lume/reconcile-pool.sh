@@ -42,6 +42,29 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+wait_for_registration_env() {
+  local env_file="$1"
+
+  while true; do
+    if (
+      set +u
+      if [[ -f "${env_file}" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "${env_file}"
+        set +a
+      fi
+
+      [[ -n "${GITHUB_PAT:-}" ]]
+    ); then
+      return 0
+    fi
+
+    log "missing GITHUB_PAT in ${env_file}; waiting before starting Lume slots"
+    sleep 60
+  done
+}
+
 retire_removed_slots_from_state() {
   local state_file="$1"
   local current_pool_size="$2"
@@ -181,6 +204,7 @@ fs.renameSync(tempFile, process.env.STATE_FILE);
 NODE
 }
 
+wait_for_registration_env "${env_path}"
 pool_size="$(load_pool_size "${config_path}" "${env_path}")"
 load_slot_env "1" "${config_path}" "${env_path}"
 reconcile_state_file="${LUME_RECONCILE_STATE_FILE}"

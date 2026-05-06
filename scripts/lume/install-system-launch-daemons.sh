@@ -3,10 +3,12 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/install-runtime.sh"
 
 TARGET_USER="${SUDO_USER:-$(stat -f '%Su' /dev/console)}"
 TARGET_HOME="$(dscl . -read "/Users/${TARGET_USER}" NFSHomeDirectory | awk '{print $2}')"
 TARGET_GROUP="$(id -gn "${TARGET_USER}")"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${TARGET_HOME}/.local/bin:${PATH:-}"
 LUME_LABEL="com.omt.github-runner-fleet.lume-serve"
 POOL_LABEL="com.omt.github-runner-fleet.lume-pool.system"
 DAEMON_DIR="/Library/LaunchDaemons"
@@ -14,7 +16,10 @@ LOG_DIR="${TARGET_HOME}/Library/Logs/github-runner-fleet"
 LUME_PLIST_PATH="${DAEMON_DIR}/${LUME_LABEL}.plist"
 POOL_PLIST_PATH="${DAEMON_DIR}/${POOL_LABEL}.plist"
 USER_LUME_AGENT_PATH="${TARGET_HOME}/Library/LaunchAgents/com.trycua.lume_daemon.plist"
+USER_POOL_AGENT_LABEL="com.omt.github-runner-fleet.lume-pool"
+USER_POOL_AGENT_PATH="${TARGET_HOME}/Library/LaunchAgents/${USER_POOL_AGENT_LABEL}.plist"
 DISABLE_USER_LUME_AGENT="false"
+DISABLE_USER_POOL_AGENT="true"
 
 usage() {
   cat <<EOF
@@ -24,6 +29,7 @@ Install root-owned launchd services for Lume itself and the system-wide pool rec
 
 Options:
   --disable-user-lume-agent  Disable the per-user Lume launch agent if present
+  --keep-user-pool-agent     Keep the per-user pool launch agent loaded
   -h, --help                 Show this help text
 EOF
 }
@@ -36,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --disable-user-lume-agent)
       DISABLE_USER_LUME_AGENT="true"
+      shift
+      ;;
+    --keep-user-pool-agent)
+      DISABLE_USER_POOL_AGENT="false"
       shift
       ;;
     *)
@@ -119,6 +129,8 @@ EOF
 
 write_pool_plist() {
   local rtk_path="$1"
+  local runtime_repo="$2"
+  local runtime_env="$3"
   local temp_path
 
   temp_path="$(mktemp)"
@@ -138,10 +150,10 @@ write_pool_plist() {
     <string>${rtk_path}</string>
     <string>bash</string>
     <string>-lc</string>
-    <string>cd '${REPO_ROOT}' &amp;&amp; exec bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env</string>
+    <string>cd '${runtime_repo}' &amp;&amp; exec bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env '${runtime_env}'</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${REPO_ROOT}</string>
+  <string>${runtime_repo}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -177,11 +189,26 @@ disable_user_lume_agent() {
   launchctl disable "gui/${uid}/com.trycua.lume_daemon" >/dev/null 2>&1 || true
 }
 
+disable_user_pool_agent() {
+  local uid
+
+  uid="$(id -u "${TARGET_USER}")"
+  if [[ "${DISABLE_USER_POOL_AGENT}" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ -f "${USER_POOL_AGENT_PATH}" ]]; then
+    launchctl bootout "gui/${uid}" "${USER_POOL_AGENT_PATH}" >/dev/null 2>&1 || true
+  fi
+  launchctl disable "gui/${uid}/${USER_POOL_AGENT_LABEL}" >/dev/null 2>&1 || true
+}
+
 bootstrap_daemon() {
   local label="$1"
   local plist_path="$2"
 
   launchctl bootout system "${plist_path}" >/dev/null 2>&1 || true
+  launchctl enable "system/${label}"
   launchctl bootstrap system "${plist_path}"
   launchctl enable "system/${label}"
   launchctl kickstart -k "system/${label}"
@@ -190,6 +217,8 @@ bootstrap_daemon() {
 main() {
   local lume_path
   local rtk_path
+  local runtime_repo
+  local runtime_env
 
   require_command dscl
   require_command id
@@ -209,12 +238,16 @@ main() {
 
   mkdir -p "${DAEMON_DIR}" "${LOG_DIR}"
   chown "${TARGET_USER}:${TARGET_GROUP}" "${LOG_DIR}"
+  install_lume_controller_runtime "${TARGET_HOME}" "${TARGET_USER}" "${TARGET_GROUP}"
+  runtime_repo="$(lume_controller_runtime_repo "${TARGET_HOME}")"
+  runtime_env="$(lume_controller_runtime_env "${TARGET_HOME}")"
 
   write_lume_plist "${lume_path}"
-  write_pool_plist "${rtk_path}"
-  disable_user_lume_agent
+  write_pool_plist "${rtk_path}" "${runtime_repo}" "${runtime_env}"
   bootstrap_daemon "${LUME_LABEL}" "${LUME_PLIST_PATH}"
   bootstrap_daemon "${POOL_LABEL}" "${POOL_PLIST_PATH}"
+  disable_user_lume_agent
+  disable_user_pool_agent
 
   printf 'installed %s at %s\n' "${LUME_LABEL}" "${LUME_PLIST_PATH}"
   printf 'installed %s at %s\n' "${POOL_LABEL}" "${POOL_PLIST_PATH}"
