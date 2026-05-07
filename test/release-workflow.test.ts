@@ -30,6 +30,9 @@ describe("release workflow", () => {
     };
 
     expect(workflow.on).toHaveProperty("workflow_dispatch");
+    expect(workflow.on.push).toMatchObject({
+      branches: ["main"]
+    });
     expect(workflow.permissions).toMatchObject({
       contents: "write",
       packages: "write"
@@ -93,6 +96,22 @@ describe("release workflow", () => {
           step.run.includes("release-image may only publish from main")
       )
     ).toBe(true);
+    const automaticPublishGuardIndex = steps.findIndex(
+      (step) =>
+        step.name === "guard automatic publish version" &&
+        step.if === "${{ github.event_name == 'push' }}" &&
+        typeof step.run === "string" &&
+        step.run.includes("gh release view") &&
+        step.run.includes("bump package.json and config/pools.yaml")
+    );
+    const imagePublishIndex = steps.findIndex(
+      (step) =>
+        typeof step.run === "string" &&
+        step.run.includes("./scripts/build-image.sh") &&
+        step.run.includes("--push")
+    );
+    expect(automaticPublishGuardIndex).toBeGreaterThan(-1);
+    expect(imagePublishIndex).toBeGreaterThan(automaticPublishGuardIndex);
     expect(
       steps.filter(
         (step) =>
@@ -105,7 +124,8 @@ describe("release workflow", () => {
     expect(
       steps.some(
         (step) =>
-          step.if === "${{ inputs.publish_project_release }}" &&
+          step.if ===
+            "${{ github.event_name == 'push' || inputs.publish_project_release }}" &&
           typeof step.run === "string" &&
           step.run.includes("gh release create") &&
           step.run.includes("--generate-notes")

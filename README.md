@@ -282,11 +282,12 @@ The release workflow:
 - confirms both `linux/amd64` and `linux/arm64` are present
 - retries `pnpm validate-image` until the GitHub Packages API sees the new tag
 - runs post-publish toolchain checks for both `linux/amd64` and `linux/arm64`
-- can create the matching GitHub release tag `v<version>` when dispatched from `main` with `publish_project_release=true`
+- automatically creates the matching GitHub release tag `v<version>` after successful publishes from `main`
+- can still be dispatched manually from `main`; set `publish_project_release=true` to create the matching GitHub Release during a manual run
 
 Only point [config/pools.yaml](config/pools.yaml) at a tag that this workflow has already published and verified.
 
-If you want the repository release and GHCR image tag to stay aligned, merge the version bump to `main` first and then run the release workflow from `main` with `publish_project_release=true`. That will create the repo tag and GitHub Release after the image publish/verify steps succeed.
+To keep the repository release and GHCR image tag aligned, merge the version bump to `main`. The release workflow first checks whether the matching repo release already exists; if it does, the automatic run fails before publishing an image so an existing GHCR version tag is not replaced. For a new version, the workflow publishes and verifies the image, then creates the matching repo tag and GitHub Release.
 
 ## Runtime Contract
 
