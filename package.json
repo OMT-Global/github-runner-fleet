@@ -56,7 +56,7 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "yaml": "^2.8.1",
-    "zod": "^4.4.1"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^9.6.1",
