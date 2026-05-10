@@ -55,7 +55,7 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "yaml": "^2.8.1",
+    "yaml": "^2.8.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
