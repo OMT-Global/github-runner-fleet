@@ -1027,3 +1027,431 @@ function createTempDir(): string {
   tempPaths.push(directory);
   return directory;
 }
+
+function findCheck(
+  report: { checks: Array<{ id: string }> },
+  id: string
+) {
+  const check = report.checks.find((entry) => entry.id === id);
+  if (!check) {
+    throw new Error(`expected a doctor check with id ${id}`);
+  }
+  return check as {
+    id: string;
+    status: string;
+    summary: string;
+    detail?: string;
+    data?: unknown;
+  };
+}
+
+describe("doctor summary, detail, and observability mutation coverage", () => {
+  const originalFetch = globalThis.fetch;
+  const originalEndpoint = process.env.METRICS_ENDPOINT;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    if (originalEndpoint === undefined) {
+      delete process.env.METRICS_ENDPOINT;
+    } else {
+      process.env.METRICS_ENDPOINT = originalEndpoint;
+    }
+  });
+
+  function writeSynologyScaffold(
+    directory: string,
+    options: { pools: Array<{ key: string; size: number }>; pat?: boolean }
+  ) {
+    const envPath = path.join(directory, ".env");
+    const auditLogPath = path.join(directory, "audit.jsonl");
+    fs.writeFileSync(auditLogPath, "audit-entry\n", "utf8");
+    fs.writeFileSync(
+      envPath,
+      [
+        options.pat === false ? "" : "GITHUB_PAT=secret",
+        "SYNOLOGY_HOST=nas.example.com",
+        "SYNOLOGY_USERNAME=admin",
+        "SYNOLOGY_PASSWORD=secret",
+        `SYNOLOGY_RUNNER_BASE_DIR=${directory}/synology`,
+        `AUDIT_LOG_FILE=${auditLogPath}`,
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+
+    const poolsPath = path.join(directory, "pools.yaml");
+    const poolBlocks = options.pools
+      .map(
+        (pool) => `  - key: ${pool.key}
+    visibility: private
+    organization: example
+    runnerGroup: ${pool.key}
+    repositoryAccess: all
+    labels: []
+    size: ${pool.size}
+    architecture: auto
+    runnerRoot: \${SYNOLOGY_RUNNER_BASE_DIR}/pools/${pool.key}`
+      )
+      .join("\n");
+    fs.writeFileSync(
+      poolsPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+${poolBlocks}
+`,
+      "utf8"
+    );
+
+    return { envPath, poolsPath, auditLogPath };
+  }
+
+  test("emits exact summaries, details, pluralization, and pool metrics", async () => {
+    const directory = createTempDir();
+    const { envPath, poolsPath } = writeSynologyScaffold(directory, {
+      pools: [
+        { key: "synology-private", size: 1 },
+        { key: "synology-public", size: 3 }
+      ]
+    });
+
+    const metricsFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = metricsFetch as unknown as typeof fetch;
+    process.env.METRICS_ENDPOINT = "https://metrics.example.com/push";
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/actions/runner-groups")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [
+                { id: 1, name: "synology-private", default: false },
+                { id: 2, name: "synology-public", default: false }
+              ]
+            })
+        };
+      }
+      if (url.includes("/packages/container/")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify([
+              { id: 9, metadata: { container: { tags: ["0.1.9"] } } }
+            ])
+        };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const report = await runDoctor({
+      mode: "synology",
+      envPath,
+      configPath: poolsPath,
+      fetchImpl: fetchMock
+    });
+
+    expect(findCheck(report, "synology-env").summary).toBe(
+      "required Synology deployment env is configured"
+    );
+    expect(findCheck(report, "synology-config").summary).toBe(
+      `loaded ${poolsPath} with 2 pools`
+    );
+    expect(findCheck(report, "synology-config-warnings").summary).toBe(
+      "no Synology config warnings were detected"
+    );
+    expect(findCheck(report, "synology-runner-groups")).toMatchObject({
+      status: "pass",
+      summary: "verified 2 Synology runner groups in GitHub"
+    });
+    expect(findCheck(report, "synology-image").summary).toBe(
+      "verified ghcr.io/example/github-runner-fleet:0.1.9 in GitHub Packages"
+    );
+    expect(findCheck(report, "audit-log").detail).toBe("size 12 bytes");
+    expect(findCheck(report, "audit-log").data).toMatchObject({
+      sizeBytes: 12
+    });
+
+    const metricsBody = metricsFetch.mock.calls
+      .map((call) => (call[1] as { body: string }).body)
+      .join("");
+    expect(metricsBody).toContain(
+      'pool_slot_count{plane="synology",pool="synology-private"} 1'
+    );
+    expect(metricsBody).toContain(
+      'pool_slot_count{plane="synology",pool="synology-public"} 3'
+    );
+    expect(metricsBody).toContain(
+      'doctor_check_result{check="synology-env",status="pass"} 1'
+    );
+
+    const stderrWrite = vi.mocked(process.stderr.write);
+    const envLog = stderrWrite.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as { check: string; level: string })
+      .find((entry) => entry.check === "synology-env");
+    expect(envLog?.level).toBe("info");
+  });
+
+  test("uses singular nouns and exact failure detail when env and PAT are missing", async () => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    fs.writeFileSync(
+      envPath,
+      `SYNOLOGY_USERNAME=admin
+SYNOLOGY_PASSWORD=secret
+SYNOLOGY_RUNNER_BASE_DIR=${directory}/synology
+`,
+      "utf8"
+    );
+    const poolsPath = path.join(directory, "pools.yaml");
+    fs.writeFileSync(
+      poolsPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+  - key: synology-private
+    visibility: private
+    organization: example
+    runnerGroup: synology-private
+    repositoryAccess: all
+    labels: []
+    size: 1
+    architecture: auto
+    runnerRoot: \${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-private
+`,
+      "utf8"
+    );
+
+    const report = await runDoctor({
+      mode: "synology",
+      envPath,
+      configPath: poolsPath
+    });
+
+    const envCheck = findCheck(report, "synology-env");
+    expect(envCheck.status).toBe("fail");
+    expect(envCheck.summary).toBe(
+      "required Synology deployment env is incomplete"
+    );
+    expect(envCheck.detail).toBe("missing GITHUB_PAT, SYNOLOGY_HOST");
+    expect(findCheck(report, "synology-config").summary).toBe(
+      `loaded ${poolsPath} with 1 pool`
+    );
+    expect(findCheck(report, "synology-runner-groups")).toMatchObject({
+      status: "skip",
+      summary: "skipped Synology runner-group verification",
+      detail: "GITHUB_PAT is not configured"
+    });
+    expect(findCheck(report, "synology-image").detail).toBe(
+      "GITHUB_PAT is not configured"
+    );
+    expect(report.ok).toBe(false);
+
+    const stderrWrite = vi.mocked(process.stderr.write);
+    const failLog = stderrWrite.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as { check: string; level: string })
+      .find((entry) => entry.check === "synology-env");
+    expect(failLog?.level).toBe("error");
+  });
+
+  test("surfaces the runner-group verification failure detail", async () => {
+    const directory = createTempDir();
+    const { envPath, poolsPath } = writeSynologyScaffold(directory, {
+      pools: [{ key: "synology-private", size: 1 }]
+    });
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/actions/runner-groups")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [{ id: 1, name: "default", default: true }]
+            })
+        };
+      }
+      if (url.includes("/packages/container/")) {
+        return { ok: false, status: 404, text: async () => "Not Found" };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const report = await runDoctor({
+      mode: "synology",
+      envPath,
+      configPath: poolsPath,
+      fetchImpl: fetchMock
+    });
+
+    const groupCheck = findCheck(report, "synology-runner-groups");
+    expect(groupCheck.status).toBe("fail");
+    expect(groupCheck.summary).toBe("failed Synology runner-group verification");
+    expect(groupCheck.detail).toContain(
+      "pool synology-private expects runner group synology-private in organization example, but GitHub returned: default"
+    );
+
+    const imageCheck = findCheck(report, "synology-image");
+    expect(imageCheck.status).toBe("fail");
+    expect(imageCheck.summary).toBe(
+      "failed image verification for ghcr.io/example/github-runner-fleet:0.1.9"
+    );
+  });
+
+  test("warns with exact detail for missing Lume artifacts and unhealthy results", async () => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    const lumeBaseDir = path.join(directory, "lume");
+    fs.mkdirSync(lumeBaseDir, { recursive: true });
+    const lumeRunnerEnvPath = path.join(lumeBaseDir, "runner.env");
+    fs.writeFileSync(
+      envPath,
+      `GITHUB_PAT=secret
+LUME_RUNNER_BASE_DIR=${lumeBaseDir}
+LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
+LUME_GUEST_PASSWORD=secret
+`,
+      "utf8"
+    );
+    const lumePath = path.join(directory, "lume-runners.yaml");
+    fs.writeFileSync(
+      lumePath,
+      `version: 1
+pool:
+  key: macos-private
+  organization: example
+  runnerGroup: macos-private
+  size: 1
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+`,
+      "utf8"
+    );
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/actions/runner-groups")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              runner_groups: [{ id: 1, name: "macos-private", default: false }]
+            })
+        };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const missingResult = await runDoctor({
+      mode: "lume",
+      envPath,
+      lumeConfigPath: lumePath,
+      fetchImpl: fetchMock
+    });
+    const envFileCheck = findCheck(missingResult, "lume-env-file");
+    expect(envFileCheck.status).toBe("warn");
+    expect(envFileCheck.summary).toBe("Lume runner env file is missing");
+    expect(envFileCheck.detail).toBe(
+      `${lumeRunnerEnvPath} does not exist yet`
+    );
+    const artifactCheck = findCheck(missingResult, "lume-project-result");
+    expect(artifactCheck.status).toBe("warn");
+    expect(artifactCheck.summary).toBe(
+      "Lume project result artifact is missing"
+    );
+    expect(artifactCheck.detail).toBe(
+      `run install-lume-project to create ${path.join(
+        lumeBaseDir,
+        "lume-project-result.json"
+      )}`
+    );
+
+    fs.writeFileSync(
+      path.join(lumeBaseDir, "lume-project-result.json"),
+      `${JSON.stringify({
+        plane: "lume",
+        action: "install",
+        status: "failed",
+        recordedAt: "2026-04-21T00:00:00.000Z",
+        configPath: lumePath,
+        resultPath: path.join(lumeBaseDir, "lume-project-result.json"),
+        pidFile: path.join(lumeBaseDir, "lume-project.pid"),
+        logFile: path.join(lumeBaseDir, "logs", "lume-project.log"),
+        pool: {
+          key: "macos-private",
+          organization: "example",
+          runnerGroup: "macos-private",
+          size: 1
+        },
+        slots: []
+      })}\n`,
+      "utf8"
+    );
+
+    const unhealthy = await runDoctor({
+      mode: "lume",
+      envPath,
+      lumeConfigPath: lumePath,
+      fetchImpl: fetchMock
+    });
+    const unhealthyCheck = findCheck(unhealthy, "lume-project-result");
+    expect(unhealthyCheck.status).toBe("warn");
+    expect(unhealthyCheck.summary).toBe(
+      "latest Lume project result action=install status=failed"
+    );
+  });
+
+  test("reports missing Windows Docker host fields with an exact detail", async () => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    fs.writeFileSync(
+      envPath,
+      `GITHUB_PAT=secret
+WINDOWS_DOCKER_RUNNER_BASE_DIR=C:\\github-runner-fleet\\windows-docker
+`,
+      "utf8"
+    );
+    const windowsPath = path.join(directory, "windows-runners.yaml");
+    fs.writeFileSync(
+      windowsPath,
+      `version: 1
+plane: windows-docker
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9-windows
+pools:
+  - key: windows-private
+    organization: example
+    runnerGroup: windows-private
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/windows-app
+`,
+      "utf8"
+    );
+
+    const report = await runDoctor({
+      mode: "windows-docker",
+      envPath,
+      windowsConfigPath: windowsPath,
+      fetchImpl: vi.fn(async () => {
+        throw new Error("runner-group verification should not run");
+      })
+    });
+
+    const configCheck = findCheck(report, "windows-docker-config");
+    expect(configCheck.status).toBe("fail");
+    expect(configCheck.summary).toBe(
+      "Windows Docker config is missing target host fields"
+    );
+    expect(configCheck.detail).toBe(
+      "missing windows-private:host, windows-private:sshUser"
+    );
+  });
+});

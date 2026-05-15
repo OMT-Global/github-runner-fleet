@@ -1,9 +1,11 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  buildGitHubApiHeaders,
   buildRegistrationTokenRequest,
   deleteOrganizationRunner,
   buildRemoveTokenRequest,
   fetchOrganizationRepositories,
+  fetchOrganizationRunnerGroupRunners,
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
   fetchQueuedWorkflowRuns,
@@ -741,5 +743,698 @@ describe("github runner API helpers", () => {
         fetchMock
       )
     ).rejects.toThrow(/does not include tag 0\.1\.5; available tags: 0\.1\.4, latest/);
+  });
+});
+
+function jsonResponse(payload: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(payload)
+  };
+}
+
+function rawResponse(body: string, status: number) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => body
+  };
+}
+
+describe("github API header and URL construction", () => {
+  test("includes the fixed GitHub API headers and omits auth without a token", () => {
+    expect(buildGitHubApiHeaders()).toEqual({
+      Accept: "application/vnd.github+json",
+      "User-Agent": "github-runner-fleet",
+      "X-GitHub-Api-Version": "2022-11-28"
+    });
+  });
+
+  test("adds a bearer Authorization header when a token is supplied", () => {
+    expect(buildGitHubApiHeaders("abc123")).toEqual({
+      Accept: "application/vnd.github+json",
+      "User-Agent": "github-runner-fleet",
+      "X-GitHub-Api-Version": "2022-11-28",
+      Authorization: "Bearer abc123"
+    });
+  });
+
+  test("treats an empty token as unauthenticated", () => {
+    expect(buildGitHubApiHeaders("")).not.toHaveProperty("Authorization");
+  });
+
+  test("strips every trailing slash from the API URL", () => {
+    expect(
+      buildRegistrationTokenRequest(
+        "https://ghe.example.com/api/v3///",
+        "example",
+        "secret"
+      ).url
+    ).toBe(
+      "https://ghe.example.com/api/v3/orgs/example/actions/runners/registration-token"
+    );
+    expect(
+      buildRemoveTokenRequest("https://api.github.com", "acme", "tok").url
+    ).toBe("https://api.github.com/orgs/acme/actions/runners/remove-token");
+  });
+});
+
+describe("github runner token failures and observability", () => {
+  const originalFetch = globalThis.fetch;
+  const originalEndpoint = process.env.METRICS_ENDPOINT;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    if (originalEndpoint === undefined) {
+      delete process.env.METRICS_ENDPOINT;
+    } else {
+      process.env.METRICS_ENDPOINT = originalEndpoint;
+    }
+    vi.restoreAllMocks();
+  });
+
+  test("surfaces the status and body on a non-ok token response", async () => {
+    await expect(
+      fetchRunnerToken(
+        buildRegistrationTokenRequest("https://api.github.com", "example", "x"),
+        vi.fn().mockResolvedValue(rawResponse("forbidden detail", 403))
+      )
+    ).rejects.toThrow("GitHub token request failed with 403: forbidden detail");
+  });
+
+  test("emits a token fetch duration metric tagged with the supplied plane", async () => {
+    process.env.METRICS_ENDPOINT = "https://metrics.example.com/push";
+    const metricsFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = metricsFetch as unknown as typeof fetch;
+
+    await fetchRunnerToken(
+      buildRegistrationTokenRequest("https://api.github.com", "example", "x"),
+      vi.fn().mockResolvedValue(jsonResponse({ token: "t" }, 201)),
+      { plane: "synology" }
+    );
+
+    expect(metricsFetch).toHaveBeenCalledTimes(1);
+    const body = metricsFetch.mock.calls[0][1].body as string;
+    expect(body).toContain("runner_token_fetch_duration_seconds");
+    expect(body).toContain('plane="synology"');
+  });
+
+  test("defaults the metric plane to unknown when none is provided", async () => {
+    process.env.METRICS_ENDPOINT = "https://metrics.example.com/push";
+    const metricsFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = metricsFetch as unknown as typeof fetch;
+
+    await fetchRunnerToken(
+      buildRegistrationTokenRequest("https://api.github.com", "example", "x"),
+      vi.fn().mockResolvedValue(jsonResponse({ token: "t" }, 201))
+    );
+
+    expect(metricsFetch.mock.calls[0][1].body as string).toContain(
+      'plane="unknown"'
+    );
+  });
+
+  test("still emits the duration metric when the token request throws", async () => {
+    process.env.METRICS_ENDPOINT = "https://metrics.example.com/push";
+    const metricsFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200 });
+    globalThis.fetch = metricsFetch as unknown as typeof fetch;
+
+    await expect(
+      fetchRunnerToken(
+        buildRegistrationTokenRequest("https://api.github.com", "example", "x"),
+        vi.fn().mockRejectedValue(new Error("network down")),
+        { plane: "lume" }
+      )
+    ).rejects.toThrow("network down");
+
+    expect(metricsFetch).toHaveBeenCalledTimes(1);
+    expect(metricsFetch.mock.calls[0][1].body as string).toContain(
+      'plane="lume"'
+    );
+  });
+});
+
+describe("github release validation", () => {
+  test("reports the status and body when the release lookup is not ok", async () => {
+    await expect(
+      fetchLatestRunnerRelease(
+        "https://api.github.com",
+        "secret",
+        vi.fn().mockResolvedValue(rawResponse("rate limited", 429))
+      )
+    ).rejects.toThrow(
+      "GitHub runner release lookup failed with 429: rate limited"
+    );
+  });
+
+  test("rejects a release payload without a tag_name", async () => {
+    await expect(
+      fetchLatestRunnerRelease(
+        "https://api.github.com",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse({ html_url: "x" }))
+      )
+    ).rejects.toThrow("GitHub release response did not include tag_name");
+  });
+
+  test("requests the latest release endpoint with GET and auth headers", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ tag_name: "v2.1.0" }));
+
+    await fetchLatestRunnerRelease("https://api.github.com", "tok", fetchMock);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/repos/actions/runner/releases/latest",
+      {
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tok" })
+      }
+    );
+  });
+});
+
+describe("github pagination boundaries", () => {
+  test("stops paginating runners exactly at a short final page", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          runners: Array.from({ length: 100 }, (_, index) => ({
+            id: index + 1,
+            name: `r-${index + 1}`,
+            status: "online",
+            labels: []
+          }))
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          runners: [{ id: 101, name: "r-101", status: "offline", labels: [] }]
+        })
+      );
+
+    const runners = await fetchOrganizationRunners(
+      "https://api.github.com",
+      "example",
+      "secret",
+      fetchMock
+    );
+
+    expect(runners).toHaveLength(101);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/orgs/example/actions/runners?per_page=100&page=2",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("does not request a second page when the first page is not full", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        runners: [{ id: 1, name: "only", status: "online", labels: [] }]
+      })
+    );
+
+    await fetchOrganizationRunners(
+      "https://api.github.com",
+      "example",
+      "secret",
+      fetchMock
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("paginates repositories and workflow runs across pages", async () => {
+    const repoFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          Array.from({ length: 100 }, (_, index) => ({
+            full_name: `example/repo-${index}`
+          }))
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse([{ full_name: "example/last" }]));
+
+    await expect(
+      fetchOrganizationRepositories(
+        "https://api.github.com",
+        "example",
+        "secret",
+        repoFetch
+      )
+    ).resolves.toHaveLength(101);
+    expect(repoFetch).toHaveBeenCalledTimes(2);
+
+    const runsFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workflow_runs: Array.from({ length: 100 }, (_, index) => ({
+            id: index + 1,
+            jobs_url: `https://api.github.com/runs/${index + 1}/jobs`
+          }))
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ workflow_runs: [{ id: 999, jobs_url: "u" }] })
+      );
+
+    await expect(
+      fetchQueuedWorkflowRuns(
+        "https://api.github.com",
+        "example/app",
+        "secret",
+        runsFetch
+      )
+    ).resolves.toHaveLength(101);
+    expect(runsFetch).toHaveBeenNthCalledWith(
+      1,
+      "https://api.github.com/repos/example/app/actions/runs?status=queued&per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("uses the runner group id as a fallback when entries omit it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        runners: [
+          {
+            id: 7,
+            name: "grouped",
+            status: "online",
+            labels: [{ name: "self-hosted" }, { name: 42 }]
+          }
+        ]
+      })
+    );
+
+    const runners = await fetchOrganizationRunnerGroupRunners(
+      "https://api.github.com",
+      "example",
+      99,
+      "secret",
+      fetchMock
+    );
+
+    expect(runners[0].runnerGroupId).toBe(99);
+    expect(runners[0].labels).toEqual(["self-hosted"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/orgs/example/actions/runner-groups/99/runners?per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+});
+
+describe("github malformed payload handling", () => {
+  test("rejects runner-group payloads that are not arrays", async () => {
+    await expect(
+      fetchOrganizationRunnerGroups(
+        "https://api.github.com",
+        "acme",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse({ runner_groups: "nope" }))
+      )
+    ).rejects.toThrow(
+      "GitHub runner group response for acme did not include runner_groups"
+    );
+  });
+
+  test("rejects runner-group entries that lack an id or name", async () => {
+    await expect(
+      fetchOrganizationRunnerGroups(
+        "https://api.github.com",
+        "acme",
+        "secret",
+        vi
+          .fn()
+          .mockResolvedValue(
+            jsonResponse({ runner_groups: [{ id: 1 }] })
+          )
+      )
+    ).rejects.toThrow(
+      "GitHub runner group response for acme included an invalid group entry"
+    );
+  });
+
+  test("rejects runner payloads and entries that are malformed", async () => {
+    await expect(
+      fetchOrganizationRunners(
+        "https://api.github.com",
+        "acme",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse({ runners: { not: "array" } }))
+      )
+    ).rejects.toThrow(
+      "GitHub runner response for acme did not include runners"
+    );
+
+    await expect(
+      fetchOrganizationRunners(
+        "https://api.github.com",
+        "acme",
+        "secret",
+        vi
+          .fn()
+          .mockResolvedValue(
+            jsonResponse({ runners: [{ id: 1, name: "x" }] })
+          )
+      )
+    ).rejects.toThrow(
+      "GitHub runner response for acme included an invalid runner entry"
+    );
+  });
+
+  test("propagates the status on a non-ok runner-group runner lookup", async () => {
+    await expect(
+      fetchOrganizationRunnerGroupRunners(
+        "https://api.github.com",
+        "acme",
+        5,
+        "secret",
+        vi.fn().mockResolvedValue(rawResponse("boom", 500))
+      )
+    ).rejects.toThrow(
+      "GitHub runner group runner lookup failed for acme/5 with 500: boom"
+    );
+  });
+
+  test("rejects repository payloads that are not arrays and entries without full_name", async () => {
+    await expect(
+      fetchOrganizationRepositories(
+        "https://api.github.com",
+        "acme",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse({ nope: true }))
+      )
+    ).rejects.toThrow(
+      "GitHub repository response for acme did not return an array"
+    );
+
+    await expect(
+      fetchOrganizationRepositories(
+        "https://api.github.com",
+        "acme",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse([{ id: 1 }]))
+      )
+    ).rejects.toThrow(
+      "GitHub repository response for acme included an invalid repository entry"
+    );
+  });
+
+  test("rejects workflow run and job payloads that are malformed", async () => {
+    await expect(
+      fetchQueuedWorkflowRuns(
+        "https://api.github.com",
+        "example/app",
+        "secret",
+        vi.fn().mockResolvedValue(rawResponse("down", 503)),
+        "in_progress"
+      )
+    ).rejects.toThrow(
+      "GitHub in_progress workflow run lookup failed for example/app with 503: down"
+    );
+
+    await expect(
+      fetchQueuedWorkflowRuns(
+        "https://api.github.com",
+        "example/app",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse({ workflow_runs: 1 }))
+      )
+    ).rejects.toThrow(
+      "GitHub workflow run response for example/app did not include workflow_runs"
+    );
+
+    await expect(
+      fetchWorkflowRunJobs(
+        "https://api.github.com/jobs",
+        "secret",
+        vi.fn().mockResolvedValue(jsonResponse({ jobs: "no" }))
+      )
+    ).rejects.toThrow("GitHub workflow job response did not include jobs");
+
+    await expect(
+      fetchWorkflowRunJobs(
+        "https://api.github.com/jobs",
+        "secret",
+        vi
+          .fn()
+          .mockResolvedValue(jsonResponse({ jobs: [{ status: "queued" }] }))
+      )
+    ).rejects.toThrow("GitHub workflow job response included an invalid job entry");
+  });
+
+  test("appends pagination params with the correct separator for job URLs", async () => {
+    const withQuery = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ jobs: [] }));
+    await fetchWorkflowRunJobs(
+      "https://api.github.com/jobs?filter=latest",
+      "secret",
+      withQuery
+    );
+    expect(withQuery).toHaveBeenCalledWith(
+      "https://api.github.com/jobs?filter=latest&per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    const withoutQuery = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ jobs: [] }));
+    await fetchWorkflowRunJobs(
+      "https://api.github.com/jobs",
+      "secret",
+      withoutQuery
+    );
+    expect(withoutQuery).toHaveBeenCalledWith(
+      "https://api.github.com/jobs?per_page=100&page=1",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+});
+
+describe("github runner deletion semantics", () => {
+  test("treats a 404 as an already-removed runner", async () => {
+    await expect(
+      deleteOrganizationRunner(
+        "https://api.github.com",
+        "example",
+        "secret",
+        7,
+        vi.fn().mockResolvedValue(rawResponse("missing", 404))
+      )
+    ).resolves.toBe(false);
+  });
+
+  test("throws with the status and body on other non-ok deletions", async () => {
+    await expect(
+      deleteOrganizationRunner(
+        "https://api.github.com",
+        "example",
+        "secret",
+        7,
+        vi.fn().mockResolvedValue(rawResponse("conflict", 409))
+      )
+    ).rejects.toThrow(
+      "GitHub runner deletion failed for example/7 with 409: conflict"
+    );
+  });
+});
+
+describe("queued job runner-group matching", () => {
+  function jobsCountFetch(jobs: unknown[]) {
+    return vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workflow_runs: [
+            { id: 1, jobs_url: "https://api.github.com/runs/1/jobs" }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ workflow_runs: [] }))
+      .mockResolvedValueOnce(jsonResponse({ jobs }));
+  }
+
+  const request = {
+    organization: "example",
+    runnerGroup: "synology-private",
+    repositories: ["example/app"],
+    labels: ["synology", "shell-only"]
+  };
+
+  test("counts only queued jobs whose runner group name matches", async () => {
+    await expect(
+      getQueuedJobCount(
+        "https://api.github.com",
+        "secret",
+        request,
+        jobsCountFetch([
+          { id: 1, status: "queued", runner_group_name: "synology-private" },
+          { id: 2, status: "queued", runner_group_name: "other-group" },
+          { id: 3, status: "in_progress", runner_group_name: "synology-private" }
+        ])
+      )
+    ).resolves.toBe(1);
+  });
+
+  test("falls back to label matching only when the group name is absent", async () => {
+    await expect(
+      getQueuedJobCount(
+        "https://api.github.com",
+        "secret",
+        request,
+        jobsCountFetch([
+          { id: 1, status: "queued", labels: ["synology", "shell-only", "x"] },
+          { id: 2, status: "queued", labels: ["synology"] }
+        ])
+      )
+    ).resolves.toBe(1);
+  });
+
+  test("does not match on labels when the request has none", async () => {
+    await expect(
+      getQueuedJobCount(
+        "https://api.github.com",
+        "secret",
+        { ...request, labels: [] },
+        jobsCountFetch([
+          { id: 1, status: "queued", labels: ["synology", "shell-only"] }
+        ])
+      )
+    ).resolves.toBe(0);
+  });
+});
+
+describe("ghcr image reference parsing and lookup", () => {
+  test("rejects image references that are not ghcr.io/<owner>/<package>:<tag>", async () => {
+    await expect(
+      verifyContainerImageTag(
+        "https://api.github.com",
+        "secret",
+        "docker.io/library/node:20",
+        vi.fn()
+      )
+    ).rejects.toThrow(
+      "image reference docker.io/library/node:20 must match ghcr.io/<owner>/<package>:<tag>"
+    );
+  });
+
+  test("paginates package versions and url-encodes the package name", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          Array.from({ length: 100 }, (_, index) => ({
+            id: index + 1,
+            metadata: { container: { tags: [`v${index}`] } }
+          }))
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse([
+          { id: 500, metadata: { container: { tags: ["release"] } } }
+        ])
+      );
+
+    await expect(
+      verifyContainerImageTag(
+        "https://api.github.com",
+        "secret",
+        "ghcr.io/acme/team/app:release",
+        fetchMock
+      )
+    ).resolves.toMatchObject({ versionId: 500, ownerType: "orgs" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://api.github.com/orgs/acme/packages/container/team%2Fapp/versions?per_page=100&page=2",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  test("reports the available tags when the requested tag is missing", async () => {
+    await expect(
+      verifyContainerImageTag(
+        "https://api.github.com",
+        "secret",
+        "ghcr.io/acme/app:9.9.9",
+        vi
+          .fn()
+          .mockResolvedValue(
+            jsonResponse([
+              { id: 1, metadata: { container: { tags: ["b", "a"] } } }
+            ])
+          )
+      )
+    ).rejects.toThrow(
+      "GitHub container package acme/app does not include tag 9.9.9; available tags: a, b"
+    );
+  });
+
+  test("reports that the package was not found across both owner scopes", async () => {
+    await expect(
+      verifyContainerImageTag(
+        "https://api.github.com",
+        "secret",
+        "ghcr.io/acme/app:1.0.0",
+        vi.fn().mockResolvedValue(rawResponse("Not Found", 404))
+      )
+    ).rejects.toThrow(
+      "GitHub container package acme/app was not found for ghcr.io/acme/app:1.0.0"
+    );
+  });
+
+  test("rejects a non-ok container package response with status and body", async () => {
+    await expect(
+      verifyContainerImageTag(
+        "https://api.github.com",
+        "secret",
+        "ghcr.io/acme/app:1.0.0",
+        vi.fn().mockResolvedValue(rawResponse("server error", 500))
+      )
+    ).rejects.toThrow(
+      "GitHub container package lookup failed for ghcr.io/acme/app:1.0.0 with 500: server error"
+    );
+  });
+});
+
+describe("verify runner groups failure detail", () => {
+  test("lists the sorted available group names when a group is missing", async () => {
+    await expect(
+      verifyRunnerGroups(
+        "https://api.github.com",
+        "secret",
+        [
+          {
+            poolKey: "synology-private",
+            organization: "example",
+            runnerGroup: "missing-group"
+          }
+        ],
+        vi.fn().mockResolvedValue(
+          jsonResponse({
+            runner_groups: [
+              { id: 2, name: "zeta", default: false },
+              { id: 1, name: "alpha", default: true }
+            ]
+          })
+        )
+      )
+    ).rejects.toThrow(
+      "pool synology-private expects runner group missing-group in organization example, but GitHub returned: alpha, zeta"
+    );
   });
 });
