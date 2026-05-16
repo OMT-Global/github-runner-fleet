@@ -36,4 +36,7 @@ server.listen(port, host, () => {
     `${new Date().toISOString()} listening ${host}:${port}\n`,
     "utf8"
   );
+  // Deterministic readiness signal: consumers wait on this stdout line
+  // instead of polling the log file, so startup is event-driven.
+  process.stdout.write(`ready ${host}:${port}\n`);
 });
