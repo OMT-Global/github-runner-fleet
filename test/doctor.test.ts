@@ -1228,11 +1228,20 @@ pools:
       "utf8"
     );
 
-    const report = await runDoctor({
-      mode: "synology",
-      envPath,
-      configPath: poolsPath
-    });
+    const report = await withEnv(
+      {
+        GITHUB_PAT: undefined,
+        GITHUB_TOKEN: undefined,
+        GH_TOKEN: undefined,
+        SYNOLOGY_HOST: undefined
+      },
+      () =>
+        runDoctor({
+          mode: "synology",
+          envPath,
+          configPath: poolsPath
+        })
+    );
 
     const envCheck = findCheck(report, "synology-env");
     expect(envCheck.status).toBe("fail");
@@ -1436,14 +1445,24 @@ pools:
       "utf8"
     );
 
-    const report = await runDoctor({
-      mode: "windows-docker",
-      envPath,
-      windowsConfigPath: windowsPath,
-      fetchImpl: vi.fn(async () => {
-        throw new Error("runner-group verification should not run");
-      })
-    });
+    const report = await withEnv(
+      {
+        GITHUB_PAT: undefined,
+        GITHUB_TOKEN: undefined,
+        GH_TOKEN: undefined,
+        WINDOWS_DOCKER_HOST: undefined,
+        WINDOWS_DOCKER_USERNAME: undefined
+      },
+      () =>
+        runDoctor({
+          mode: "windows-docker",
+          envPath,
+          windowsConfigPath: windowsPath,
+          fetchImpl: vi.fn(async () => {
+            throw new Error("runner-group verification should not run");
+          })
+        })
+    );
 
     const configCheck = findCheck(report, "windows-docker-config");
     expect(configCheck.status).toBe("fail");

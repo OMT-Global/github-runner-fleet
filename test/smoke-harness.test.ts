@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,19 +18,58 @@ function makeTempRoot() {
   return tempRoot;
 }
 
-async function waitForReady(logPath: string, host: string, port: number) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (
-      fs.existsSync(logPath) &&
-      fs.readFileSync(logPath, "utf8").includes(`listening ${host}:${port}`)
-    ) {
-      return;
-    }
+// Resolve as soon as the mock API prints its readiness sentinel on
+// stdout. This is event-driven (no fixed-interval polling), and rejects
+// immediately if the child fails to spawn or exits early, so the only
+// way to hit `timeoutMs` is a genuine startup hang.
+function waitForReady(
+  server: ChildProcess,
+  host: string,
+  port: number,
+  timeoutMs = 15000
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+    let settled = false;
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+    const cleanup = () => {
+      clearTimeout(timer);
+      server.stdout?.off("data", onData);
+      server.off("error", onError);
+      server.off("exit", onExit);
+    };
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn();
+    };
 
-  throw new Error("mock API did not become ready");
+    const onData = (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
+      if (buffer.includes(`ready ${host}:${port}`)) {
+        settle(resolve);
+      }
+    };
+    const onError = (error: Error) => {
+      settle(() => reject(error));
+    };
+    const onExit = (code: number | null) => {
+      settle(() =>
+        reject(new Error(`mock API exited before becoming ready (code ${code})`))
+      );
+    };
+
+    const timer = setTimeout(() => {
+      settle(() =>
+        reject(new Error(`mock API did not become ready within ${timeoutMs}ms`))
+      );
+    }, timeoutMs);
+
+    server.stdout?.on("data", onData);
+    server.once("error", onError);
+    server.once("exit", onExit);
+  });
 }
 
 describe("runner registration smoke harness", () => {
@@ -46,11 +85,11 @@ describe("runner registration smoke harness", () => {
         MOCK_LOG_PATH: logPath,
         MOCK_PORT: String(port),
       },
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
     try {
-      await waitForReady(logPath, host, port);
+      await waitForReady(server, host, port);
 
       await expect(
         fetch(
