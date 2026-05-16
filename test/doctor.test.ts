@@ -1228,11 +1228,13 @@ pools:
       "utf8"
     );
 
-    const report = await runDoctor({
-      mode: "synology",
-      envPath,
-      configPath: poolsPath
-    });
+    const report = await withEnv({ GITHUB_PAT: undefined }, () =>
+      runDoctor({
+        mode: "synology",
+        envPath,
+        configPath: poolsPath
+      })
+    );
 
     const envCheck = findCheck(report, "synology-env");
     expect(envCheck.status).toBe("fail");
