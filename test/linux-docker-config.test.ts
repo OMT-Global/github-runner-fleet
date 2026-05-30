@@ -55,6 +55,43 @@ pools:
     expect(config.pools[0].visibility).toBe("private");
   });
 
+  test("supports public Linux Docker pools for public shell-safe jobs", () => {
+    const directory = createTempDir();
+    const configPath = path.join(directory, "linux-docker-runners.yaml");
+
+    fs.writeFileSync(
+      configPath,
+      `version: 1
+image:
+  repository: ghcr.io/example/github-runner-fleet
+  tag: 0.1.9
+pools:
+  - key: linux-docker-public
+    visibility: public
+    organization: example
+    runnerGroup: linux-docker-public
+    repositoryAccess: selected
+    allowedRepositories:
+      - example/public-app
+    labels:
+      - x64
+    size: 1
+    architecture: amd64
+    runnerRoot: \${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-public
+`,
+      "utf8"
+    );
+
+    const config = loadLinuxDockerConfig(configPath, deploymentEnv());
+
+    expect(config.pools[0]).toMatchObject({
+      key: "linux-docker-public",
+      visibility: "public",
+      labels: ["linux", "shell-only", "synology", "docker-capable", "public", "x64"],
+      runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-public"
+    });
+  });
+
   test("rejects repositories outside the configured organization", () => {
     const directory = createTempDir();
     const configPath = path.join(directory, "linux-docker-runners.yaml");

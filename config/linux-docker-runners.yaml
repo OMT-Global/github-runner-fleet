@@ -5,6 +5,7 @@ image:
 
 pools:
   - key: linux-docker-private
+    visibility: private
     organization: OMT-Global
     runnerGroup: linux-docker-private
     repositoryAccess: selected
@@ -37,6 +38,27 @@ pools:
     #   headers: ${OTEL_EXPORTER_OTLP_HEADERS:-}
     #   resourceAttributes:
     #     service.namespace: github-runner-fleet
+    resources:
+      cpus: "4"
+      memory: 8g
+  - key: linux-docker-public
+    visibility: public
+    organization: OMT-Global
+    runnerGroup: linux-docker-public
+    repositoryAccess: selected
+    allowedRepositories:
+      - OMT-Global/apw-cli
+      - OMT-Global/axiom
+      - OMT-Global/bootstrap
+      - OMT-Global/gh-attest
+      - OMT-Global/github-runner-fleet
+      - OMT-Global/home-tv-channel-list
+      - OMT-Global/Screensaver
+    labels:
+      - x64
+    size: 5
+    architecture: amd64
+    runnerRoot: ${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-public
     resources:
       cpus: "4"
       memory: 8g

@@ -74,6 +74,24 @@ export function linuxDockerConfigFixture(): ResolvedLinuxDockerConfig {
           pidsLimit: 1024
         },
         imageRef: "ghcr.io/example/github-runner-fleet:0.1.9"
+      },
+      {
+        key: "linux-docker-public",
+        visibility: "public",
+        organization: "example",
+        runnerGroup: "linux-docker-public",
+        repositoryAccess: "selected",
+        allowedRepositories: ["example/public-app"],
+        labels: ["linux", "shell-only", "synology", "docker-capable", "public", "x64"],
+        size: 1,
+        architecture: "amd64",
+        runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-public",
+        resources: {
+          cpus: "4",
+          memory: "8g",
+          pidsLimit: 1024
+        },
+        imageRef: "ghcr.io/example/github-runner-fleet:0.1.9"
       }
     ]
   };

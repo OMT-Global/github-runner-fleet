@@ -18,9 +18,11 @@ This plane exists for private-repo workflows that need real Linux Docker semanti
 
 ## Default Contract
 
-- Runner group: `linux-docker-private`
-- Labels: `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, `private`
+- Runner groups: `linux-docker-private`, `linux-docker-public`
+- Labels: `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, and `private` or `public`
 - Execution model: one job per runner, ephemeral registration, short-lived GitHub tokens, dedicated Docker host
+
+Keep `linux-docker-public.allowedRepositories` aligned with the public Synology pool so `runs-on: [self-hosted, linux, shell-only, public]` can land on either Linux runner class.
 
 ## Operator Commands
 
