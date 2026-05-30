@@ -69,7 +69,7 @@ describe("loadConfig property validation", () => {
           });
 
           expect(config.pools[0].labels).toEqual([
-            ...new Set(["synology", "shell-only", "public", ...labels])
+            ...new Set(["linux", "shell-only", "public", "synology", ...labels])
           ]);
         }
       ),

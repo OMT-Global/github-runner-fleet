@@ -237,6 +237,7 @@ The installer path uses `ssh` and `scp` to stage `compose.yaml`, a project-local
 Recommended workflow labels:
 
 - Docker-capable private repos: `runs-on: [self-hosted, linux, docker-capable, private]`
+- Legacy private Synology-labeled shell jobs can also land on Linux Docker runners because those runners advertise `synology` plus `shell-only`.
 
 ## Windows Docker Pool
 

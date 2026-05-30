@@ -136,7 +136,7 @@ export function loadLinuxDockerConfig(
       ...poolValues,
       visibility: "private" as const,
       labels: uniqueRunnerLabels(
-        ["linux", "docker-capable", "private"],
+        ["linux", "shell-only", "synology", "docker-capable", "private"],
         pool.labels
       ),
       resources: {

@@ -21,7 +21,7 @@ services:
       RUNNER_GROUP: linux-docker-private
       FLEET_POOL_KEY: linux-docker-private
       FLEET_PLANE: linux-docker
-      RUNNER_LABELS: linux,docker-capable,private,x64
+      RUNNER_LABELS: linux,shell-only,synology,docker-capable,private,x64
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: selected
       RUNNER_STATE_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01
@@ -64,7 +64,7 @@ services:
       RUNNER_GROUP: linux-docker-private
       FLEET_POOL_KEY: linux-docker-private
       FLEET_PLANE: linux-docker
-      RUNNER_LABELS: linux,docker-capable,private,x64
+      RUNNER_LABELS: linux,shell-only,synology,docker-capable,private,x64
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: selected
       RUNNER_STATE_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02

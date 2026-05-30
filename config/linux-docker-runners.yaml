@@ -9,7 +9,22 @@ pools:
     runnerGroup: linux-docker-private
     repositoryAccess: selected
     allowedRepositories:
+      - OMT-Global/acme-aws
+      - OMT-Global/auth-gateway
+      - OMT-Global/axiom-control-plane
+      - OMT-Global/dockyard
+      - OMT-Global/glacier-utilities
       - OMT-Global/github-runner-fleet
+      - OMT-Global/homenet
+      - OMT-Global/lattice
+      - OMT-Global/mac-cksum
+      - OMT-Global/mypersonalbanker
+      - OMT-Global/omt-corner-cave
+      - OMT-Global/omt-global-structure
+      - OMT-Global/omtcornercave.org
+      - OMT-Global/openclaw-ouro
+      - OMT-Global/pocket-parade
+      - OMT-Global/Why-fi
     labels:
       - x64
     size: 2

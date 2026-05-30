@@ -11,9 +11,9 @@ Use it alongside `pnpm doctor`, `pnpm synology-status`, `pnpm linux-docker-statu
 
 | Runner class | Default labels | Best for | Keep off this class |
 | --- | --- | --- | --- |
-| Synology shell-only | `self-hosted`, `synology`, `shell-only`, `private` or `public` | bash/docs jobs, JS actions, Node validation, Python `3.12`, Terraform CLI, lightweight smoke checks | `container:` jobs, service containers, Docker daemon/Buildx, Kind, Playwright, browser-heavy lanes, distro-package-heavy setup |
-| Linux Docker | `self-hosted`, `linux`, `docker-capable`, `private` | `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native lanes, snowflake long-lived hosts |
-| Lume macOS | `self-hosted`, `macos`, `arm64`, `private`, plus pool-specific labels like `xcode` | Xcode builds, Swift tests, macOS-native tooling, host-accurate Apple platform lanes | Linux container workloads, Docker-focused Linux integration, long-lived hand-managed VMs |
+| Synology shell-safe | `self-hosted`, `linux`, `shell-only`, `private` or `public`, `synology` | bash/docs jobs, JS actions, Node validation, Python `3.12`, Terraform CLI, lightweight smoke checks | `container:` jobs, service containers, Docker daemon/Buildx, Kind, Playwright, browser-heavy lanes, distro-package-heavy setup |
+| Linux Docker | `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, `private` | private shell-safe overflow, legacy Synology-labeled private jobs, `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native lanes, snowflake long-lived hosts |
+| Lume macOS | `self-hosted`, `macOS`, `ARM64`, `private`, plus pool-specific labels like `xcode` | Xcode builds, Swift tests, macOS-native tooling, host-accurate Apple platform lanes | Linux container workloads, Docker-focused Linux integration, long-lived hand-managed VMs |
 | GitHub-hosted fallback | `ubuntu-latest`, `macos-latest`, or other hosted images | incompatible workloads, public fork PRs, and anything that still depends on GitHub-hosted image breadth | steady-state private-repo workloads that already fit one of the self-hosted classes |
 
 ## Current Parity Gaps
@@ -32,17 +32,18 @@ These are the main places where GitHub-hosted runners still have broader surface
 Use these rules in order:
 
 1. If a job needs a real macOS host, run it on Lume.
-2. If a job fits the shell-safe contract, run it on Synology.
-3. If a job needs Docker, `container:`, service containers, Kind, Playwright-with-deps, or heavier Linux system setup, run it on the Linux Docker plane.
-4. If the workflow runs for an untrusted public fork PR, keep it on GitHub-hosted unless the lane has been explicitly designed for that trust boundary.
+2. If a job fits the shell-safe contract, run it on the shared shell-safe Linux label set.
+3. Treat `synology` as a compatibility label for existing shell-safe jobs; it can match Synology or private Linux runners.
+4. If a job needs Docker, `container:`, service containers, Kind, Playwright-with-deps, or heavier Linux system setup, add the Linux Docker `docker-capable` label.
+5. If the workflow runs for an untrusted public fork PR, keep it on GitHub-hosted unless the lane has been explicitly designed for that trust boundary.
 
 ## Job-Class Matrix
 
 | Job pattern | Recommended placement | Notes |
 | --- | --- | --- |
-| `pnpm lint`, `pnpm test`, docs validation, shell scripts | Synology shell-only | Prefer the repo's shell-safe Node setup action where needed |
-| Python `3.12` lint/test | Synology shell-only | Route non-`3.12` matrix lanes elsewhere |
-| Terraform validate/plan without Docker sidecars | Synology shell-only | Keep plugin cache under runner temp |
+| `pnpm lint`, `pnpm test`, docs validation, shell scripts | Shared shell-safe Linux | Prefer the repo's shell-safe Node setup action where needed |
+| Python `3.12` lint/test | Shared shell-safe Linux | Route non-`3.12` matrix lanes elsewhere |
+| Terraform validate/plan without Docker sidecars | Shared shell-safe Linux | Keep plugin cache under runner temp |
 | Xcode build/test, SwiftPM macOS tooling | Lume macOS | Keep labels explicit, for example `xcode` |
 | `container:` jobs | Linux Docker | Use `runs-on: [self-hosted, linux, docker-capable, private]` |
 | `services:` jobs | Linux Docker | Same contract as other Docker-capable Linux work |
@@ -53,22 +54,28 @@ Use these rules in order:
 
 ## Example `runs-on` Contracts
 
-Private shell-safe repos:
+Legacy Synology-compatible private shell-safe jobs that may also land on private Linux runners:
 
 ```yaml
 runs-on: [self-hosted, synology, shell-only, private]
 ```
 
+Private shell-safe repos that can run on either Synology or Linux Docker:
+
+```yaml
+runs-on: [self-hosted, linux, shell-only, private]
+```
+
 Public shell-safe repos:
 
 ```yaml
-runs-on: [self-hosted, synology, shell-only, public]
+runs-on: [self-hosted, linux, shell-only, public]
 ```
 
 macOS-native lanes:
 
 ```yaml
-runs-on: [self-hosted, macos, arm64, xcode]
+runs-on: [self-hosted, macOS, ARM64, xcode]
 ```
 
 Docker-capable Linux lanes:
@@ -86,7 +93,7 @@ runs-on: ubuntu-latest
 ## Migration Checklist For A Private Repo
 
 1. Split the workflow by workload type instead of trying to move everything at once.
-2. Move shell-safe Node, Python `3.12`, Terraform, and docs lanes to Synology first.
+2. Move shell-safe Node, Python `3.12`, Terraform, and docs lanes to the shared shell-safe Linux label set first.
 3. Move macOS-native lanes to Lume when you need real Apple hosts.
 4. Move Docker/container/service lanes to the Linux Docker plane once the dedicated host is provisioned.
 5. Run `pnpm doctor -- full --env .env` before provisioning or changing pool assignments.
@@ -95,7 +102,7 @@ runs-on: ubuntu-latest
 
 ## Decision Shortcut
 
-If a job can run in bash with the baked-in shell-safe toolchain, prefer Synology.
+If a job can run in bash with the baked-in shell-safe toolchain, prefer the shared shell-safe Linux contract.
 
 If it needs Apple tooling, prefer Lume.
 

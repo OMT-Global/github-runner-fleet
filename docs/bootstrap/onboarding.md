@@ -15,7 +15,7 @@
 
 ## Runner Policy
 
-- Shell-safe jobs may use `[self-hosted, synology, shell-only, public]`.
+- Shell-safe jobs may use `[self-hosted, linux, shell-only, public]`.
 - Docker, service-container, browser, and `container:` workloads stay on GitHub-hosted runners.
 - Keep PR checks cheap. Add heavy validation to `scripts/ci/run-extended-validation.sh` instead of the PR lane.
 

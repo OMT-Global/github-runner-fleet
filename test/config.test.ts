@@ -45,9 +45,10 @@ pools:
       "/volume1/docker/github-runner-fleet/pools/synology-private"
     );
     expect(config.pools[0].labels).toEqual([
-      "synology",
+      "linux",
       "shell-only",
       "private",
+      "synology",
       "custom-label"
     ]);
     expect(config.pools[0].repositoryAccess).toBe("all");

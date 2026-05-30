@@ -88,7 +88,7 @@ function configFixture(): ResolvedConfig {
         runnerGroup: "synology-private",
         repositoryAccess: "all",
         allowedRepositories: [],
-        labels: ["synology", "shell-only", "private"],
+        labels: ["linux", "shell-only", "private", "synology"],
         size: 1,
         architecture: "auto",
         runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-private",

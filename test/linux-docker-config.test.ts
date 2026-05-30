@@ -46,6 +46,8 @@ pools:
     );
     expect(config.pools[0].labels).toEqual([
       "linux",
+      "shell-only",
+      "synology",
       "docker-capable",
       "private",
       "x64"

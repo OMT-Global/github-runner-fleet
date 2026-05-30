@@ -70,7 +70,7 @@ describe("cli integration", () => {
     expect(payload.pools[0]).toEqual(
       expect.objectContaining({
         key: "synology-private",
-        labels: ["synology", "shell-only", "private", "custom-label"],
+        labels: ["linux", "shell-only", "private", "synology", "custom-label"],
         runnerRoot: path.join(fixture.directory, "synology", "pools", "synology-private")
       })
     );
@@ -1078,7 +1078,7 @@ describe("cli integration", () => {
         pools: [
           expect.objectContaining({
             key: "linux-private",
-            labels: ["linux", "docker-capable", "private", "docker-host"]
+            labels: ["linux", "shell-only", "synology", "docker-capable", "private", "docker-host"]
           })
         ]
       })
@@ -1212,7 +1212,7 @@ describe("cli integration", () => {
         }),
         pool: expect.objectContaining({
           key: "macos-private",
-          labels: ["self-hosted", "macos", "arm64", "private", "xcode"]
+          labels: ["self-hosted", "macOS", "ARM64", "private", "xcode"]
         })
       })
     );
@@ -1309,7 +1309,7 @@ describe("cli integration", () => {
     ]);
     expect(shell.error).toBeUndefined();
     expect(shell.stdout).toContain("export LUME_SLOT_INDEX='1'");
-    expect(shell.stdout).toContain("export RUNNER_LABELS='self-hosted,macos,arm64,private,xcode'");
+    expect(shell.stdout).toContain("export RUNNER_LABELS='self-hosted,macOS,ARM64,private,xcode'");
   });
 
   test("renders Lume install and teardown lifecycle results in dry-run mode", async () => {
@@ -1734,6 +1734,7 @@ describe("cli integration", () => {
             runners: [
               configDiffRunner(101, "synology-private-runner-01", 7, [
                 "self-hosted",
+                "linux",
                 "synology",
                 "shell-only",
                 "private",
@@ -1742,6 +1743,8 @@ describe("cli integration", () => {
               configDiffRunner(102, "linux-private-runner-01", 8, [
                 "self-hosted",
                 "linux",
+                "shell-only",
+                "synology",
                 "docker-capable",
                 "private",
                 "docker-host"
@@ -1755,8 +1758,8 @@ describe("cli integration", () => {
               ]),
               configDiffRunner(104, "macos-runner-slot-01", 10, [
                 "self-hosted",
-                "macos",
-                "arm64",
+                "macOS",
+                "ARM64",
                 "private",
                 "xcode"
               ])
@@ -1849,7 +1852,7 @@ describe("cli integration", () => {
     expect(result.stdout).toContain("- example/synology-private-runner-old");
     expect(result.stdout).toContain("~ example/synology-private-runner-01");
     expect(result.stdout).toContain("group wrong-group -> synology-private");
-    expect(result.stdout).toContain("missing labels custom-label,shell-only");
+    expect(result.stdout).toContain("missing labels custom-label,linux,shell-only");
     expect(result.stdout).toContain("unexpected labels stale-label");
   });
 

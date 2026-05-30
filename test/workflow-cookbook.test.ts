@@ -15,10 +15,10 @@ describe("workflow cookbook docs", () => {
       "| Public fork pull requests | No | No | No | No | Yes |"
     );
 
-    expect(cookbook).toContain("## Recipe: trusted Node job on the Synology shell-only pool");
+    expect(cookbook).toContain("## Recipe: trusted Node job on shell-safe self-hosted Linux");
     expect(cookbook).toContain("## Recipe: trusted jobs on self-hosted, fork PRs on GitHub-hosted");
-    expect(cookbook).toContain("## Recipe: Python 3.12 on the Synology shell-only pool");
-    expect(cookbook).toContain("## Recipe: Terraform validation on the Synology shell-only pool");
+    expect(cookbook).toContain("## Recipe: Python 3.12 on shell-safe self-hosted Linux");
+    expect(cookbook).toContain("## Recipe: Terraform validation on shell-safe self-hosted Linux");
     expect(cookbook).toContain("## Recipe: Lume macOS contract job");
 
     expect(cookbook).toContain("OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main");
@@ -29,7 +29,7 @@ describe("workflow cookbook docs", () => {
     expect(cookbook).toContain("runs-on: ubuntu-latest");
     expect(cookbook).toContain("runs-on:");
     expect(cookbook).toContain("- self-hosted");
-    expect(cookbook).toContain("- synology");
+    expect(cookbook).toContain("- linux");
     expect(cookbook).toContain("- shell-only");
     expect(cookbook).toContain("- public");
   });

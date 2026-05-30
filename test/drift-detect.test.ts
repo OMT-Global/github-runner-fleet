@@ -188,7 +188,7 @@ describe("drift detection", () => {
             organization: "example",
             name: "synology-private-runner-01",
             runnerGroup: "synology-private",
-            labels: ["synology", "shell-only", "private"]
+            labels: ["linux", "shell-only", "private", "synology"]
           },
           {
             plane: "synology",
@@ -196,7 +196,7 @@ describe("drift detection", () => {
             organization: "example",
             name: "synology-private-runner-02",
             runnerGroup: "synology-private",
-            labels: ["synology", "shell-only", "private"]
+            labels: ["linux", "shell-only", "private", "synology"]
           }
         ],
         [
@@ -227,7 +227,7 @@ describe("drift detection", () => {
           plane: "synology",
           poolKey: "synology-private",
           runnerGroup: "synology-private",
-          labels: ["private", "shell-only", "synology"]
+          labels: ["linux", "private", "shell-only", "synology"]
         }
       ],
       removed: [
@@ -247,10 +247,10 @@ describe("drift detection", () => {
           plane: "synology",
           poolKey: "synology-private",
           runnerGroup: "synology-private",
-          labels: ["private", "shell-only", "synology"],
+          labels: ["linux", "private", "shell-only", "synology"],
           actualRunnerGroup: "wrong-group",
           actualLabels: ["old-label", "private", "self-hosted", "synology"],
-          missingLabels: ["shell-only"],
+          missingLabels: ["linux", "shell-only"],
           unexpectedLabels: ["old-label"]
         }
       ]
