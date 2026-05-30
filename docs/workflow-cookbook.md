@@ -24,7 +24,7 @@ Use these rules when deciding where a workflow job should run:
 - Use `runs-on: [self-hosted, synology, shell-only, public]` for trusted shell-safe jobs that can run with the baked-in Linux toolchain.
 - Use `runs-on: [self-hosted, linux, docker-capable, private]` for trusted private Linux jobs that need Docker, `container:`, or service containers.
 - Use `runs-on: [self-hosted, windows, docker-capable, private]` only for trusted private Windows container work.
-- Use `runs-on: [self-hosted, macos, arm64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
+- Use `runs-on: [self-hosted, macOS, ARM64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
 - Keep pull requests from forks on GitHub-hosted runners.
 - Keep any untrusted workflow using `container:`, `services:`, browsers, Docker daemon access, Buildx, or extra distro package assumptions on GitHub-hosted runners.
 - Prefer a split workflow over forcing one runner class to handle incompatible jobs.
@@ -222,8 +222,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - macos
-      - arm64
+      - macOS
+      - ARM64
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5

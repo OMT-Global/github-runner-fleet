@@ -1212,7 +1212,7 @@ describe("cli integration", () => {
         }),
         pool: expect.objectContaining({
           key: "macos-private",
-          labels: ["self-hosted", "macos", "arm64", "private", "xcode"]
+          labels: ["self-hosted", "macOS", "ARM64", "private", "xcode"]
         })
       })
     );
@@ -1309,7 +1309,7 @@ describe("cli integration", () => {
     ]);
     expect(shell.error).toBeUndefined();
     expect(shell.stdout).toContain("export LUME_SLOT_INDEX='1'");
-    expect(shell.stdout).toContain("export RUNNER_LABELS='self-hosted,macos,arm64,private,xcode'");
+    expect(shell.stdout).toContain("export RUNNER_LABELS='self-hosted,macOS,ARM64,private,xcode'");
   });
 
   test("renders Lume install and teardown lifecycle results in dry-run mode", async () => {
@@ -1755,8 +1755,8 @@ describe("cli integration", () => {
               ]),
               configDiffRunner(104, "macos-runner-slot-01", 10, [
                 "self-hosted",
-                "macos",
-                "arm64",
+                "macOS",
+                "ARM64",
                 "private",
                 "xcode"
               ])

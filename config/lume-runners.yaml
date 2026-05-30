@@ -4,8 +4,8 @@ pool:
   organization: omt-global
   runnerGroup: macos-private
   labels:
-    - macos
-    - arm64
+    - macOS
+    - ARM64
     - xcode
     - private
   size: 2

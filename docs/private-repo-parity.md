@@ -13,7 +13,7 @@ Use it alongside `pnpm doctor`, `pnpm synology-status`, `pnpm linux-docker-statu
 | --- | --- | --- | --- |
 | Synology shell-only | `self-hosted`, `synology`, `shell-only`, `private` or `public` | bash/docs jobs, JS actions, Node validation, Python `3.12`, Terraform CLI, lightweight smoke checks | `container:` jobs, service containers, Docker daemon/Buildx, Kind, Playwright, browser-heavy lanes, distro-package-heavy setup |
 | Linux Docker | `self-hosted`, `linux`, `docker-capable`, `private` | `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native lanes, snowflake long-lived hosts |
-| Lume macOS | `self-hosted`, `macos`, `arm64`, `private`, plus pool-specific labels like `xcode` | Xcode builds, Swift tests, macOS-native tooling, host-accurate Apple platform lanes | Linux container workloads, Docker-focused Linux integration, long-lived hand-managed VMs |
+| Lume macOS | `self-hosted`, `macOS`, `ARM64`, `private`, plus pool-specific labels like `xcode` | Xcode builds, Swift tests, macOS-native tooling, host-accurate Apple platform lanes | Linux container workloads, Docker-focused Linux integration, long-lived hand-managed VMs |
 | GitHub-hosted fallback | `ubuntu-latest`, `macos-latest`, or other hosted images | incompatible workloads, public fork PRs, and anything that still depends on GitHub-hosted image breadth | steady-state private-repo workloads that already fit one of the self-hosted classes |
 
 ## Current Parity Gaps
@@ -68,7 +68,7 @@ runs-on: [self-hosted, synology, shell-only, public]
 macOS-native lanes:
 
 ```yaml
-runs-on: [self-hosted, macos, arm64, xcode]
+runs-on: [self-hosted, macOS, ARM64, xcode]
 ```
 
 Docker-capable Linux lanes:
