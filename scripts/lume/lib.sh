@@ -138,7 +138,14 @@ upload_env_file() {
 render_guest_runner_env() {
   local env_path="$1"
   local temp_env
+  local runner_download_url="${RUNNER_DOWNLOAD_URL:-}"
+  local runner_group="${RUNNER_GROUP}"
+  local runner_labels="${RUNNER_LABELS}"
+  local runner_name="${RUNNER_NAME}"
   local runner_path
+  local runner_root="${RUNNER_ROOT}"
+  local runner_version="${RUNNER_VERSION}"
+  local runner_work_dir="${RUNNER_WORK_DIR}"
 
   temp_env="$(mktemp)"
   runner_path="${RUNNER_PATH:-$(default_guest_runner_path)}"
@@ -156,14 +163,14 @@ GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY:-}
 GITHUB_API_URL=${GITHUB_API_URL}
 GITHUB_REPO=${GITHUB_REPO:-}
 GITHUB_ORG=${GITHUB_ORG}
-RUNNER_GROUP=${RUNNER_GROUP}
-RUNNER_LABELS=${RUNNER_LABELS}
-RUNNER_NAME=${RUNNER_NAME}
-RUNNER_ROOT=${RUNNER_ROOT}
-RUNNER_WORK_DIR=${RUNNER_WORK_DIR}
+RUNNER_GROUP=${runner_group}
+RUNNER_LABELS=${runner_labels}
+RUNNER_NAME=${runner_name}
+RUNNER_ROOT=${runner_root}
+RUNNER_WORK_DIR=${runner_work_dir}
 RUNNER_PATH=${runner_path}
-RUNNER_VERSION=${RUNNER_VERSION}
-RUNNER_DOWNLOAD_URL=${RUNNER_DOWNLOAD_URL:-}
+RUNNER_VERSION=${runner_version}
+RUNNER_DOWNLOAD_URL=${runner_download_url}
 EOF
   ) > "${temp_env}"
 

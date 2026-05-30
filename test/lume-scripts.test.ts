@@ -32,7 +32,9 @@ describe("Lume pool scripts", () => {
     expect(reconcile).toContain('spawn_detached');
     expect(reconcile).toContain('"${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
     expect(read("scripts/lume/lib.sh")).toContain("default_guest_runner_path");
+    expect(read("scripts/lume/lib.sh")).toContain('local runner_version="${RUNNER_VERSION}"');
     expect(read("scripts/lume/lib.sh")).toContain("RUNNER_PATH=${runner_path}");
+    expect(read("scripts/lume/lib.sh")).toContain("RUNNER_VERSION=${runner_version}");
     expect(createBase).toContain('unattended="$(default_lume_unattended_path)"');
     expect(createBase).toContain('ipsw="$(ensure_cached_lume_ipsw "$(resolve_lume_ipsw_path)")"');
     expect(setupBase).toContain('lume stop "${LUME_VM_BASE_NAME}"');

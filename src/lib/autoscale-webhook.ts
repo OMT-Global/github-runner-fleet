@@ -31,6 +31,8 @@ export interface AutoscaleWebhookState {
   lastJobId: number;
 }
 
+export const DEFAULT_AUTOSCALE_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
+
 export function verifyWebhookSignature(input: {
   body: Buffer | string;
   signatureHeader: string | undefined;
@@ -117,8 +119,11 @@ export function createAutoscaleWebhookServer(input: {
   secret: string;
   ownedLabels: string[];
   statePath?: string;
+  maxBodyBytes?: number;
 }): http.Server {
   const seenJobIds = new Set<number>();
+  const maxBodyBytes =
+    input.maxBodyBytes ?? DEFAULT_AUTOSCALE_WEBHOOK_MAX_BODY_BYTES;
   return http.createServer((request, response) => {
     if (request.method !== "POST") {
       response.writeHead(405);
@@ -127,8 +132,32 @@ export function createAutoscaleWebhookServer(input: {
     }
 
     const chunks: Buffer[] = [];
-    request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    let bodyBytes = 0;
+    let rejected = false;
+    request.on("data", (chunk) => {
+      if (rejected) {
+        return;
+      }
+      const buffer = Buffer.from(chunk);
+      bodyBytes += buffer.byteLength;
+      if (bodyBytes > maxBodyBytes) {
+        rejected = true;
+        chunks.length = 0;
+        log.warn("rejected workflow_job webhook payload over size limit", {
+          maxBodyBytes
+        });
+        response.shouldKeepAlive = false;
+        response.on("finish", () => request.destroy());
+        response.writeHead(413);
+        response.end("payload too large\n");
+        return;
+      }
+      chunks.push(buffer);
+    });
     request.on("end", () => {
+      if (rejected) {
+        return;
+      }
       const body = Buffer.concat(chunks);
       if (
         !verifyWebhookSignature({
@@ -150,8 +179,18 @@ export function createAutoscaleWebhookServer(input: {
         return;
       }
 
+      let payload: WorkflowJobWebhookPayload;
+      try {
+        payload = JSON.parse(body.toString("utf8")) as WorkflowJobWebhookPayload;
+      } catch {
+        log.warn("rejected workflow_job webhook with malformed JSON");
+        response.writeHead(400);
+        response.end("malformed json\n");
+        return;
+      }
+
       const decision = evaluateWorkflowJobWebhook({
-        payload: JSON.parse(body.toString("utf8")) as WorkflowJobWebhookPayload,
+        payload,
         ownedLabels: input.ownedLabels,
         seenJobIds
       });
@@ -165,6 +204,13 @@ export function createAutoscaleWebhookServer(input: {
       });
       response.writeHead(decision.accepted ? 202 : 204);
       response.end(`${decision.signal}\n`);
+    });
+    request.on("error", () => {
+      if (response.headersSent) {
+        return;
+      }
+      response.writeHead(400);
+      response.end("request error\n");
     });
   });
 }
