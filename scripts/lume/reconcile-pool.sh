@@ -55,12 +55,16 @@ wait_for_registration_env() {
         set +a
       fi
 
-      [[ -n "${GITHUB_PAT:-}" ]]
+      [[ -n "${GITHUB_PAT:-}" ]] || (
+        [[ -n "${GITHUB_APP_ID:-}" ]] &&
+        [[ -n "${GITHUB_APP_INSTALLATION_ID:-}" ]] &&
+        [[ -n "${GITHUB_APP_PRIVATE_KEY:-}" ]]
+      )
     ); then
       return 0
     fi
 
-    log "missing GITHUB_PAT in ${env_file}; waiting before starting Lume slots"
+    log "missing GitHub auth in ${env_file}; waiting before starting Lume slots"
     sleep 60
   done
 }

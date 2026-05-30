@@ -25,12 +25,26 @@ External fork pull requests must stay on GitHub-hosted runners. Self-hosted
 runner groups are for trusted same-repository or explicitly allowed private
 repository workflows only.
 
-Runner registration currently uses `GITHUB_PAT` to mint short-lived runner
-registration and removal tokens. Treat that PAT as fleet-wide infrastructure
-auth: keep it out of images and base VMs, stage it only through generated
-environment files or GitHub environments, rotate it after runner-host incidents,
-and prefer narrowly scoped/fine-grained credentials where GitHub supports the
-required runner APIs.
+Runner registration should use GitHub App authentication by default. Configure
+`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY` for
+an app installation scoped to self-hosted runner administration, and keep the
+private key in generated environment files or GitHub environments only.
+`GITHUB_PAT` remains supported as a fallback for existing deployments; treat it
+as fleet-wide infrastructure auth and rotate it after runner-host incidents.
+
+Published runner images are signed keylessly from GitHub Actions OIDC. Verify a
+release image before use with:
+
+```sh
+cosign verify \
+  --certificate-identity-regexp "https://github.com/OMT-Global/github-runner-fleet/.github/workflows/release-image.yml@refs/heads/main" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/omt-global/github-runner-fleet:<tag>
+```
+
+The same identity publishes SPDX SBOM and SLSA provenance attestations; verify
+them with `cosign verify-attestation --type spdxjson` and
+`cosign verify-attestation --type slsaprovenance`.
 
 Docker-capable runner planes mount the host Docker socket or Windows Docker
 named pipe. Any repository allowed onto those runner groups can effectively

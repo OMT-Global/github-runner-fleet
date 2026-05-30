@@ -169,7 +169,11 @@ function buildChecks(
   savedResultPath?: string
 ): LinuxDockerStatusCheck[] {
   const connection = plan.connection;
-  const githubPatConfigured = !plan.envFileContent.includes('GITHUB_PAT=""');
+  const githubAuthConfigured =
+    !plan.envFileContent.includes('GITHUB_PAT=""') ||
+    (!plan.envFileContent.includes('GITHUB_APP_ID=""') &&
+      !plan.envFileContent.includes('GITHUB_APP_INSTALLATION_ID=""') &&
+      !plan.envFileContent.includes('GITHUB_APP_PRIVATE_KEY=""'));
   return [
     {
       key: "linux_docker_env",
@@ -180,11 +184,11 @@ function buildChecks(
           : "LINUX_DOCKER_HOST or LINUX_DOCKER_USERNAME is missing"
     },
     {
-      key: "github_pat",
-      ok: githubPatConfigured,
-      summary: githubPatConfigured
-        ? "GITHUB_PAT is configured for remote runner registration"
-        : "GITHUB_PAT is missing from the deployment env"
+      key: "github_auth",
+      ok: githubAuthConfigured,
+      summary: githubAuthConfigured
+        ? "GitHub runner auth is configured for remote runner registration"
+        : "GitHub runner auth is missing from the deployment env"
     },
     {
       key: "compose_project",

@@ -1,0 +1,45 @@
+# Reusable rg-ci workflow.
+# Required secrets: none. Optional secrets are inherited by callers for their own scripts.
+name: rg-ci
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version used by hosted lanes.
+        required: false
+        type: string
+        default: "24"
+      package-manager-version:
+        description: pnpm version used by hosted lanes.
+        required: false
+        type: string
+        default: "10.32.1"
+      run-build:
+        description: Run pnpm build after lint and tests.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: rg-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ inputs.package-manager-version }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - if: inputs.run-build
+        run: pnpm build

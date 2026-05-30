@@ -139,7 +139,7 @@ on_exit() {
 trap on_exit EXIT
 trap 'log "termination requested"; RUNNER_AUDIT_DEREGISTER_EVENT="runner_evicted"; export RUNNER_AUDIT_DEREGISTER_EVENT; exit 0' TERM INT
 
-require_env GITHUB_PAT
+require_github_auth
 require_env GITHUB_ORG
 require_env RUNNER_NAME
 require_env RUNNER_LABELS

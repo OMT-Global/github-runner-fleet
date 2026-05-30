@@ -26,7 +26,7 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
     expect(reconcile).toContain("retire_removed_slots_from_state");
     expect(reconcile).toContain("wait_for_registration_env");
-    expect(reconcile).toContain("missing GITHUB_PAT");
+    expect(reconcile).toContain("missing GitHub auth");
     expect(reconcile).toContain("write_reconcile_state");
     expect(reconcile).toContain('reconcile_state_file="${LUME_RECONCILE_STATE_FILE}"');
     expect(reconcile).toContain('spawn_detached');
