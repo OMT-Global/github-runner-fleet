@@ -16,7 +16,11 @@ permissions:
 jobs:
   scorecard:
     name: openssf-scorecard
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6

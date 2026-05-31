@@ -3,6 +3,9 @@ import path from "node:path";
 import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
+const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
+const macosXcodeRunner = ["self-hosted", "macOS", "ARM64", "xcode"];
+
 describe("CI workflow", () => {
   test("runs mutation testing in extended validation and uploads the report", () => {
     const workflow = YAML.parse(
@@ -92,7 +95,7 @@ describe("CI workflow", () => {
     expect(gateJob.needs).toContain("drift-detect");
   });
 
-  test("keeps required trusted CI on hosted runners when shell-safe capacity is absent", () => {
+  test("keeps required trusted CI on shell-safe self-hosted runners", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -112,7 +115,7 @@ describe("CI workflow", () => {
       (step) => step.uses === "actions/setup-node@v6"
     );
 
-    expect(trustedJob["runs-on"]).toBe("ubuntu-latest");
+    expect(trustedJob["runs-on"]).toEqual(shellSafePublicRunner);
     expect(pnpmStep?.with).toMatchObject({
       version: "10.32.1"
     });
@@ -186,7 +189,7 @@ describe("CI workflow", () => {
     expect(workflow.jobs.test_public_fork_pr["runs-on"]).toBe("ubuntu-latest");
   });
 
-  test("keeps PR fast checks on hosted runners and gates same-repo and fork paths", () => {
+  test("keeps PR fast checks on self-hosted runners and gates same-repo and fork paths", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/pr-fast-ci.yml"), "utf8")
     ) as {
@@ -198,7 +201,7 @@ describe("CI workflow", () => {
       workflow.jobs["validate-secrets"]
     ];
     for (const job of selfHostedJobs) {
-      expect(job["runs-on"]).toBe("ubuntu-latest");
+      expect(job["runs-on"]).toEqual(shellSafePublicRunner);
       expect(String(job.if)).toContain(
         "github.event.pull_request.head.repo.full_name == github.repository"
       );
@@ -209,7 +212,7 @@ describe("CI workflow", () => {
       )
     ).toBe(true);
 
-    expect(workflow.jobs.changes["runs-on"]).toBe("ubuntu-latest");
+    expect(workflow.jobs.changes["runs-on"]).toEqual(shellSafePublicRunner);
     expect(workflow.jobs["hosted-fork-fast-checks"]["runs-on"]).toBe(
       "ubuntu-latest"
     );
@@ -230,10 +233,10 @@ describe("CI workflow", () => {
         "hosted-fork-validate-secrets"
       ])
     );
-    expect(workflow.jobs["ci-gate"]["runs-on"]).toBe("ubuntu-latest");
+    expect(workflow.jobs["ci-gate"]["runs-on"]).toEqual(shellSafePublicRunner);
   });
 
-  test("renders the Linux Docker contract on hosted Linux before operators provision the pool", () => {
+  test("renders the Linux Docker contract on shell-safe self-hosted Linux", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -246,7 +249,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Render Linux Docker runner manifests"
     );
 
-    expect(dockerJob["runs-on"]).toBe("ubuntu-latest");
+    expect(dockerJob["runs-on"]).toEqual(shellSafePublicRunner);
     expect(String(renderStep?.run)).toContain("pnpm validate-linux-docker-config");
     expect(String(renderStep?.run)).toContain("pnpm render-linux-docker-compose");
     expect(String(renderStep?.run)).toContain(
@@ -287,7 +290,7 @@ describe("CI workflow", () => {
     expect(String(syntaxStep?.run)).toContain("docker/runner-entrypoint.ps1");
   });
 
-  test("keeps the Lume macOS pool contract on hosted macOS runners", () => {
+  test("keeps the Lume macOS pool contract on self-hosted macOS runners", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -306,7 +309,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Validate Lume shell scripts"
     );
 
-    expect(lumeJob["runs-on"]).toBe("macos-latest");
+    expect(lumeJob["runs-on"]).toEqual(macosXcodeRunner);
     expect(String(renderStep?.run)).toContain("pnpm validate-lume-config");
     expect(String(renderStep?.run)).toContain("pnpm render-lume-runner-manifest");
     expect(String(lifecycleStep?.run)).toContain("pnpm install-lume-project");

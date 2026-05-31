@@ -27,7 +27,11 @@ permissions:
 jobs:
   ci:
     name: rg-ci
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6

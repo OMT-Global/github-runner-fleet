@@ -3,8 +3,10 @@ import path from "node:path";
 import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
+const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
+
 describe("release workflow", () => {
-  test("publishes on hosted runners, verifies the pushed tag, and can create a repo release from main", () => {
+  test("publishes on shell-safe self-hosted runners, verifies the pushed tag, and can create a repo release from main", () => {
     const workflow = YAML.parse(
       fs.readFileSync(
         path.resolve(".github/workflows/release-image.yml"),
@@ -16,7 +18,7 @@ describe("release workflow", () => {
       jobs: Record<
         string,
         {
-          "runs-on": string;
+          "runs-on": string | string[];
           env: Record<string, string>;
           steps: Array<Record<string, unknown>>;
         }
@@ -39,7 +41,7 @@ describe("release workflow", () => {
       "id-token": "write",
       attestations: "write"
     });
-    expect(job["runs-on"]).toBe("ubuntu-latest");
+    expect(job["runs-on"]).toEqual(shellSafePublicRunner);
     expect(job.env).toMatchObject({
       GITHUB_PAT: "${{ secrets.GITHUB_TOKEN }}",
       SYNOLOGY_RUNNER_BASE_DIR: "/volume1/docker/github-runner-fleet"

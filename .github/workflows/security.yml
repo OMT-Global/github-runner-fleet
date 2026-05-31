@@ -18,7 +18,11 @@ permissions:
 jobs:
   codeql:
     name: codeql
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -30,7 +34,11 @@ jobs:
   dependency_review:
     name: dependency-review
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -41,7 +49,11 @@ jobs:
 
   osv:
     name: osv
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
