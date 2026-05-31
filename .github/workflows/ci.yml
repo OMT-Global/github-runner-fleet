@@ -173,11 +173,7 @@ jobs:
   lume_macos_contract_trusted:
     name: lume macos contract
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on:
-      - self-hosted
-      - macOS
-      - ARM64
-      - xcode
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
