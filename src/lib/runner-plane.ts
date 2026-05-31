@@ -71,7 +71,10 @@ export function buildCommonRunnerEnv(input: {
   runnerToolCache: string;
 }): Record<string, string> {
   return {
-    GITHUB_PAT: "${GITHUB_PAT}",
+    GITHUB_PAT: "${GITHUB_PAT:-}",
+    GITHUB_APP_ID: "${GITHUB_APP_ID:-}",
+    GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:-}",
+    GITHUB_APP_PRIVATE_KEY: "${GITHUB_APP_PRIVATE_KEY:-}",
     GITHUB_API_URL: "${GITHUB_API_URL:-https://api.github.com}",
     GITHUB_ORG: input.organization,
     RUNNER_SCOPE: "organization",

@@ -13,13 +13,60 @@ function Require-Env {
   }
 }
 
+function Require-GitHubAuth {
+  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_PAT)) {
+    return
+  }
+  if (
+    -not [string]::IsNullOrWhiteSpace($env:GITHUB_APP_ID) -and
+    -not [string]::IsNullOrWhiteSpace($env:GITHUB_APP_INSTALLATION_ID) -and
+    -not [string]::IsNullOrWhiteSpace($env:GITHUB_APP_PRIVATE_KEY)
+  ) {
+    return
+  }
+  throw "GitHub auth is required: set GITHUB_PAT or GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY"
+}
+
+function ConvertTo-Base64Url {
+  param([byte[]]$Bytes)
+  return [Convert]::ToBase64String($Bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+}
+
+function Get-GitHubBearerToken {
+  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_PAT)) {
+    return $env:GITHUB_PAT
+  }
+
+  $privateKeyText = $env:GITHUB_APP_PRIVATE_KEY.Replace("\n", "`n")
+  if (-not $privateKeyText.Contains("-----BEGIN")) {
+    $privateKeyText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:GITHUB_APP_PRIVATE_KEY)).Replace("\n", "`n")
+  }
+  $rsa = [System.Security.Cryptography.RSA]::Create()
+  $rsa.ImportFromPem($privateKeyText)
+  $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  $header = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"RS256","typ":"JWT"}'))
+  $payloadJson = "{`"iat`":$($now - 60),`"exp`":$($now + 540),`"iss`":`"$env:GITHUB_APP_ID`"}"
+  $payload = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes($payloadJson))
+  $signingInput = "$header.$payload"
+  $signature = ConvertTo-Base64Url ($rsa.SignData([Text.Encoding]::UTF8.GetBytes($signingInput), [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1))
+  $jwt = "$signingInput.$signature"
+  $headers = @{
+    Authorization = "Bearer $jwt"
+    Accept = "application/vnd.github+json"
+    "X-GitHub-Api-Version" = "2022-11-28"
+  }
+  $response = Invoke-RestMethod -Method Post -Uri "$env:GITHUB_API_URL/app/installations/$env:GITHUB_APP_INSTALLATION_ID/access_tokens" -Headers $headers
+  return $response.token
+}
+
 function Request-RunnerToken {
   param([ValidateSet("registration", "remove")][string]$Kind)
 
   $endpointKind = if ($Kind -eq "registration") { "registration-token" } else { "remove-token" }
   $uri = "$env:GITHUB_API_URL/orgs/$env:GITHUB_ORG/actions/runners/$endpointKind"
+  $bearerToken = Get-GitHubBearerToken
   $headers = @{
-    Authorization = "Bearer $env:GITHUB_PAT"
+    Authorization = "Bearer $bearerToken"
     Accept = "application/vnd.github+json"
     "X-GitHub-Api-Version" = "2022-11-28"
   }
@@ -66,7 +113,7 @@ function Remove-RunnerRegistration {
   }
 }
 
-Require-Env GITHUB_PAT
+Require-GitHubAuth
 Require-Env GITHUB_ORG
 Require-Env RUNNER_NAME
 Require-Env RUNNER_LABELS

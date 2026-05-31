@@ -26,13 +26,15 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
     expect(reconcile).toContain("retire_removed_slots_from_state");
     expect(reconcile).toContain("wait_for_registration_env");
-    expect(reconcile).toContain("missing GITHUB_PAT");
+    expect(reconcile).toContain("missing GitHub auth");
     expect(reconcile).toContain("write_reconcile_state");
     expect(reconcile).toContain('reconcile_state_file="${LUME_RECONCILE_STATE_FILE}"');
     expect(reconcile).toContain('spawn_detached');
     expect(reconcile).toContain('"${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
     expect(read("scripts/lume/lib.sh")).toContain("default_guest_runner_path");
+    expect(read("scripts/lume/lib.sh")).toContain('local runner_version="${RUNNER_VERSION}"');
     expect(read("scripts/lume/lib.sh")).toContain("RUNNER_PATH=${runner_path}");
+    expect(read("scripts/lume/lib.sh")).toContain("RUNNER_VERSION=${runner_version}");
     expect(createBase).toContain('unattended="$(default_lume_unattended_path)"');
     expect(createBase).toContain('ipsw="$(ensure_cached_lume_ipsw "$(resolve_lume_ipsw_path)")"');
     expect(setupBase).toContain('lume stop "${LUME_VM_BASE_NAME}"');

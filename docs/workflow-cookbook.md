@@ -31,7 +31,35 @@ Use these rules when deciding where a workflow job should run:
 - Keep any untrusted workflow using `container:`, `services:`, browsers, Docker daemon access, Buildx, or extra distro package assumptions on GitHub-hosted runners.
 - Prefer a split workflow over forcing one runner class to handle incompatible jobs.
 
-## Recipe: trusted Node job on shell-safe self-hosted Linux
+## Reusable org workflows
+
+Downstream repos can consume the canonical governance lanes without copying YAML:
+
+```yaml
+jobs:
+  ci:
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v1
+
+  security:
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v1
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      image-ref: ghcr.io/omt-global/example:${{ github.ref_name }}
+```
+
+Keep `rg-security` and `rg-release` on GitHub-hosted runners. Reference an exact
+tag such as `v1.2.3` when reproducibility matters, or a compatibility tag such
+as `v1` for the standard org lane.
+
+## Recipe: trusted Node job on the Synology shell-only pool
 
 Use this when the repo is trusted and the job only needs Node plus standard shell tooling.
 

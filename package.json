@@ -1,6 +1,6 @@
 {
   "name": "github-runner-fleet",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "description": "Self-hosted GitHub runner fleet for Synology shell-only pools, Linux Docker hosts, and ephemeral Lume macOS VMs.",
@@ -36,6 +36,7 @@
     "teardown-synology-project": "tsx src/cli.ts teardown-synology-project",
     "runner-release-manifest": "tsx src/cli.ts runner-release-manifest",
     "scale": "tsx src/cli.ts scale",
+    "autoscale-webhook": "tsx src/cli.ts autoscale-webhook",
     "smoke-test": "bash scripts/smoke-test.sh",
     "synology-status": "tsx src/cli.ts synology-status",
     "test": "vitest run",

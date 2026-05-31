@@ -1,0 +1,58 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "22 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: codeql
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript,python
+      - uses: github/codeql-action/analyze@v4
+
+  dependency_review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/dependency-review-action@v5
+        continue-on-error: true
+        with:
+          fail-on-severity: high
+
+  osv:
+    name: osv
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
+            --format=sarif
+            --output=osv-results.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: osv-results.sarif

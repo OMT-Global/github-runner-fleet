@@ -906,7 +906,7 @@ pool:
         expect.objectContaining({
           id: "lume-env",
           status: "fail",
-          detail: "missing GITHUB_PAT"
+          detail: "missing GITHUB_PAT or GITHUB_APP_*"
         }),
         expect.objectContaining({
           id: "lume-env-file",
@@ -916,7 +916,7 @@ pool:
         expect.objectContaining({
           id: "lume-runner-group",
           status: "skip",
-          detail: "GITHUB_PAT is not configured"
+          detail: "GitHub auth is not configured"
         })
       ])
     );
@@ -1248,17 +1248,17 @@ pools:
     expect(envCheck.summary).toBe(
       "required Synology deployment env is incomplete"
     );
-    expect(envCheck.detail).toBe("missing GITHUB_PAT, SYNOLOGY_HOST");
+    expect(envCheck.detail).toBe("missing GITHUB_PAT or GITHUB_APP_*, SYNOLOGY_HOST");
     expect(findCheck(report, "synology-config").summary).toBe(
       `loaded ${poolsPath} with 1 pool`
     );
     expect(findCheck(report, "synology-runner-groups")).toMatchObject({
       status: "skip",
       summary: "skipped Synology runner-group verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     expect(findCheck(report, "synology-image").detail).toBe(
-      "GITHUB_PAT is not configured"
+      "GitHub auth is not configured"
     );
     expect(report.ok).toBe(false);
 

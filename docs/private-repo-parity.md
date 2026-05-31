@@ -12,7 +12,7 @@ Use it alongside `pnpm doctor`, `pnpm synology-status`, `pnpm linux-docker-statu
 | Runner class | Default labels | Best for | Keep off this class |
 | --- | --- | --- | --- |
 | Synology shell-safe | `self-hosted`, `linux`, `shell-only`, `private` or `public`, `synology` | bash/docs jobs, JS actions, Node validation, Python `3.12`, Terraform CLI, lightweight smoke checks | `container:` jobs, service containers, Docker daemon/Buildx, Kind, Playwright, browser-heavy lanes, distro-package-heavy setup |
-| Linux Docker | `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, `private` or `public` | shell-safe overflow, legacy Synology-labeled jobs, native Linux jobs, `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | macOS-native lanes, snowflake long-lived hosts |
+| Linux Docker | `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, `private` or `public` | shell-safe overflow, legacy Synology-labeled jobs, native Linux jobs, `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native lanes, snowflake long-lived hosts |
 | Lume macOS | `self-hosted`, `macOS`, `ARM64`, `private`, plus pool-specific labels like `xcode` | Xcode builds, Swift tests, macOS-native tooling, host-accurate Apple platform lanes | Linux container workloads, Docker-focused Linux integration, long-lived hand-managed VMs |
 | GitHub-hosted fallback | `ubuntu-latest`, `macos-latest`, or other hosted images | incompatible workloads, public fork PRs, and anything that still depends on GitHub-hosted image breadth | steady-state private-repo workloads that already fit one of the self-hosted classes |
 

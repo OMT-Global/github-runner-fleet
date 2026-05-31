@@ -13,7 +13,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 2m
     environment:
-      GITHUB_PAT: \${GITHUB_PAT}
+      GITHUB_PAT: \${GITHUB_PAT:-}
+      GITHUB_APP_ID: \${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: \${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY: \${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_API_URL: \${GITHUB_API_URL:-https://api.github.com}
       GITHUB_ORG: example
       RUNNER_SCOPE: organization
@@ -52,7 +55,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 2m
     environment:
-      GITHUB_PAT: \${GITHUB_PAT}
+      GITHUB_PAT: \${GITHUB_PAT:-}
+      GITHUB_APP_ID: \${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: \${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY: \${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_API_URL: \${GITHUB_API_URL:-https://api.github.com}
       GITHUB_ORG: example
       RUNNER_SCOPE: organization
@@ -91,7 +97,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 2m
     environment:
-      GITHUB_PAT: \${GITHUB_PAT}
+      GITHUB_PAT: \${GITHUB_PAT:-}
+      GITHUB_APP_ID: \${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: \${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY: \${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_API_URL: \${GITHUB_API_URL:-https://api.github.com}
       GITHUB_ORG: example
       RUNNER_SCOPE: organization
@@ -170,6 +179,9 @@ cd "$project_dir"
 printf '[install] %s completed %s\\n' "$(date -Iseconds)" "$project_name"
 ",
   "envFileContent": "GITHUB_PAT="fixture-token"
+GITHUB_APP_ID=""
+GITHUB_APP_INSTALLATION_ID=""
+GITHUB_APP_PRIVATE_KEY=""
 GITHUB_API_URL="https://api.github.com"
 ",
   "options": {

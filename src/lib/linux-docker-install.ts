@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { DeploymentEnv } from "./env.js";
+import { hasGitHubAuth } from "./github.js";
 import {
   buildLinuxDockerRunnerStateDir
 } from "./linux-docker-compose.js";
@@ -65,8 +66,8 @@ export function buildLinuxDockerInstallPlan(
   if (!env.linuxDockerUsername) {
     missing.push("LINUX_DOCKER_USERNAME");
   }
-  if (!env.githubPat) {
-    missing.push("GITHUB_PAT");
+  if (!hasGitHubAuth(env)) {
+    missing.push("GITHUB_PAT or GITHUB_APP_*");
   }
 
   if (missing.length > 0 && !buildOptions.allowIncomplete) {
@@ -131,6 +132,9 @@ export function summarizeLinuxDockerInstallPlan(
 export function renderLinuxDockerComposeEnvFile(env: DeploymentEnv): string {
   const entries: Array<[string, string]> = [
     ["GITHUB_PAT", env.githubPat ?? ""],
+    ["GITHUB_APP_ID", env.githubAppId ?? ""],
+    ["GITHUB_APP_INSTALLATION_ID", env.githubAppInstallationId ?? ""],
+    ["GITHUB_APP_PRIVATE_KEY", env.githubAppPrivateKey ?? ""],
     ["GITHUB_API_URL", env.githubApiUrl]
   ];
 

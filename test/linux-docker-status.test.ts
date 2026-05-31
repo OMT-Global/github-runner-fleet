@@ -84,7 +84,7 @@ describe("linux docker status", () => {
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "linux_docker_env", ok: false }),
-        expect.objectContaining({ key: "github_pat", ok: false }),
+        expect.objectContaining({ key: "github_auth", ok: false }),
         expect.objectContaining({ key: "saved_result_path", ok: false })
       ])
     );

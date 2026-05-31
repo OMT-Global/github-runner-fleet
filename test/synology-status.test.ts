@@ -91,14 +91,14 @@ describe("synology status", () => {
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "synology_env", ok: false }),
-        expect.objectContaining({ key: "github_pat", ok: false }),
+        expect.objectContaining({ key: "github_auth", ok: false }),
         expect.objectContaining({ key: "synology_api_repo", ok: false }),
         expect.objectContaining({ key: "saved_result_path", ok: false })
       ])
     );
   });
 
-  test("fails github_pat when GitHub auth is missing but Synology auth is configured", () => {
+  test("fails github_auth when GitHub auth is missing but Synology auth is configured", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "synology-status-github-pat-"));
     tempDirs.push(dir);
     const apiRepo = path.join(dir, "synology-api");
@@ -120,9 +120,9 @@ describe("synology status", () => {
           ok: true
         }),
         expect.objectContaining({
-          key: "github_pat",
+          key: "github_auth",
           ok: false,
-          summary: "GITHUB_PAT is missing from the deployment env"
+          summary: "GitHub runner auth is missing from the deployment env"
         })
       ])
     );

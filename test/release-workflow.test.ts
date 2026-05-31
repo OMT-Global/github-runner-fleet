@@ -35,7 +35,9 @@ describe("release workflow", () => {
     });
     expect(workflow.permissions).toMatchObject({
       contents: "write",
-      packages: "write"
+      packages: "write",
+      "id-token": "write",
+      attestations: "write"
     });
     expect(job["runs-on"]).toBe("ubuntu-latest");
     expect(job.env).toMatchObject({
@@ -54,6 +56,11 @@ describe("release workflow", () => {
       true
     );
     expect(steps.some((step) => step.uses === "docker/login-action@v4")).toBe(true);
+    expect(steps.some((step) => step.uses === "sigstore/cosign-installer@v4")).toBe(true);
+    expect(steps.some((step) => step.uses === "anchore/sbom-action@v0")).toBe(true);
+    expect(
+      steps.some((step) => step.uses === "actions/attest-build-provenance@v3")
+    ).toBe(true);
     expect(
       steps.some(
         (step) =>
@@ -69,6 +76,32 @@ describe("release workflow", () => {
           step.run.includes("docker buildx imagetools inspect") &&
           step.run.includes("linux/amd64") &&
           step.run.includes("linux/arm64")
+      )
+    ).toBe(true);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === "Sign image digest" &&
+          typeof step.run === "string" &&
+          step.run.includes("cosign sign")
+      )
+    ).toBe(true);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === "Sign per-platform image digests" &&
+          typeof step.run === "string" &&
+          step.run.includes(".manifests[].digest") &&
+          step.run.includes("cosign sign")
+      )
+    ).toBe(true);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === "Verify image signature and attestations" &&
+          typeof step.run === "string" &&
+          step.run.includes("cosign verify") &&
+          step.run.includes("cosign verify-attestation")
       )
     ).toBe(true);
     expect(
