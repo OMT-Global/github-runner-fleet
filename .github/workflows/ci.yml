@@ -20,27 +20,17 @@ jobs:
   test_self_hosted_trusted:
     name: test
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on:
-      - self-hosted
-      - synology
-      - shell-only
-      - public
-    env:
-      RUNNER_TEMP: /tmp/github-runner-temp
-      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
-      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - run: mkdir -p "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE"
-      - uses: ./actions/setup-shell-safe-node
+      - uses: pnpm/action-setup@v6
         with:
-          node-version: 24.14.1
-      - name: Enable pnpm from shell-safe Node
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.32.1 --activate
-          pnpm --version
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test:coverage
@@ -55,7 +45,9 @@ jobs:
 
   shell_safe_contract_trusted:
     name: shell-safe contract
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      vars.SHELL_SAFE_CONTRACT_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on:
       - self-hosted
       - synology

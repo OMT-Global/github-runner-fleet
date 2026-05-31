@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import crypto from "node:crypto";
 import {
   buildGitHubApiHeaders,
+  buildGitHubAppJwt,
   buildRegistrationTokenRequest,
   deleteOrganizationRunner,
+  fetchGitHubAppInstallationToken,
   buildRemoveTokenRequest,
   fetchOrganizationRepositories,
   fetchOrganizationRunnerGroupRunners,
@@ -13,6 +16,8 @@ import {
   fetchWorkflowRunJobs,
   fetchRunnerToken,
   getQueuedJobCount,
+  hasGitHubAuth,
+  resolveGitHubAccessToken,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "../src/lib/github.js";
@@ -743,6 +748,85 @@ describe("github runner API helpers", () => {
         fetchMock
       )
     ).rejects.toThrow(/does not include tag 0\.1\.5; available tags: 0\.1\.4, latest/);
+  });
+});
+
+describe("github app auth", () => {
+  test("builds a signed JWT and exchanges it for an installation token", async () => {
+    const { privateKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048
+    });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () =>
+        JSON.stringify({
+          token: "installation-token",
+          expires_at: "2030-01-01T00:00:00Z"
+        })
+    });
+
+    const jwt = buildGitHubAppJwt({
+      appId: "123",
+      privateKey: pem,
+      nowSeconds: 1_700_000_000
+    });
+    expect(jwt.split(".")).toHaveLength(3);
+
+    await expect(
+      fetchGitHubAppInstallationToken(
+        "https://api.github.com",
+        "123",
+        "456",
+        Buffer.from(pem).toString("base64"),
+        fetchMock,
+        new Date("2026-01-01T00:00:00Z")
+      )
+    ).resolves.toMatchObject({
+      token: "installation-token",
+      expiresAt: new Date("2030-01-01T00:00:00Z")
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/app/installations/456/access_tokens",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  test("prefers app auth over PAT when resolving GitHub access", async () => {
+    const { privateKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048
+    });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      text: async () =>
+        JSON.stringify({
+          token: "installation-token",
+          expires_at: "2030-01-01T00:00:00Z"
+        })
+    });
+
+    expect(
+      hasGitHubAuth({
+        githubAppId: "123",
+        githubAppInstallationId: "456",
+        githubAppPrivateKey: pem
+      })
+    ).toBe(true);
+    await expect(
+      resolveGitHubAccessToken(
+        {
+          githubPat: "pat-token",
+          githubAppId: "123",
+          githubAppInstallationId: "456",
+          githubAppPrivateKey: pem
+        },
+        fetchMock
+      )
+    ).resolves.toBe("installation-token");
   });
 });
 

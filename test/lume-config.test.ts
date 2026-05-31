@@ -38,8 +38,8 @@ pool:
 
     expect(config.pool.labels).toEqual([
       "self-hosted",
-      "macos",
-      "arm64",
+      "macOS",
+      "ARM64",
       "private",
       "custom"
     ]);
@@ -113,7 +113,7 @@ pool:
       "export LUME_RECONCILE_STATE_FILE='/Users/tester/Library/Application Support/github-runner-fleet/lume/reconcile-state.json'"
     );
     expect(shellExports).toContain(
-      "export RUNNER_LABELS='self-hosted,macos,arm64,private'"
+      "export RUNNER_LABELS='self-hosted,macOS,ARM64,private'"
     );
   });
 

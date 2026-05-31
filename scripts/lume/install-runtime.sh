@@ -60,6 +60,9 @@ write_default_runtime_env() {
   temp_path="$(mktemp)"
   cat > "${temp_path}" <<EOF
 GITHUB_PAT=
+GITHUB_APP_ID=
+GITHUB_APP_INSTALLATION_ID=
+GITHUB_APP_PRIVATE_KEY=
 GITHUB_API_URL=https://api.github.com
 LUME_RUNNER_BASE_DIR='${lume_base_dir}'
 LUME_RUNNER_ENV_FILE='${lume_base_dir}/runner.env'

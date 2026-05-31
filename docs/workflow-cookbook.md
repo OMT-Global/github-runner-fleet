@@ -24,10 +24,38 @@ Use these rules when deciding where a workflow job should run:
 - Use `runs-on: [self-hosted, synology, shell-only, public]` for trusted shell-safe jobs that can run with the baked-in Linux toolchain.
 - Use `runs-on: [self-hosted, linux, docker-capable, private]` for trusted private Linux jobs that need Docker, `container:`, or service containers.
 - Use `runs-on: [self-hosted, windows, docker-capable, private]` only for trusted private Windows container work.
-- Use `runs-on: [self-hosted, macos, arm64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
+- Use `runs-on: [self-hosted, macOS, ARM64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
 - Keep pull requests from forks on GitHub-hosted runners.
 - Keep any untrusted workflow using `container:`, `services:`, browsers, Docker daemon access, Buildx, or extra distro package assumptions on GitHub-hosted runners.
 - Prefer a split workflow over forcing one runner class to handle incompatible jobs.
+
+## Reusable org workflows
+
+Downstream repos can consume the canonical governance lanes without copying YAML:
+
+```yaml
+jobs:
+  ci:
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v1
+
+  security:
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v1
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      image-ref: ghcr.io/omt-global/example:${{ github.ref_name }}
+```
+
+Keep `rg-security` and `rg-release` on GitHub-hosted runners. Reference an exact
+tag such as `v1.2.3` when reproducibility matters, or a compatibility tag such
+as `v1` for the standard org lane.
 
 ## Recipe: trusted Node job on the Synology shell-only pool
 
@@ -194,8 +222,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - macos
-      - arm64
+      - macOS
+      - ARM64
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5

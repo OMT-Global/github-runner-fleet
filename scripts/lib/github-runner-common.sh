@@ -12,6 +12,21 @@ require_env() {
   fi
 }
 
+require_github_auth() {
+  if [[ -n "${GITHUB_PAT:-}" ]]; then
+    return
+  fi
+
+  if [[ -n "${GITHUB_APP_ID:-}" \
+    && -n "${GITHUB_APP_INSTALLATION_ID:-}" \
+    && -n "${GITHUB_APP_PRIVATE_KEY:-}" ]]; then
+    return
+  fi
+
+  log "missing GitHub auth: set GITHUB_PAT or GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY"
+  exit 1
+}
+
 runner_audit_id() {
   local runner_file=""
 
@@ -113,15 +128,16 @@ github_runner_endpoint_base() {
 
 github_api_post() {
   local endpoint="$1"
-  local tmp status body
+  local tmp status body bearer_token
 
   tmp="$(mktemp)"
+  bearer_token="$(github_bearer_token)"
   status="$(
     curl -sS \
       -o "${tmp}" \
       -w '%{http_code}' \
       -X POST \
-      -H "Authorization: Bearer ${GITHUB_PAT}" \
+      -H "Authorization: Bearer ${bearer_token}" \
       -H "Accept: application/vnd.github+json" \
       -H "User-Agent: github-runner-fleet" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -136,6 +152,72 @@ github_api_post() {
   fi
 
   printf '%s' "${body}"
+}
+
+github_bearer_token() {
+  if [[ -n "${GITHUB_PAT:-}" ]]; then
+    printf '%s' "${GITHUB_PAT}"
+    return
+  fi
+
+  node <<'NODE'
+const crypto = require("node:crypto");
+
+function base64Url(input) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function privateKeyFromEnv() {
+  const value = process.env.GITHUB_APP_PRIVATE_KEY || "";
+  if (value.includes("-----BEGIN")) {
+    return value.replace(/\\n/g, "\n");
+  }
+  const decoded = Buffer.from(value, "base64").toString("utf8").trim();
+  if (!decoded.includes("-----BEGIN")) {
+    throw new Error("GITHUB_APP_PRIVATE_KEY must be PEM or base64-encoded PEM");
+  }
+  return decoded.replace(/\\n/g, "\n");
+}
+
+async function main() {
+  const apiUrl = (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "");
+  const appId = process.env.GITHUB_APP_ID;
+  const installationId = process.env.GITHUB_APP_INSTALLATION_ID;
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = base64Url(JSON.stringify({ iat: now - 60, exp: now + 9 * 60, iss: appId }));
+  const signingInput = `${header}.${payload}`;
+  const signature = crypto.createSign("RSA-SHA256").update(signingInput).sign(privateKeyFromEnv());
+  const jwt = `${signingInput}.${base64Url(signature)}`;
+  const response = await fetch(`${apiUrl}/app/installations/${installationId}/access_tokens`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "github-runner-fleet",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`GitHub App installation token request failed with ${response.status}: ${text}`);
+  }
+  const payloadJson = JSON.parse(text);
+  if (!payloadJson.token) {
+    throw new Error("GitHub App installation token response did not include token");
+  }
+  process.stdout.write(payloadJson.token);
+}
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
+NODE
 }
 
 request_runner_token() {

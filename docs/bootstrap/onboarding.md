@@ -18,6 +18,7 @@
 - Shell-safe jobs may use `[self-hosted, synology, shell-only, public]`.
 - Docker, service-container, browser, and `container:` workloads stay on GitHub-hosted runners.
 - Keep PR checks cheap. Add heavy validation to `scripts/ci/run-extended-validation.sh` instead of the PR lane.
+- Prefer GitHub App auth for runner administration. The app installation needs self-hosted runner administration on the owning organization; set `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY` in the deployment environment. `GITHUB_PAT` remains a fallback for existing installs.
 
 ## Home Profiles
 

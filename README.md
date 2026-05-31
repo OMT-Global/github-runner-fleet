@@ -1,5 +1,7 @@
 # GitHub Runner Fleet
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OMT-Global/github-runner-fleet/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OMT-Global/github-runner-fleet)
+
 Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Docker hosts, Windows Docker hosts, and ephemeral Lume macOS VMs.
 
 > Shell-only by design on Synology, ephemeral by default across the fleet, and explicit about what belongs on self-hosted capacity versus GitHub-hosted runners.
@@ -135,7 +137,7 @@ Supported options are `endpoint`, `protocol` (`grpc` or `http/protobuf`), `heade
 
 ## Synology Quick Start
 
-1. Copy `.env.example` to `.env` and set `GITHUB_PAT`.
+1. Copy `.env.example` to `.env` and set GitHub auth. Prefer `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY`; keep `GITHUB_PAT` only as the fallback path.
 2. Edit `config/pools.yaml` for your organization, runner groups, and repository access policy.
 3. Install dependencies:
 
@@ -280,6 +282,8 @@ The release workflow:
 - publishes the configured tag from `config/pools.yaml`
 - verifies the pushed tag with `docker buildx imagetools inspect`
 - confirms both `linux/amd64` and `linux/arm64` are present
+- signs the pushed digest with keyless cosign and attaches SPDX SBOM plus SLSA provenance attestations
+- verifies the signature and attestations before release creation
 - retries `pnpm validate-image` until the GitHub Packages API sees the new tag
 - runs post-publish toolchain checks for both `linux/amd64` and `linux/arm64`
 - automatically creates the matching GitHub release tag `v<version>` after successful publishes from `main`
@@ -287,13 +291,22 @@ The release workflow:
 
 Only point [config/pools.yaml](config/pools.yaml) at a tag that this workflow has already published and verified.
 
+Verify a released image before use:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp "https://github.com/OMT-Global/github-runner-fleet/.github/workflows/release-image.yml@refs/heads/main" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/omt-global/github-runner-fleet:<tag>
+```
+
 To keep the repository release and GHCR image tag aligned, merge the version bump to `main`. The release workflow first checks whether the matching repo release already exists; if it does, the automatic run fails before publishing an image so an existing GHCR version tag is not replaced. For a new version, the workflow publishes and verifies the image, then creates the matching repo tag and GitHub Release.
 
 ## Runtime Contract
 
 - Each service handles one job, de-registers, and restarts cleanly.
-- GitHub registration and removal both use short-lived tokens minted from the configured PAT.
-- Rotate PATs with `NEW_GITHUB_PAT=... pnpm rotate-token -- --dry-run` first. The command validates that the replacement PAT can see configured runner groups and mint organization registration tokens before any pool changes. Use `--apply` to drain Synology/Linux Docker runners while they are idle, redeploy with the replacement PAT, and emit `runner_token_rotated` audit entries. Lume pools are validated only because each VM receives the configured PAT on boot.
+- GitHub registration and removal both use short-lived runner tokens minted from either GitHub App installation auth or the fallback PAT.
+- Rotate fallback PATs with `NEW_GITHUB_PAT=... pnpm rotate-token -- --dry-run` first. The command validates that the replacement PAT can see configured runner groups and mint organization registration tokens before any pool changes. Use `--apply` to drain Synology/Linux Docker runners while they are idle, redeploy with the replacement PAT, and emit `runner_token_rotated` audit entries. Lume pools are validated only because each VM receives the configured auth on boot.
 - Public and private repos use separate runner groups and labels.
 - `repositoryAccess: all` is the org-wide mode for a runner group.
 - `repositoryAccess: selected` requires `allowedRepositories` and documents the intended selected-repo set for that pool.
