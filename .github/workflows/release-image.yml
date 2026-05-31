@@ -107,6 +107,10 @@ jobs:
           );
           fs.appendFileSync(
             process.env.GITHUB_OUTPUT,
+            `image_repo=${config.image.repository}\n`
+          );
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
             `image_tag=${config.image.tag}\n`
           );
           fs.appendFileSync(
@@ -173,7 +177,7 @@ jobs:
       - name: Emit SLSA provenance
         uses: actions/attest-build-provenance@v3
         with:
-          subject-name: ${{ steps.release_meta.outputs.image_ref }}
+          subject-name: ${{ steps.release_meta.outputs.image_repo }}
           subject-digest: ${{ steps.image_digest.outputs.digest }}
           push-to-registry: true
 
