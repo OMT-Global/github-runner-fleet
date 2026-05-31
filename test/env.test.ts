@@ -55,7 +55,7 @@ describe("loadDeploymentEnv", () => {
 
     expect(env.githubApiUrl).toBe("https://api.github.com");
     expect(env.composeProjectName).toBe("github-runner-fleet");
-    expect(env.runnerVersion).toBe("2.333.0");
+    expect(env.runnerVersion).toBe("2.334.0");
     expect(env.githubPat).toBeUndefined();
     expect(env.raw).toMatchObject({
       GITHUB_API_URL: "https://api.github.com",
@@ -82,7 +82,7 @@ describe("loadDeploymentEnv", () => {
       LUME_RUNNER_BASE_DIR: `${os.homedir()}/Library/Application Support/github-runner-fleet/lume`,
       LUME_RUNNER_ENV_FILE: `${os.homedir()}/Library/Application Support/github-runner-fleet/lume/runner.env`,
       COMPOSE_PROJECT_NAME: "github-runner-fleet",
-      RUNNER_VERSION: "2.333.0"
+      RUNNER_VERSION: "2.334.0"
     });
   });
 

@@ -1,7 +1,7 @@
 version: 1
 image:
   repository: ghcr.io/omt-global/github-runner-fleet
-  tag: 0.2.0
+  tag: 0.2.1
 pools:
   - key: synology-private
     visibility: private
