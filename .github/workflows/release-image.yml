@@ -213,11 +213,11 @@ jobs:
 
       - run: |
           docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
-            'command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
+            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "2.334.0" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
 
       - run: |
           docker run --rm --platform linux/arm64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
-            'command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
+            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "2.334.0" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
 
       - if: ${{ github.event_name == 'push' || inputs.publish_project_release }}
         env:

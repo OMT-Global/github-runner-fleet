@@ -2,7 +2,7 @@
 
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
-ARG RUNNER_VERSION=2.333.0
+ARG RUNNER_VERSION=2.334.0
 
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
 

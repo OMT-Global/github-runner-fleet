@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-: "${RUNNER_VERSION:=2.333.0}"
+: "${RUNNER_VERSION:=2.334.0}"
 : "${NODE_VERSION:=18.20.8}"
 : "${TERRAFORM_VERSION:=1.6.6}"
 

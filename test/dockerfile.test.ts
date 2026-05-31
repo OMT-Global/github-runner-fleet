@@ -47,7 +47,7 @@ describe("Dockerfile packaging", () => {
     );
 
     expect(dockerfile).toContain("mcr.microsoft.com/windows/servercore:ltsc2022");
-    expect(dockerfile).toContain("ARG RUNNER_VERSION=2.333.0");
+    expect(dockerfile).toContain("ARG RUNNER_VERSION=2.334.0");
     expect(dockerfile).toContain("choco install -y git nodejs-lts powershell-core");
     expect(dockerfile).toContain("actions-runner-win-x64-");
     expect(dockerfile).toContain("COPY docker/runner-entrypoint.ps1 C:/runner-entrypoint.ps1");
