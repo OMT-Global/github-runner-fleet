@@ -69,7 +69,7 @@ jobs:
             echo "envsubst is required by cosign-installer." >&2
             exit 1
           fi
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - run: cosign sign --yes ${{ inputs.image-ref }}@${{ steps.build.outputs.digest }}
       - uses: actions/attest-build-provenance@v3
         with:

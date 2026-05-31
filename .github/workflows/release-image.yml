@@ -83,7 +83,7 @@ jobs:
             exit 1
           fi
 
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
 
       - id: release_meta
         run: |

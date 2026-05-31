@@ -58,7 +58,9 @@ describe("release workflow", () => {
       true
     );
     expect(steps.some((step) => step.uses === "docker/login-action@v4")).toBe(true);
-    expect(steps.some((step) => step.uses === "sigstore/cosign-installer@v4")).toBe(true);
+    expect(
+      steps.some((step) => step.uses === "sigstore/cosign-installer@v4.1.2")
+    ).toBe(true);
     expect(steps.some((step) => step.uses === "anchore/sbom-action@v0")).toBe(true);
     expect(
       steps.some((step) => step.uses === "actions/attest-build-provenance@v3")
