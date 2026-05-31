@@ -28,11 +28,7 @@ env:
 jobs:
   publish_and_verify:
     name: publish-and-verify
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SYNOLOGY_RUNNER_BASE_DIR: /volume1/docker/github-runner-fleet

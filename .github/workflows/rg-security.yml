@@ -20,11 +20,7 @@ permissions:
 jobs:
   security:
     name: rg-security
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6

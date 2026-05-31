@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
 
 describe("security and reusable workflows", () => {
-  test("keeps security scans on shell-safe self-hosted runners with Security tab upload", () => {
+  test("keeps security scans on GitHub-hosted runners with Security tab upload", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/security.yml"), "utf8")
     ) as { permissions: Record<string, string>; jobs: Record<string, Record<string, unknown>> };
@@ -16,7 +16,7 @@ describe("security and reusable workflows", () => {
       "security-events": "write"
     });
     for (const job of Object.values(workflow.jobs)) {
-      expect(job["runs-on"]).toEqual(shellSafePublicRunner);
+      expect(job["runs-on"]).toBe("ubuntu-latest");
     }
     expect(String(JSON.stringify(workflow))).toContain("github/codeql-action/init");
     expect(String(JSON.stringify(workflow))).toContain("dependency-review-action");
@@ -43,7 +43,7 @@ describe("security and reusable workflows", () => {
       "id-token": "write",
       "security-events": "write"
     });
-    expect(workflow.jobs.scorecard["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(workflow.jobs.scorecard["runs-on"]).toBe("ubuntu-latest");
     expect(String(JSON.stringify(workflow))).toContain(
       "ossf/scorecard-action@v2.4.3"
     );
@@ -51,7 +51,7 @@ describe("security and reusable workflows", () => {
   });
 
   test("exposes rg-ci, rg-security, and rg-release as workflow_call artifacts", () => {
-    for (const fileName of ["rg-ci.yml", "rg-security.yml", "rg-release.yml"]) {
+    for (const fileName of ["rg-ci.yml", "rg-release.yml"]) {
       const workflow = YAML.parse(
         fs.readFileSync(path.resolve(".github/workflows", fileName), "utf8")
       ) as { on: Record<string, unknown>; jobs: Record<string, Record<string, unknown>> };
@@ -60,6 +60,15 @@ describe("security and reusable workflows", () => {
       for (const job of Object.values(workflow.jobs)) {
         expect(job["runs-on"]).toEqual(shellSafePublicRunner);
       }
+    }
+
+    const rgSecurity = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/rg-security.yml"), "utf8")
+    ) as { on: Record<string, unknown>; jobs: Record<string, Record<string, unknown>> };
+
+    expect(rgSecurity.on).toHaveProperty("workflow_call");
+    for (const job of Object.values(rgSecurity.jobs)) {
+      expect(job["runs-on"]).toBe("ubuntu-latest");
     }
   });
 });

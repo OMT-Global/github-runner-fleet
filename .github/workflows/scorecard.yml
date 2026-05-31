@@ -14,11 +14,7 @@ permissions:
 jobs:
   scorecard:
     name: openssf-scorecard
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
