@@ -6,6 +6,9 @@ import { normalizeRunnerVersion } from "./runner-version.js";
 
 export interface DeploymentEnv {
   githubPat?: string;
+  githubAppId?: string;
+  githubAppInstallationId?: string;
+  githubAppPrivateKey?: string;
   githubApiUrl: string;
   synologyRunnerBaseDir: string;
   synologyHost?: string;
@@ -53,6 +56,7 @@ export interface DeploymentEnv {
 export interface LoadDeploymentEnvOptions {
   envPath?: string;
   requirePat?: boolean;
+  requireGitHubAuth?: boolean;
 }
 
 export function loadDeploymentEnv(
@@ -60,6 +64,7 @@ export function loadDeploymentEnv(
 ): DeploymentEnv {
   const envPath = options.envPath ?? path.resolve(process.cwd(), ".env");
   const requirePat = options.requirePat ?? true;
+  const requireGitHubAuth = options.requireGitHubAuth ?? false;
 
   const fileEnv = fs.existsSync(envPath)
     ? dotenv.parse(fs.readFileSync(envPath, "utf8"))
@@ -75,9 +80,22 @@ export function loadDeploymentEnv(
   };
 
   const githubPat = merged.GITHUB_PAT?.trim() || undefined;
+  const githubAppId = merged.GITHUB_APP_ID?.trim() || undefined;
+  const githubAppInstallationId =
+    merged.GITHUB_APP_INSTALLATION_ID?.trim() || undefined;
+  const githubAppPrivateKey =
+    merged.GITHUB_APP_PRIVATE_KEY?.trim() || undefined;
+  const hasGitHubAppAuth = Boolean(
+    githubAppId && githubAppInstallationId && githubAppPrivateKey
+  );
   if (requirePat && !githubPat) {
     throw new Error(
       `GITHUB_PAT is required; set it in ${envPath} or the current environment`
+    );
+  }
+  if (requireGitHubAuth && !githubPat && !hasGitHubAppAuth) {
+    throw new Error(
+      `GitHub auth is required; set GITHUB_PAT or GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY in ${envPath} or the current environment`
     );
   }
 
@@ -178,6 +196,9 @@ export function loadDeploymentEnv(
 
   return {
     githubPat,
+    githubAppId,
+    githubAppInstallationId,
+    githubAppPrivateKey,
     githubApiUrl,
     synologyRunnerBaseDir,
     synologyHost: merged.SYNOLOGY_HOST?.trim() || undefined,

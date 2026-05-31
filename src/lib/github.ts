@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { normalizeRunnerVersion } from "./runner-version.js";
 import { emitRunnerTokenFetchDurationSeconds } from "./metrics.js";
 
@@ -80,6 +81,27 @@ export interface FetchRunnerTokenOptions {
   plane?: string;
 }
 
+export interface GitHubAuthInput {
+  githubPat?: string;
+  githubAppId?: string;
+  githubAppInstallationId?: string;
+  githubAppPrivateKey?: string;
+  githubApiUrl?: string;
+}
+
+export interface GitHubInstallationToken {
+  token: string;
+  expiresAt: Date;
+}
+
+let cachedInstallationToken:
+  | (GitHubInstallationToken & {
+      appId: string;
+      installationId: string;
+      apiUrl: string;
+    })
+  | undefined;
+
 export interface QueuedJobCountRequest {
   organization: string;
   runnerGroup: string;
@@ -101,6 +123,146 @@ export function buildGitHubApiHeaders(
   }
 
   return headers;
+}
+
+export function hasGitHubAppAuth(input: GitHubAuthInput): boolean {
+  return Boolean(
+    input.githubAppId &&
+      input.githubAppInstallationId &&
+      input.githubAppPrivateKey
+  );
+}
+
+export function hasGitHubAuth(input: GitHubAuthInput): boolean {
+  return Boolean(input.githubPat || hasGitHubAppAuth(input));
+}
+
+export function describeGitHubAuth(input: GitHubAuthInput): "app" | "pat" | "missing" | "partial-app" {
+  if (hasGitHubAppAuth(input)) {
+    return "app";
+  }
+  if (input.githubPat) {
+    return "pat";
+  }
+  if (
+    input.githubAppId ||
+    input.githubAppInstallationId ||
+    input.githubAppPrivateKey
+  ) {
+    return "partial-app";
+  }
+  return "missing";
+}
+
+export function normalizeGitHubAppPrivateKey(privateKey: string): string {
+  const trimmed = privateKey.trim();
+  if (trimmed.includes("-----BEGIN")) {
+    return trimmed.replace(/\\n/g, "\n");
+  }
+
+  const decoded = Buffer.from(trimmed, "base64").toString("utf8").trim();
+  if (!decoded.includes("-----BEGIN")) {
+    throw new Error("GITHUB_APP_PRIVATE_KEY must be a PEM key or base64-encoded PEM key");
+  }
+  return decoded.replace(/\\n/g, "\n");
+}
+
+export function buildGitHubAppJwt(input: {
+  appId: string;
+  privateKey: string;
+  nowSeconds?: number;
+}): string {
+  const nowSeconds = input.nowSeconds ?? Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = {
+    iat: nowSeconds - 60,
+    exp: nowSeconds + 9 * 60,
+    iss: input.appId
+  };
+  const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
+  const signature = crypto
+    .createSign("RSA-SHA256")
+    .update(signingInput)
+    .sign(normalizeGitHubAppPrivateKey(input.privateKey));
+
+  return `${signingInput}.${base64Url(signature)}`;
+}
+
+export async function fetchGitHubAppInstallationToken(
+  apiUrl: string,
+  appId: string,
+  installationId: string,
+  privateKey: string,
+  fetchImpl: FetchLike = fetch as FetchLike,
+  now = new Date()
+): Promise<GitHubInstallationToken> {
+  const cached = cachedInstallationToken;
+  if (
+    cached &&
+    cached.apiUrl === trimApiUrl(apiUrl) &&
+    cached.appId === appId &&
+    cached.installationId === installationId &&
+    cached.expiresAt.getTime() - now.getTime() > 5 * 60 * 1000
+  ) {
+    return cached;
+  }
+
+  const jwt = buildGitHubAppJwt({
+    appId,
+    privateKey,
+    nowSeconds: Math.floor(now.getTime() / 1000)
+  });
+  const response = await fetchImpl(
+    `${trimApiUrl(apiUrl)}/app/installations/${installationId}/access_tokens`,
+    {
+      method: "POST",
+      headers: buildGitHubApiHeaders(jwt)
+    }
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `GitHub App installation token request failed with ${response.status}: ${body}`
+    );
+  }
+
+  const payload = JSON.parse(body) as { token?: string; expires_at?: string };
+  if (!payload.token || !payload.expires_at) {
+    throw new Error("GitHub App installation token response did not include token and expires_at");
+  }
+
+  cachedInstallationToken = {
+    token: payload.token,
+    expiresAt: new Date(payload.expires_at),
+    appId,
+    installationId,
+    apiUrl: trimApiUrl(apiUrl)
+  };
+  return cachedInstallationToken;
+}
+
+export async function resolveGitHubAccessToken(
+  input: GitHubAuthInput,
+  fetchImpl: FetchLike = fetch as FetchLike
+): Promise<string> {
+  if (hasGitHubAppAuth(input)) {
+    const installationToken = await fetchGitHubAppInstallationToken(
+      input.githubApiUrl ?? "https://api.github.com",
+      input.githubAppId!,
+      input.githubAppInstallationId!,
+      input.githubAppPrivateKey!,
+      fetchImpl
+    );
+    return installationToken.token;
+  }
+
+  if (input.githubPat) {
+    return input.githubPat;
+  }
+
+  throw new Error(
+    "GitHub auth is not configured; set GITHUB_PAT or all GITHUB_APP_* variables"
+  );
 }
 
 export function buildRegistrationTokenRequest(
@@ -763,6 +925,18 @@ export async function verifyContainerImageTag(
 
 function trimApiUrl(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function base64UrlJson(value: unknown): string {
+  return base64Url(Buffer.from(JSON.stringify(value), "utf8"));
+}
+
+function base64Url(value: Buffer): string {
+  return value
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
 
 function isQueuedForRunnerGroup(

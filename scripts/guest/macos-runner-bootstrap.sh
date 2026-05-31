@@ -65,7 +65,7 @@ on_exit() {
 
 trap on_exit EXIT
 
-require_env GITHUB_PAT
+require_github_auth
 require_env GITHUB_API_URL
 require_env GITHUB_ORG
 require_env RUNNER_GROUP

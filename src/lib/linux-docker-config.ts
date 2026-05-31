@@ -19,7 +19,7 @@ import { telemetrySchema, type TelemetryConfig } from "./telemetry.js";
 
 export interface LinuxDockerPoolConfig {
   key: string;
-  visibility: "private";
+  visibility: "private" | "public";
   organization: string;
   runnerGroup: string;
   repositoryAccess: RepositoryAccess;
@@ -45,6 +45,7 @@ export interface ResolvedLinuxDockerConfig {
 const poolSchema = z
   .object({
     key: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+    visibility: z.enum(["private", "public"]).default("private"),
     organization: z.string().min(1),
     runnerGroup: z.string().min(1),
     repositoryAccess: z.enum(["all", "selected"]).default("selected"),
@@ -134,9 +135,8 @@ export function loadLinuxDockerConfig(
 
     return {
       ...poolValues,
-      visibility: "private" as const,
       labels: uniqueRunnerLabels(
-        ["linux", "docker-capable", "private"],
+        ["linux", "shell-only", "synology", "docker-capable", pool.visibility],
         pool.labels
       ),
       resources: {

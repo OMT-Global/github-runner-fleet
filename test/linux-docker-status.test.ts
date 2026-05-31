@@ -84,7 +84,7 @@ describe("linux docker status", () => {
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "linux_docker_env", ok: false }),
-        expect.objectContaining({ key: "github_pat", ok: false }),
+        expect.objectContaining({ key: "github_auth", ok: false }),
         expect.objectContaining({ key: "saved_result_path", ok: false })
       ])
     );
@@ -166,7 +166,7 @@ function configFixture(): ResolvedLinuxDockerConfig {
         runnerGroup: "linux-docker-private",
         repositoryAccess: "all",
         allowedRepositories: [],
-        labels: ["linux", "docker-capable", "private", "x64"],
+        labels: ["linux", "shell-only", "synology", "docker-capable", "private", "x64"],
         size: 1,
         architecture: "amd64",
         runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private",

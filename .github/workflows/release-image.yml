@@ -15,6 +15,8 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-image-${{ github.ref }}
@@ -56,6 +58,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@v4
 
       - id: release_meta
         run: |
@@ -110,10 +114,65 @@ jobs:
 
       - run: ./scripts/build-image.sh "${{ steps.release_meta.outputs.image_ref }}" --push
 
-      - run: |
+      - id: image_digest
+        run: |
+          digest="$(docker buildx imagetools inspect "${{ steps.release_meta.outputs.image_ref }}" --format '{{.Manifest.Digest}}')"
+          test -n "${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
           docker buildx imagetools inspect "${{ steps.release_meta.outputs.image_ref }}" | tee /tmp/imagetools.txt
           grep -q "linux/amd64" /tmp/imagetools.txt
           grep -q "linux/arm64" /tmp/imagetools.txt
+
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}
+          format: spdx-json
+          output-file: /tmp/github-runner-fleet.spdx.json
+
+      - name: Sign image digest
+        run: cosign sign --yes "${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}"
+
+      - name: Sign per-platform image digests
+        run: |
+          image_repo="${{ steps.release_meta.outputs.image_ref }}"
+          image_repo="${image_repo%:*}"
+          docker buildx imagetools inspect "${{ steps.release_meta.outputs.image_ref }}" --raw \
+            | jq -r '.manifests[].digest' \
+            | while IFS= read -r digest; do
+                cosign sign --yes "${image_repo}@${digest}"
+              done
+
+      - name: Attach SBOM attestation
+        run: |
+          cosign attest --yes \
+            --predicate /tmp/github-runner-fleet.spdx.json \
+            --type spdxjson \
+            "${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}"
+
+      - name: Emit SLSA provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ steps.release_meta.outputs.image_ref }}
+          subject-digest: ${{ steps.image_digest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify image signature and attestations
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}"
+          cosign verify-attestation \
+            --type spdxjson \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}"
+          cosign verify-attestation \
+            --type slsaprovenance \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}"
 
       - run: |
           for attempt in 1 2 3 4 5 6; do

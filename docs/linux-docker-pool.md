@@ -1,6 +1,6 @@
 # Linux Docker Pool
 
-This plane exists for private-repo workflows that need real Linux Docker semantics without weakening the Synology shell-only boundary.
+This plane exists for private-repo workflows that need real Linux Docker semantics while also being eligible for shared shell-safe Linux jobs.
 
 ## What It Runs
 
@@ -12,15 +12,17 @@ This plane exists for private-repo workflows that need real Linux Docker semanti
 
 ## What It Does Not Replace
 
-- Synology for shell-safe jobs
+- NAS-only operational jobs that should not run on the Linux Docker host
 - Lume for macOS-native jobs
 - GitHub-hosted runners for public fork PR trust boundaries or broad hosted image convenience
 
 ## Default Contract
 
-- Runner group: `linux-docker-private`
-- Labels: `self-hosted`, `linux`, `docker-capable`, `private`
+- Runner groups: `linux-docker-private`, `linux-docker-public`
+- Labels: `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, and `private` or `public`
 - Execution model: one job per runner, ephemeral registration, short-lived GitHub tokens, dedicated Docker host
+
+Keep `linux-docker-public.allowedRepositories` aligned with the public Synology pool so `runs-on: [self-hosted, linux, shell-only, public]` can land on either Linux runner class.
 
 ## Operator Commands
 

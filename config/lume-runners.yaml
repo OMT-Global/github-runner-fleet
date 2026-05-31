@@ -4,8 +4,8 @@ pool:
   organization: omt-global
   runnerGroup: macos-private
   labels:
-    - macos
-    - arm64
+    - macOS
+    - ARM64
     - xcode
     - private
   size: 2
@@ -20,7 +20,7 @@ pool:
   guestPassword: ${LUME_GUEST_PASSWORD}
   guestRunnerRoot: /Users/lume/actions-runner
   guestWorkRoot: /Users/lume/actions-runner/_work
-  runnerVersion: 2.333.0
+  runnerVersion: 2.334.0
   # telemetry:
   #   enabled: true
   #   endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}

@@ -1,6 +1,6 @@
 # Shell-safe workflow cookbook
 
-This guide is for downstream repositories that want to consume the runner contracts from this repo without guessing which jobs belong on self-hosted Synology runners, Linux Docker runners, Windows Docker runners, the Lume macOS pool, and GitHub-hosted runners.
+This guide is for downstream repositories that want to consume the runner contracts from this repo without guessing which jobs belong on shell-safe self-hosted Linux runners, Linux Docker runners, Windows Docker runners, the Lume macOS pool, and GitHub-hosted runners.
 
 ## Runner compatibility matrix
 
@@ -21,13 +21,43 @@ This guide is for downstream repositories that want to consume the runner contra
 
 Use these rules when deciding where a workflow job should run:
 
-- Use `runs-on: [self-hosted, synology, shell-only, public]` for trusted shell-safe jobs that can run with the baked-in Linux toolchain.
+- Use `runs-on: [self-hosted, linux, shell-only, public]` for trusted public shell-safe jobs that can run with the baked-in Linux toolchain.
+- Use `runs-on: [self-hosted, linux, shell-only, private]` for trusted private shell-safe jobs that can run on either Synology or Linux Docker.
+- Use `runs-on: [self-hosted, synology, shell-only, private]` when preserving existing Synology-labeled private jobs and allowing Linux Docker overflow.
 - Use `runs-on: [self-hosted, linux, docker-capable, private]` for trusted private Linux jobs that need Docker, `container:`, or service containers.
 - Use `runs-on: [self-hosted, windows, docker-capable, private]` only for trusted private Windows container work.
-- Use `runs-on: [self-hosted, macos, arm64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
+- Use `runs-on: [self-hosted, macOS, ARM64]` only when you intentionally target the Lume macOS pool and control the repo trust boundary.
 - Keep pull requests from forks on GitHub-hosted runners.
 - Keep any untrusted workflow using `container:`, `services:`, browsers, Docker daemon access, Buildx, or extra distro package assumptions on GitHub-hosted runners.
 - Prefer a split workflow over forcing one runner class to handle incompatible jobs.
+
+## Reusable org workflows
+
+Downstream repos can consume the canonical governance lanes without copying YAML:
+
+```yaml
+jobs:
+  ci:
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v1
+
+  security:
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v1
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      image-ref: ghcr.io/omt-global/example:${{ github.ref_name }}
+```
+
+Keep `rg-security` and `rg-release` on GitHub-hosted runners. Reference an exact
+tag such as `v1.2.3` when reproducibility matters, or a compatibility tag such
+as `v1` for the standard org lane.
 
 ## Recipe: trusted Node job on the Synology shell-only pool
 
@@ -46,7 +76,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - synology
+      - linux
       - shell-only
       - public
     env:
@@ -89,7 +119,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - synology
+      - linux
       - shell-only
       - public
     env:
@@ -128,7 +158,7 @@ jobs:
 
 Use this pattern whenever the repository is public or accepts outside contributions.
 
-## Recipe: Python 3.12 on the Synology shell-only pool
+## Recipe: Python 3.12 on shell-safe self-hosted Linux
 
 Use this when the job only needs the built-in Python toolchain shipped in the runner image.
 
@@ -138,7 +168,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - synology
+      - linux
       - shell-only
       - public
     env:
@@ -160,7 +190,7 @@ Boundary condition:
 
 - If you need Python 3.11, 3.13, or a matrix across versions, keep those lanes on GitHub-hosted runners unless you intentionally build and own a wider self-hosted contract.
 
-## Recipe: Terraform validation on the Synology shell-only pool
+## Recipe: Terraform validation on shell-safe self-hosted Linux
 
 ```yaml
 jobs:
@@ -168,7 +198,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - synology
+      - linux
       - shell-only
       - public
     env:
@@ -194,8 +224,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       - self-hosted
-      - macos
-      - arm64
+      - macOS
+      - ARM64
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5

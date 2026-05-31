@@ -57,7 +57,7 @@ jobs:
 
   fast-checks:
     name: Fast Checks
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: changes
     if: >-
@@ -69,12 +69,21 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
 
   validate-secrets:
     name: Validate Secrets
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     if: >-
       github.event.pull_request.draft == false &&

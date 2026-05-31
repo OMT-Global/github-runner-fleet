@@ -92,7 +92,7 @@ describe("CI workflow", () => {
     expect(gateJob.needs).toContain("drift-detect");
   });
 
-  test("keeps trusted shell jobs on the public self-hosted runner contract", () => {
+  test("keeps required trusted CI on hosted runners when shell-safe capacity is absent", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -101,12 +101,10 @@ describe("CI workflow", () => {
 
     const trustedJob = workflow.jobs.test_self_hosted_trusted;
     const steps = trustedJob.steps as Array<Record<string, unknown>>;
-    const installNodeStep = steps.find(
-      (step) => step.uses === "./actions/setup-shell-safe-node"
+    const setupNodeStep = steps.find(
+      (step) => step.uses === "actions/setup-node@v6"
     );
-    const enablePnpmStep = steps.find(
-      (step) => step.name === "Enable pnpm from shell-safe Node"
-    );
+    const pnpmStep = steps.find((step) => step.uses === "pnpm/action-setup@v6");
     const forkSteps = workflow.jobs.test_public_fork_pr.steps as Array<
       Record<string, unknown>
     >;
@@ -114,30 +112,14 @@ describe("CI workflow", () => {
       (step) => step.uses === "actions/setup-node@v6"
     );
 
-    expect(trustedJob["runs-on"]).toEqual([
-      "self-hosted",
-      "synology",
-      "shell-only",
-      "public"
-    ]);
-    expect(trustedJob.env).toMatchObject({
-      RUNNER_TEMP: "/tmp/github-runner-temp",
-      RUNNER_TOOL_CACHE: "/opt/hostedtoolcache",
-      AGENT_TOOLSDIRECTORY: "/opt/hostedtoolcache"
+    expect(trustedJob["runs-on"]).toBe("ubuntu-latest");
+    expect(pnpmStep?.with).toMatchObject({
+      version: "10.32.1"
     });
-    expect(installNodeStep).toBeDefined();
-    expect(installNodeStep?.with).toMatchObject({
-      "node-version": "24.14.1"
+    expect(setupNodeStep?.with).toMatchObject({
+      "node-version": "24",
+      cache: "pnpm"
     });
-    expect(steps.some((step) => step.uses === "actions/setup-node@v6")).toBe(
-      false
-    );
-    expect(steps.some((step) => step.uses === "pnpm/action-setup@v6")).toBe(
-      false
-    );
-    expect(String(enablePnpmStep?.run)).toContain(
-      "corepack prepare pnpm@10.32.1 --activate"
-    );
     expect(forkSetupNodeStep?.with).toMatchObject({
       "node-version": "24",
       cache: "pnpm"
@@ -161,6 +143,9 @@ describe("CI workflow", () => {
       (step) => step.name === "Verify cache-aware commands"
     );
 
+    expect(contractJob.if).toContain(
+      "vars.SHELL_SAFE_CONTRACT_ENABLED == 'true'"
+    );
     expect(contractJob["runs-on"]).toEqual([
       "self-hosted",
       "synology",
@@ -201,7 +186,7 @@ describe("CI workflow", () => {
     expect(workflow.jobs.test_public_fork_pr["runs-on"]).toBe("ubuntu-latest");
   });
 
-  test("keeps PR fast checks on self-hosted only for same-repo PRs", () => {
+  test("keeps PR fast checks on hosted runners and gates same-repo and fork paths", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/pr-fast-ci.yml"), "utf8")
     ) as {
@@ -213,16 +198,16 @@ describe("CI workflow", () => {
       workflow.jobs["validate-secrets"]
     ];
     for (const job of selfHostedJobs) {
-      expect(job["runs-on"]).toEqual([
-        "self-hosted",
-        "synology",
-        "shell-only",
-        "public"
-      ]);
+      expect(job["runs-on"]).toBe("ubuntu-latest");
       expect(String(job.if)).toContain(
         "github.event.pull_request.head.repo.full_name == github.repository"
       );
     }
+    expect(
+      (workflow.jobs["fast-checks"].steps as Array<Record<string, unknown>>).some(
+        (step) => step.uses === "actions/setup-node@v6"
+      )
+    ).toBe(true);
 
     expect(workflow.jobs.changes["runs-on"]).toBe("ubuntu-latest");
     expect(workflow.jobs["hosted-fork-fast-checks"]["runs-on"]).toBe(

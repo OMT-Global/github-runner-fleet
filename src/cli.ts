@@ -5,6 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
+import { createAutoscaleWebhookServer } from "./lib/autoscale-webhook.js";
 import { collectConfigWarnings, loadConfig, type ResolvedConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
 import {
@@ -71,6 +72,7 @@ import {
   fetchLatestRunnerRelease,
   fetchRunnerToken,
   getQueuedJobCount,
+  resolveGitHubAccessToken,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./lib/github.js";
@@ -118,6 +120,9 @@ export async function main(
       break;
     case "scale":
       await scaleCommand(args);
+      break;
+    case "autoscale-webhook":
+      await autoscaleWebhookCommand(args);
       break;
     case "drain-pool":
       await drainPoolCommand(args);
@@ -335,7 +340,8 @@ async function linuxDockerStatusCommand(args: string[]): Promise<void> {
 async function driftDetectCommand(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/pools.yaml");
   const threshold = parseNonNegativeInteger(
@@ -345,9 +351,10 @@ async function driftDetectCommand(args: string[]): Promise<void> {
   const config = loadConfig(configPath!, env);
   emitWarnings(config);
   const desiredPools = desiredPoolsFromConfig(config.pools);
+  const token = await resolveGitHubAccessToken(env);
   const actualPools = await collectGitHubActualPoolState(
     env.githubApiUrl,
-    env.githubPat!,
+    token,
     desiredPools
   );
   const report = compareDesiredActualPools(
@@ -370,7 +377,8 @@ async function driftDetectCommand(args: string[]): Promise<void> {
 async function configDiffCommand(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const format = getOption(args, "--format", "text")!;
   if (format !== "text" && format !== "json") {
@@ -386,9 +394,10 @@ async function configDiffCommand(args: string[]): Promise<void> {
   }
 
   const desiredRunners = collectConfigDiffDesiredRunners(args, env, plane);
+  const token = await resolveGitHubAccessToken(env);
   const actualRunners = await collectGitHubActualRunnerState(
     env.githubApiUrl,
-    env.githubPat!,
+    token,
     desiredRunners
   );
   const report = compareDesiredActualRunners(desiredRunners, actualRunners);
@@ -407,7 +416,8 @@ async function configDiffCommand(args: string[]): Promise<void> {
 async function pruneStaleRunnersCommand(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const format = getOption(args, "--format", "text")!;
   if (format !== "text" && format !== "json") {
@@ -424,7 +434,7 @@ async function pruneStaleRunnersCommand(args: string[]): Promise<void> {
 
   const report = await pruneStaleRunners({
     apiUrl: env.githubApiUrl,
-    token: env.githubPat!,
+    token: await resolveGitHubAccessToken(env),
     pools: collectDrainPoolDefinitions(args, env, plane),
     apply: args.includes("--apply")
   });
@@ -599,7 +609,8 @@ async function scaleCommand(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/pools.yaml")!;
   const poolFilter = getOption(args, "--pool");
@@ -623,8 +634,9 @@ async function scaleCommand(args: string[]): Promise<void> {
   };
   const report = await withControllerAction(actionFields, async () => {
     const decisions: AutoscaleDecision[] = [];
+    const token = await resolveGitHubAccessToken(env);
     for (const pool of pools) {
-      const queuedJobs = await getQueuedJobCount(env.githubApiUrl, env.githubPat!, {
+      const queuedJobs = await getQueuedJobCount(env.githubApiUrl, token, {
         organization: pool.organization,
         runnerGroup: pool.runnerGroup,
         repositories:
@@ -668,7 +680,7 @@ async function scaleCommand(args: string[]): Promise<void> {
       const pool = config.pools.find((entry) => entry.key === decision.poolKey)!;
       const drainReport = await drainRunnerPool({
         apiUrl: env.githubApiUrl,
-        token: env.githubPat!,
+        token,
         organization: pool.organization,
         runnerGroup: pool.runnerGroup,
         poolKey: pool.key,
@@ -711,10 +723,38 @@ async function scaleCommand(args: string[]): Promise<void> {
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
+async function autoscaleWebhookCommand(args: string[]): Promise<void> {
+  const listen = getOption(args, "--listen", ":8080")!;
+  const secretEnv = getOption(args, "--secret-env", "AUTOSCALE_WEBHOOK_SECRET")!;
+  const secret = process.env[secretEnv]?.trim();
+  if (!secret) {
+    throw new Error(`${secretEnv} is required`);
+  }
+  const labels = (getOption(args, "--labels", "") ?? "")
+    .split(",")
+    .map((label) => label.trim())
+    .filter(Boolean);
+  if (labels.length === 0) {
+    throw new Error("--labels is required, for example --labels self-hosted,synology");
+  }
+  const statePath = getOption(args, "--state", process.env.AUTOSCALE_WEBHOOK_STATE_FILE);
+  const { host, port } = parseListenAddress(listen);
+  const server = createAutoscaleWebhookServer({
+    secret,
+    ownedLabels: labels,
+    statePath
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(port, host, resolve);
+  });
+  process.stdout.write(`autoscale webhook listening on ${host}:${port}\n`);
+}
+
 async function drainPoolCommand(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const poolKey = getOption(args, "--pool");
   if (!poolKey) {
@@ -734,10 +774,10 @@ async function drainPoolCommand(args: string[]): Promise<void> {
       plane: definition.plane,
       pool: definition.key
     },
-    () =>
+    async () =>
       drainRunnerPool({
         apiUrl: env.githubApiUrl,
-        token: env.githubPat!,
+        token: await resolveGitHubAccessToken(env),
         organization: definition.organization,
         runnerGroup: definition.runnerGroup,
         poolKey: definition.key,
@@ -829,7 +869,8 @@ async function renderComposeCommand(args: string[]): Promise<void> {
 async function validateGitHub(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/pools.yaml");
   const config = loadConfig(configPath!, env);
@@ -837,7 +878,7 @@ async function validateGitHub(args: string[]): Promise<void> {
 
   const matches = await verifyRunnerGroups(
     env.githubApiUrl,
-    env.githubPat!,
+    await resolveGitHubAccessToken(env),
     config.pools.map((pool) => ({
       poolKey: pool.key,
       organization: pool.organization,
@@ -889,13 +930,14 @@ async function validateLinuxDockerConfig(args: string[]): Promise<void> {
 async function validateLinuxDockerGitHub(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/linux-docker-runners.yaml");
   const config = loadLinuxDockerConfig(configPath!, env);
   const matches = await verifyRunnerGroups(
     env.githubApiUrl,
-    env.githubPat!,
+    await resolveGitHubAccessToken(env),
     config.pools.map((pool) => ({
       poolKey: pool.key,
       organization: pool.organization,
@@ -950,13 +992,14 @@ async function validateWindowsDockerConfig(args: string[]): Promise<void> {
 async function validateWindowsDockerGitHub(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/windows-runners.yaml");
   const config = loadWindowsDockerConfig(configPath!, env);
   const matches = await verifyRunnerGroups(
     env.githubApiUrl,
-    env.githubPat!,
+    await resolveGitHubAccessToken(env),
     config.pools.map((pool) => ({
       poolKey: pool.key,
       organization: pool.organization,
@@ -1438,7 +1481,8 @@ async function teardownWindowsDockerProject(args: string[]): Promise<void> {
 async function validateImage(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/pools.yaml");
   const config = loadConfig(configPath!, env);
@@ -1447,7 +1491,7 @@ async function validateImage(args: string[]): Promise<void> {
 
   const match = await verifyContainerImageTag(
     env.githubApiUrl,
-    env.githubPat!,
+    await resolveGitHubAccessToken(env),
     imageRef
   );
 
@@ -1548,13 +1592,14 @@ async function validateLumeConfig(args: string[]): Promise<void> {
 async function validateLumeGitHub(args: string[]): Promise<void> {
   const env = loadDeploymentEnv({
     envPath: getOption(args, "--env", ".env"),
-    requirePat: true
+    requirePat: false,
+    requireGitHubAuth: true
   });
   const configPath = getOption(args, "--config", "config/lume-runners.yaml");
   const config = loadLumeConfig(configPath!, env);
   const matches = await verifyRunnerGroups(
     env.githubApiUrl,
-    env.githubPat!,
+    await resolveGitHubAccessToken(env),
     [
       {
         poolKey: config.pool.key,
@@ -1701,7 +1746,7 @@ async function teardownLumeProject(args: string[]): Promise<void> {
     }, async () => {
       const drainReport = await drainRunnerPool({
         apiUrl: env.githubApiUrl,
-        token: env.githubPat!,
+        token: await resolveGitHubAccessToken(env),
         organization: config.pool.organization,
         runnerGroup: config.pool.runnerGroup,
         poolKey: config.pool.key,
@@ -2112,7 +2157,7 @@ async function drainBeforeTeardown(
   for (const definition of definitions) {
     const report = await drainRunnerPool({
       apiUrl: env.githubApiUrl,
-      token: env.githubPat!,
+      token: await resolveGitHubAccessToken(env),
       organization: definition.organization,
       runnerGroup: definition.runnerGroup,
       poolKey: definition.key,
@@ -2530,6 +2575,16 @@ function getOption(
   return value;
 }
 
+function parseListenAddress(value: string): { host: string; port: number } {
+  const normalized = value.startsWith(":") ? `0.0.0.0${value}` : value;
+  const [host, portValue] = normalized.split(":");
+  const port = Number(portValue);
+  if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`invalid --listen address: ${value}`);
+  }
+  return { host, port };
+}
+
 function parseNonNegativeInteger(value: string, optionName: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
@@ -2861,6 +2916,7 @@ function printUsage(): void {
   pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
   pnpm rotate-token [--plane synology|linux-docker|lume] [--pool synology-private] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--new-token-env NEW_GITHUB_PAT] [--dry-run|--apply] [--drain-timeout 15m] [--drain-interval 5]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
+  pnpm autoscale-webhook -- --labels self-hosted,synology [--listen :8080] [--secret-env AUTOSCALE_WEBHOOK_SECRET] [--state .tmp/autoscale-webhook.json]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]

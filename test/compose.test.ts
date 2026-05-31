@@ -23,7 +23,7 @@ describe("renderCompose", () => {
     const privateService = payload.services["synology-private-runner-01"];
     expect(privateService.environment).toMatchObject({
       RUNNER_GROUP: "synology-private",
-      RUNNER_LABELS: "synology,shell-only,private",
+      RUNNER_LABELS: "linux,shell-only,private,synology",
       RUNNER_SCOPE: "organization",
       RUNNER_REPOSITORY_ACCESS: "all",
       RUNNER_WORK_DIR: "/tmp/github-runner-work",
@@ -111,7 +111,7 @@ function configFixture(): ResolvedConfig {
         runnerGroup: "synology-private",
         repositoryAccess: "all",
         allowedRepositories: [],
-        labels: ["synology", "shell-only", "private"],
+        labels: ["linux", "shell-only", "private", "synology"],
         size: 4,
         architecture: "auto",
         runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-private",
@@ -127,7 +127,7 @@ function configFixture(): ResolvedConfig {
         runnerGroup: "synology-public",
         repositoryAccess: "selected",
         allowedRepositories: ["example/public-demo"],
-        labels: ["synology", "shell-only", "public"],
+        labels: ["linux", "shell-only", "public", "synology"],
         size: 2,
         architecture: "auto",
         runnerRoot: "/volume1/docker/github-runner-fleet/pools/synology-public",

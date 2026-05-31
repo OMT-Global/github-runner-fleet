@@ -235,7 +235,7 @@ function buildSlots(pool: LumePoolConfig, baseDir: string): LumeSlotManifest[] {
 }
 
 function normalizeLabels(labels: string[]): string[] {
-  return uniqueRunnerLabels(["self-hosted", "macos", "arm64", "private"], labels);
+  return uniqueRunnerLabels(["self-hosted", "macOS", "ARM64", "private"], labels);
 }
 
 function shellQuote(value: string): string {

@@ -12,7 +12,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 2m
     environment:
-      GITHUB_PAT: \${GITHUB_PAT}
+      GITHUB_PAT: \${GITHUB_PAT:-}
+      GITHUB_APP_ID: \${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: \${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY: \${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_API_URL: \${GITHUB_API_URL:-https://api.github.com}
       GITHUB_ORG: example
       RUNNER_SCOPE: organization
@@ -20,7 +23,7 @@ services:
       RUNNER_GROUP: linux-docker-private
       FLEET_POOL_KEY: linux-docker-private
       FLEET_PLANE: linux-docker
-      RUNNER_LABELS: linux,docker-capable,private,x64
+      RUNNER_LABELS: linux,shell-only,synology,docker-capable,private,x64
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: selected
       RUNNER_STATE_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01
@@ -55,7 +58,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 2m
     environment:
-      GITHUB_PAT: \${GITHUB_PAT}
+      GITHUB_PAT: \${GITHUB_PAT:-}
+      GITHUB_APP_ID: \${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: \${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY: \${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_API_URL: \${GITHUB_API_URL:-https://api.github.com}
       GITHUB_ORG: example
       RUNNER_SCOPE: organization
@@ -63,7 +69,7 @@ services:
       RUNNER_GROUP: linux-docker-private
       FLEET_POOL_KEY: linux-docker-private
       FLEET_PLANE: linux-docker
-      RUNNER_LABELS: linux,docker-capable,private,x64
+      RUNNER_LABELS: linux,shell-only,synology,docker-capable,private,x64
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: selected
       RUNNER_STATE_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02
@@ -86,6 +92,52 @@ services:
       com.github-runner-fleet.visibility: private
       com.github-runner-fleet.repository-access: selected
       com.github-runner-fleet.allowed-repositories: example/private-app
+      com.github-runner-fleet.docker-capable: "true"
+    platform: linux/amd64
+    cpus: "4"
+    pids_limit: 1024
+    mem_limit: 8g
+  linux-docker-public-runner-01:
+    image: ghcr.io/example/github-runner-fleet:0.1.9
+    container_name: linux-docker-public-runner-01
+    hostname: linux-docker-public-runner-01
+    restart: unless-stopped
+    stop_grace_period: 2m
+    environment:
+      GITHUB_PAT: \${GITHUB_PAT:-}
+      GITHUB_APP_ID: \${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: \${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY: \${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_API_URL: \${GITHUB_API_URL:-https://api.github.com}
+      GITHUB_ORG: example
+      RUNNER_SCOPE: organization
+      RUNNER_NAME: linux-docker-public-runner-01
+      RUNNER_GROUP: linux-docker-public
+      FLEET_POOL_KEY: linux-docker-public
+      FLEET_PLANE: linux-docker
+      RUNNER_LABELS: linux,shell-only,synology,docker-capable,public,x64
+      RUNNER_VISIBILITY: public
+      RUNNER_REPOSITORY_ACCESS: selected
+      RUNNER_STATE_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01
+      RUNNER_LOG_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01/logs
+      RUNNER_WORK_DIR: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01/_work
+      RUNNER_TEMP: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01/_temp
+      RUNNER_TOOL_CACHE: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01/toolcache
+      AGENT_TOOLSDIRECTORY: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01/toolcache
+      RUNNER_EPHEMERAL: "true"
+      RUNNER_DISABLE_UPDATE: "true"
+      RUNNER_EXEC_MODE_OVERRIDE: root
+      DOCKER_HOST: unix:///var/run/docker.sock
+      RUNNER_ALLOWED_REPOSITORIES: example/public-app
+    volumes:
+      - /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01:/srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      com.github-runner-fleet.pool: linux-docker-public
+      com.github-runner-fleet.plane: linux-docker
+      com.github-runner-fleet.visibility: public
+      com.github-runner-fleet.repository-access: selected
+      com.github-runner-fleet.allowed-repositories: example/public-app
       com.github-runner-fleet.docker-capable: "true"
     platform: linux/amd64
     cpus: "4"

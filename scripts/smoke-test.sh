@@ -155,7 +155,7 @@ run_smoke_case() {
     -e GITHUB_ORG=test-org
     -e RUNNER_NAME="${runner_name}"
     -e RUNNER_GROUP=synology-private
-    -e RUNNER_LABELS=synology,shell-only,private
+    -e RUNNER_LABELS=linux,shell-only,private,synology
     -e RUNNER_ALLOWED_REPOSITORIES=test-org/private-app
     -e RUNNER_STATE_DIR=/tmp/runner-state
     -e RUNNER_LOG_DIR=/tmp/runner-state/logs

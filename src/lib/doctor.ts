@@ -5,7 +5,10 @@ import { loadDeploymentEnv } from "./env.js";
 import { loadLinuxDockerConfig } from "./linux-docker-config.js";
 import { loadWindowsDockerConfig } from "./windows-config.js";
 import {
+  describeGitHubAuth,
   type FetchLike,
+  hasGitHubAuth,
+  resolveGitHubAccessToken,
   verifyContainerImageTag,
   verifyRunnerGroups
 } from "./github.js";
@@ -124,11 +127,9 @@ async function runWindowsDockerDoctor(input: {
   fetchImpl?: FetchLike;
 }): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
-  const missingDeploymentEnv = [
-    ["GITHUB_PAT", input.env.githubPat]
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
+  const missingDeploymentEnv = hasGitHubAuth(input.env)
+    ? []
+    : ["GITHUB_PAT or GITHUB_APP_*"];
 
   checks.push(
     missingDeploymentEnv.length === 0
@@ -136,7 +137,7 @@ async function runWindowsDockerDoctor(input: {
           id: "windows-docker-env",
           target: "windows-docker",
           status: "pass",
-          summary: "required Windows Docker GitHub env is configured"
+          summary: `required Windows Docker GitHub env is configured via ${describeGitHubAuth(input.env)} auth`
         }
       : {
           id: "windows-docker-env",
@@ -184,21 +185,22 @@ async function runWindowsDockerDoctor(input: {
     return checks;
   }
 
-  if (!input.env.githubPat) {
+  if (!hasGitHubAuth(input.env)) {
     checks.push({
       id: "windows-docker-runner-groups",
       target: "windows-docker",
       status: "skip",
       summary: "skipped Windows Docker runner-group verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     return checks;
   }
 
   try {
+    const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     const pools = await verifyRunnerGroups(
       input.env.githubApiUrl,
-      input.env.githubPat,
+      token,
       config.pools.map((pool) => ({
         poolKey: pool.key,
         organization: pool.organization,
@@ -252,7 +254,7 @@ async function runSynologyDoctor(input: {
   const checks: DoctorCheck[] = [];
   checks.push(buildAuditLogCheck(input.env.raw));
   const missingDeploymentEnv = [
-    ["GITHUB_PAT", input.env.githubPat],
+    ["GITHUB_PAT or GITHUB_APP_*", hasGitHubAuth(input.env) ? "configured" : undefined],
     ["SYNOLOGY_HOST", input.env.synologyHost],
     ["SYNOLOGY_USERNAME", input.env.synologyUsername],
     ["SYNOLOGY_PASSWORD", input.env.synologyPassword]
@@ -320,29 +322,37 @@ async function runSynologyDoctor(input: {
           detail: warnings.join("; ")
         }
   );
+  const webhookFreshnessCheck = buildAutoscaleWebhookFreshnessCheck(
+    input.env.raw.AUTOSCALE_WEBHOOK_STATE_FILE,
+    Math.max(60, ...config.pools.map((pool) => pool.scaling?.cooldownSeconds ?? 0))
+  );
+  if (webhookFreshnessCheck) {
+    checks.push(webhookFreshnessCheck);
+  }
 
-  if (!input.env.githubPat) {
+  if (!hasGitHubAuth(input.env)) {
     checks.push({
       id: "synology-runner-groups",
       target: "synology",
       status: "skip",
       summary: "skipped Synology runner-group verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     checks.push({
       id: "synology-image",
       target: "synology",
       status: "skip",
       summary: "skipped Synology image verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     return checks;
   }
 
   try {
+    const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     const pools = await verifyRunnerGroups(
       input.env.githubApiUrl,
-      input.env.githubPat,
+      token,
       config.pools.map((pool) => ({
         poolKey: pool.key,
         organization: pool.organization,
@@ -368,9 +378,10 @@ async function runSynologyDoctor(input: {
 
   const imageRef = `${config.image.repository}:${config.image.tag}`;
   try {
+    const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     const image = await verifyContainerImageTag(
       input.env.githubApiUrl,
-      input.env.githubPat,
+      token,
       imageRef,
       input.fetchImpl
     );
@@ -393,6 +404,58 @@ async function runSynologyDoctor(input: {
   return checks;
 }
 
+function buildAutoscaleWebhookFreshnessCheck(
+  statePath: string | undefined,
+  staleAfterSeconds: number
+): DoctorCheck | undefined {
+  if (!statePath) {
+    return undefined;
+  }
+  if (!fs.existsSync(statePath)) {
+    return {
+      id: "autoscale-webhook-freshness",
+      target: "synology",
+      status: "warn",
+      summary: "autoscale webhook has not recorded workflow_job events",
+      detail: `${statePath} does not exist yet`
+    };
+  }
+  try {
+    const payload = JSON.parse(fs.readFileSync(statePath, "utf8")) as {
+      lastEventAt?: string;
+    };
+    const lastEventAt = payload.lastEventAt ? Date.parse(payload.lastEventAt) : NaN;
+    if (!Number.isFinite(lastEventAt)) {
+      return {
+        id: "autoscale-webhook-freshness",
+        target: "synology",
+        status: "warn",
+        summary: "autoscale webhook state has no valid last event timestamp",
+        detail: statePath
+      };
+    }
+    const ageSeconds = Math.floor((Date.now() - lastEventAt) / 1000);
+    return {
+      id: "autoscale-webhook-freshness",
+      target: "synology",
+      status: ageSeconds > staleAfterSeconds ? "warn" : "pass",
+      summary:
+        ageSeconds > staleAfterSeconds
+          ? "autoscale webhook events are stale"
+          : "autoscale webhook has recent workflow_job events",
+      detail: `last event ${ageSeconds}s ago; stale threshold ${staleAfterSeconds}s`
+    };
+  } catch (error) {
+    return {
+      id: "autoscale-webhook-freshness",
+      target: "synology",
+      status: "warn",
+      summary: "failed to read autoscale webhook state",
+      detail: formatError(error)
+    };
+  }
+}
+
 async function runLinuxDockerDoctor(input: {
   env: ReturnType<typeof loadDeploymentEnv>;
   configPath: string;
@@ -400,7 +463,7 @@ async function runLinuxDockerDoctor(input: {
 }): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
   const missingDeploymentEnv = [
-    ["GITHUB_PAT", input.env.githubPat],
+    ["GITHUB_PAT or GITHUB_APP_*", hasGitHubAuth(input.env) ? "configured" : undefined],
     ["LINUX_DOCKER_HOST", input.env.linuxDockerHost],
     ["LINUX_DOCKER_USERNAME", input.env.linuxDockerUsername]
   ]
@@ -457,28 +520,29 @@ async function runLinuxDockerDoctor(input: {
     summary: `Linux Docker project root resolves to ${input.env.linuxDockerProjectDir}`
   });
 
-  if (!input.env.githubPat) {
+  if (!hasGitHubAuth(input.env)) {
     checks.push({
       id: "linux-docker-runner-groups",
       target: "linux-docker",
       status: "skip",
       summary: "skipped Linux Docker runner-group verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     checks.push({
       id: "linux-docker-image",
       target: "linux-docker",
       status: "skip",
       summary: "skipped Linux Docker image verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     return checks;
   }
 
   try {
+    const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     const pools = await verifyRunnerGroups(
       input.env.githubApiUrl,
-      input.env.githubPat,
+      token,
       config.pools.map((pool) => ({
         poolKey: pool.key,
         organization: pool.organization,
@@ -504,9 +568,10 @@ async function runLinuxDockerDoctor(input: {
 
   const imageRef = `${config.image.repository}:${config.image.tag}`;
   try {
+    const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     const image = await verifyContainerImageTag(
       input.env.githubApiUrl,
-      input.env.githubPat,
+      token,
       imageRef,
       input.fetchImpl
     );
@@ -555,11 +620,9 @@ async function runLumeDoctor(input: {
   fetchImpl?: FetchLike;
 }): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
-  const missingLumeEnv = [
-    ["GITHUB_PAT", input.env.githubPat]
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
+  const missingLumeEnv = hasGitHubAuth(input.env)
+    ? []
+    : ["GITHUB_PAT or GITHUB_APP_*"];
 
   checks.push(
     missingLumeEnv.length === 0
@@ -567,7 +630,7 @@ async function runLumeDoctor(input: {
           id: "lume-env",
           target: "lume",
           status: "pass",
-          summary: "required Lume GitHub env is configured"
+          summary: `required Lume GitHub env is configured via ${describeGitHubAuth(input.env)} auth`
         }
       : {
           id: "lume-env",
@@ -652,21 +715,22 @@ async function runLumeDoctor(input: {
     });
   }
 
-  if (!input.env.githubPat) {
+  if (!hasGitHubAuth(input.env)) {
     checks.push({
       id: "lume-runner-group",
       target: "lume",
       status: "skip",
       summary: "skipped Lume runner-group verification",
-      detail: "GITHUB_PAT is not configured"
+      detail: "GitHub auth is not configured"
     });
     return checks;
   }
 
   try {
+    const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     await verifyRunnerGroups(
       input.env.githubApiUrl,
-      input.env.githubPat,
+      token,
       [
         {
           poolKey: config.pool.key,

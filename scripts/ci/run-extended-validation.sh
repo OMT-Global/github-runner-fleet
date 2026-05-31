@@ -6,7 +6,7 @@
 # CI job ("Mutation Tests" in .github/workflows/extended-validation.yml)
 # because it is far slower than the coverage gate and uploads its own
 # report artifact; running it inline would blow the extended-checks
-# timeout budget on the self-hosted Synology runner.
+# timeout budget on self-hosted shell-safe runners.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
