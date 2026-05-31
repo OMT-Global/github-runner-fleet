@@ -120,13 +120,14 @@ describe("CI workflow", () => {
       version: "10.32.1"
     });
     expect(setupNodeStep?.with).toMatchObject({
-      "node-version": "24",
-      cache: "pnpm"
+      "node-version": "24"
     });
     expect(forkSetupNodeStep?.with).toMatchObject({
-      "node-version": "24",
-      cache: "pnpm"
+      "node-version": "24"
     });
+    expect(steps.indexOf(setupNodeStep ?? {})).toBeLessThan(
+      steps.indexOf(pnpmStep ?? {})
+    );
   });
 
   test("verifies the broader shell-safe toolchain contract on self-hosted runners", () => {

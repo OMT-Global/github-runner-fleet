@@ -31,13 +31,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test:coverage
@@ -123,13 +122,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
       - run: pnpm install --frozen-lockfile
       - name: Render Linux Docker runner manifests
         run: |
@@ -151,13 +149,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
       - run: pnpm install --frozen-lockfile
       - name: Render Windows Docker runner manifests
         shell: pwsh
@@ -184,13 +181,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test
@@ -223,13 +219,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test

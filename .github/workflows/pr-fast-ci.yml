@@ -78,14 +78,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
-
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
 
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
@@ -123,14 +122,13 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
-
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
