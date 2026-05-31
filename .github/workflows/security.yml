@@ -15,6 +15,9 @@ permissions:
   pull-requests: read
   security-events: write
 
+env:
+  OSV_SCANNER_VERSION: v2.3.8
+
 jobs:
   codeql:
     name: codeql
@@ -57,13 +60,32 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
+      - name: Install OSV Scanner
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) osv_arch="amd64" ;;
+            aarch64|arm64) osv_arch="arm64" ;;
+            *)
+              echo "Unsupported OSV Scanner architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+
+          osv_asset="osv-scanner_linux_${osv_arch}"
+          curl -fsSLO "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/${osv_asset}"
+          curl -fsSLO "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_SHA256SUMS"
+          grep " ${osv_asset}$" osv-scanner_SHA256SUMS | sha256sum -c -
+          chmod +x "${osv_asset}"
+          mkdir -p "${RUNNER_TEMP}/osv-scanner"
+          mv "${osv_asset}" "${RUNNER_TEMP}/osv-scanner/osv-scanner"
+          echo "${RUNNER_TEMP}/osv-scanner" >> "${GITHUB_PATH}"
+      - name: Run OSV Scanner
         continue-on-error: true
-        with:
-          scan-args: |-
-            --lockfile=pnpm-lock.yaml
-            --format=sarif
-            --output=osv-results.sarif
+        run: osv-scanner scan -L pnpm-lock.yaml --format=sarif > osv-results.sarif
+      - name: Require OSV SARIF output
+        if: always()
+        run: test -s osv-results.sarif
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:

@@ -24,6 +24,9 @@ on:
 permissions:
   contents: read
 
+env:
+  SHELL: /bin/bash
+
 jobs:
   ci:
     name: rg-ci

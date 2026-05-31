@@ -52,6 +52,23 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ inputs.image-ref }}
+      - name: Ensure envsubst is available
+        run: |
+          set -euo pipefail
+          if command -v envsubst >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          if [[ "$(id -u)" == "0" ]] && command -v apt-get >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends gettext-base
+          elif command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends gettext-base
+          else
+            echo "envsubst is required by cosign-installer." >&2
+            exit 1
+          fi
       - uses: sigstore/cosign-installer@v4
       - run: cosign sign --yes ${{ inputs.image-ref }}@${{ steps.build.outputs.digest }}
       - uses: actions/attest-build-provenance@v3

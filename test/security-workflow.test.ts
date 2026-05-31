@@ -20,12 +20,12 @@ describe("security and reusable workflows", () => {
     }
     expect(String(JSON.stringify(workflow))).toContain("github/codeql-action/init");
     expect(String(JSON.stringify(workflow))).toContain("dependency-review-action");
-    expect(String(JSON.stringify(workflow))).toContain("osv-scanner-action");
+    expect(String(JSON.stringify(workflow))).toContain("osv-scanner/releases/download");
     expect(String(JSON.stringify(workflow))).toContain("upload-sarif");
     expect(workflow.jobs.osv.steps).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          uses: "google/osv-scanner-action/osv-scanner-action@v2.3.8",
+          name: "Run OSV Scanner",
           "continue-on-error": true
         })
       ])

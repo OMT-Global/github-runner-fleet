@@ -15,6 +15,7 @@ permissions:
 env:
   NODE_VERSION: '20'
   PYTHON_VERSION: '3.12'
+  SHELL: /bin/bash
 
 defaults:
   run:
