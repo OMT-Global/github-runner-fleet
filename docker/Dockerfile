@@ -8,6 +8,7 @@ ARG NODE_VERSION=18.20.8
 ARG TERRAFORM_VERSION=1.6.6
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    SHELL=/bin/bash \
     RUNNER_SOURCE_HOME=/actions-runner \
     RUNNER_TEMP=/tmp/github-runner-temp \
     RUNNER_TOOL_CACHE=/opt/hostedtoolcache \
@@ -18,7 +19,7 @@ RUN apt-get update \
       bash \
       ca-certificates \
       curl \
-      docker.io \
+      gettext-base \
       git \
       gosu \
       jq \
@@ -28,6 +29,14 @@ RUN apt-get update \
       unzip \
       xz-utils \
       zstd \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --home-dir /home/runner --shell /bin/bash runner \

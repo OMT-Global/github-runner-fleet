@@ -15,6 +15,7 @@ permissions:
 env:
   NODE_VERSION: '20'
   PYTHON_VERSION: '3.12'
+  SHELL: /bin/bash
 
 defaults:
   run:
@@ -23,7 +24,11 @@ defaults:
 jobs:
   changes:
     name: Detect Relevant Changes
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     outputs:
       app: ${{ steps.filter.outputs.app }}
       ci: ${{ steps.filter.outputs.ci }}
@@ -57,7 +62,11 @@ jobs:
 
   fast-checks:
     name: Fast Checks
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 15
     needs: changes
     if: >-
@@ -69,21 +78,24 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
-
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
 
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
 
   validate-secrets:
     name: Validate Secrets
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     timeout-minutes: 10
     if: >-
       github.event.pull_request.draft == false &&
@@ -110,14 +122,13 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
-
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: pnpm
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
@@ -141,7 +152,11 @@ jobs:
 
   ci-gate:
     name: CI Gate
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - shell-only
+      - public
     if: always()
     needs:
       - changes

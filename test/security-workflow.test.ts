@@ -3,8 +3,10 @@ import path from "node:path";
 import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
+const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
+
 describe("security and reusable workflows", () => {
-  test("keeps security scans on hosted runners with Security tab upload", () => {
+  test("keeps security scans on shell-safe self-hosted runners with Security tab upload", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/security.yml"), "utf8")
     ) as { permissions: Record<string, string>; jobs: Record<string, Record<string, unknown>> };
@@ -14,16 +16,16 @@ describe("security and reusable workflows", () => {
       "security-events": "write"
     });
     for (const job of Object.values(workflow.jobs)) {
-      expect(job["runs-on"]).toBe("ubuntu-latest");
+      expect(job["runs-on"]).toEqual(shellSafePublicRunner);
     }
     expect(String(JSON.stringify(workflow))).toContain("github/codeql-action/init");
     expect(String(JSON.stringify(workflow))).toContain("dependency-review-action");
-    expect(String(JSON.stringify(workflow))).toContain("osv-scanner-action");
+    expect(String(JSON.stringify(workflow))).toContain("osv-scanner/releases/download");
     expect(String(JSON.stringify(workflow))).toContain("upload-sarif");
     expect(workflow.jobs.osv.steps).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          uses: "google/osv-scanner-action/osv-scanner-action@v2.3.8",
+          name: "Run OSV Scanner",
           "continue-on-error": true
         })
       ])
@@ -37,11 +39,11 @@ describe("security and reusable workflows", () => {
 
     expect(workflow.on).not.toHaveProperty("pull_request");
     expect(workflow.permissions).toEqual({ contents: "read" });
-    expect(workflow.jobs.scorecard["runs-on"]).toBe("ubuntu-latest");
     expect(workflow.jobs.scorecard.permissions).toMatchObject({
       "id-token": "write",
       "security-events": "write"
     });
+    expect(workflow.jobs.scorecard["runs-on"]).toEqual(shellSafePublicRunner);
     expect(String(JSON.stringify(workflow))).toContain(
       "ossf/scorecard-action@v2.4.3"
     );
@@ -56,7 +58,7 @@ describe("security and reusable workflows", () => {
 
       expect(workflow.on).toHaveProperty("workflow_call");
       for (const job of Object.values(workflow.jobs)) {
-        expect(job["runs-on"]).toBe("ubuntu-latest");
+        expect(job["runs-on"]).toEqual(shellSafePublicRunner);
       }
     }
   });
