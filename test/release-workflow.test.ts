@@ -67,6 +67,25 @@ describe("release workflow", () => {
       steps.some(
         (step) =>
           typeof step.run === "string" &&
+          step.run.includes("image_ref=${config.image.repository}:${config.image.tag}") &&
+          step.run.includes("image_repo=${config.image.repository}")
+      )
+    ).toBe(true);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === "Emit SLSA provenance" &&
+          step.with &&
+          (step.with as Record<string, unknown>)["subject-name"] ===
+            "${{ steps.release_meta.outputs.image_repo }}" &&
+          (step.with as Record<string, unknown>)["subject-digest"] ===
+            "${{ steps.image_digest.outputs.digest }}"
+      )
+    ).toBe(true);
+    expect(
+      steps.some(
+        (step) =>
+          typeof step.run === "string" &&
           step.run.includes("./scripts/build-image.sh") &&
           step.run.includes("--push")
       )
