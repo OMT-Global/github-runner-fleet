@@ -1,6 +1,6 @@
 {
   "name": "github-runner-fleet",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "license": "MIT",
   "description": "Self-hosted GitHub runner fleet for Synology shell-only pools, Linux Docker hosts, and ephemeral Lume macOS VMs.",
@@ -49,7 +49,8 @@
     "validate-lume-config": "tsx src/cli.ts validate-lume-config",
     "validate-lume-github": "tsx src/cli.ts validate-lume-github",
     "validate-github": "tsx src/cli.ts validate-github",
-    "validate-image": "tsx src/cli.ts validate-image"
+    "validate-image": "tsx src/cli.ts validate-image",
+    "report:crap": "npm run test:coverage && node scripts/report-crap.mjs"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

@@ -14,7 +14,7 @@ describe("renderLinuxDockerCompose", () => {
     const service = payload.services["linux-docker-private-runner-01"];
     expect(service.environment).toMatchObject({
       RUNNER_GROUP: "linux-docker-private",
-      RUNNER_LABELS: "linux,docker-capable,private,x64",
+      RUNNER_LABELS: "linux,docker-capable,x64,private",
       RUNNER_WORK_DIR:
         "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/_work",
       RUNNER_TEMP:
@@ -38,7 +38,7 @@ function configFixture(): ResolvedLinuxDockerConfig {
     version: 1,
     image: {
       repository: "ghcr.io/example/github-runner-fleet",
-      tag: "0.1.9"
+      tag: "0.1.10"
     },
     pools: [
       {
@@ -48,7 +48,7 @@ function configFixture(): ResolvedLinuxDockerConfig {
         runnerGroup: "linux-docker-private",
         repositoryAccess: "selected",
         allowedRepositories: ["example/private-app"],
-        labels: ["linux", "docker-capable", "private", "x64"],
+        labels: ["linux", "docker-capable", "x64", "private"],
         size: 1,
         architecture: "amd64",
         runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private",
@@ -56,7 +56,7 @@ function configFixture(): ResolvedLinuxDockerConfig {
           cpus: "4",
           memory: "8g"
         },
-        imageRef: "ghcr.io/example/github-runner-fleet:0.1.9"
+        imageRef: "ghcr.io/example/github-runner-fleet:0.1.10"
       }
     ]
   };

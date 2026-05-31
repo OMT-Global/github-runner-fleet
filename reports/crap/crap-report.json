@@ -1,0 +1,226 @@
+{
+  "generatedAt": "2026-04-25T16:19:30.678Z",
+  "totalFunctions": 421,
+  "top": [
+    {
+      "file": "src/cli.ts",
+      "name": "renderPruneStaleRunnersReport",
+      "start": 2144,
+      "end": 2166,
+      "complexity": 7,
+      "coveredLines": 0,
+      "executableLines": 16,
+      "coveragePct": 0,
+      "crap": 56
+    },
+    {
+      "file": "src/lib/env.ts",
+      "name": "loadDeploymentEnv",
+      "start": 58,
+      "end": 282,
+      "complexity": 42,
+      "coveredLines": 203,
+      "executableLines": 203,
+      "coveragePct": 1,
+      "crap": 42
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "main",
+      "start": 82,
+      "end": 194,
+      "complexity": 35,
+      "coveredLines": 108,
+      "executableLines": 108,
+      "coveragePct": 1,
+      "crap": 35
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "runCommand",
+      "start": 2633,
+      "end": 2654,
+      "complexity": 5,
+      "coveredLines": 0,
+      "executableLines": 14,
+      "coveragePct": 0,
+      "crap": 30
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "doctorCommand",
+      "start": 227,
+      "end": 252,
+      "complexity": 6,
+      "coveredLines": 5,
+      "executableLines": 22,
+      "coveragePct": 0.22727272727272727,
+      "crap": 22.610443275732532
+    },
+    {
+      "file": "src/lib/windows-config.ts",
+      "name": "loadWindowsDockerConfig",
+      "start": 115,
+      "end": 195,
+      "complexity": 22,
+      "coveredLines": 73,
+      "executableLines": 73,
+      "coveragePct": 1,
+      "crap": 22
+    },
+    {
+      "file": "src/lib/windows-config.ts",
+      "name": "<anonymous@126>",
+      "start": 126,
+      "end": 185,
+      "complexity": 22,
+      "coveredLines": 60,
+      "executableLines": 60,
+      "coveragePct": 1,
+      "crap": 22
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "drainBeforeTeardown",
+      "start": 1938,
+      "end": 1975,
+      "complexity": 4,
+      "coveredLines": 0,
+      "executableLines": 30,
+      "coveragePct": 0,
+      "crap": 20
+    },
+    {
+      "file": "src/lib/audit.ts",
+      "name": "auditMaxSizeBytesFromEnv",
+      "start": 41,
+      "end": 54,
+      "complexity": 4,
+      "coveredLines": 0,
+      "executableLines": 9,
+      "coveragePct": 0,
+      "crap": 20
+    },
+    {
+      "file": "src/lib/audit.ts",
+      "name": "readJsonFromStdin",
+      "start": 109,
+      "end": 122,
+      "complexity": 4,
+      "coveredLines": 0,
+      "executableLines": 9,
+      "coveragePct": 0,
+      "crap": 20
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "rotateTokenCommand",
+      "start": 358,
+      "end": 501,
+      "complexity": 17,
+      "coveredLines": 137,
+      "executableLines": 137,
+      "coveragePct": 1,
+      "crap": 17
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "scaleCommand",
+      "start": 517,
+      "end": 631,
+      "complexity": 13,
+      "coveredLines": 110,
+      "executableLines": 110,
+      "coveragePct": 1,
+      "crap": 13
+    },
+    {
+      "file": "src/lib/synology-status.ts",
+      "name": "formatSynologyStatusText",
+      "start": 103,
+      "end": 133,
+      "complexity": 13,
+      "coveredLines": 24,
+      "executableLines": 24,
+      "coveragePct": 1,
+      "crap": 13
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "collectConfigDiffDesiredRunners",
+      "start": 2212,
+      "end": 2303,
+      "complexity": 12,
+      "coveredLines": 81,
+      "executableLines": 81,
+      "coveragePct": 1,
+      "crap": 12
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "parsePositiveInteger",
+      "start": 2376,
+      "end": 2382,
+      "complexity": 3,
+      "coveredLines": 0,
+      "executableLines": 5,
+      "coveragePct": 0,
+      "crap": 12
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "stopLumeSupervisor",
+      "start": 2568,
+      "end": 2575,
+      "complexity": 3,
+      "coveredLines": 0,
+      "executableLines": 6,
+      "coveragePct": 0,
+      "crap": 12
+    },
+    {
+      "file": "src/cli.ts",
+      "name": "stopLumeWorker",
+      "start": 2577,
+      "end": 2583,
+      "complexity": 3,
+      "coveredLines": 0,
+      "executableLines": 5,
+      "coveragePct": 0,
+      "crap": 12
+    },
+    {
+      "file": "src/lib/drain.ts",
+      "name": "drainRunnerPool",
+      "start": 40,
+      "end": 128,
+      "complexity": 12,
+      "coveredLines": 84,
+      "executableLines": 84,
+      "coveragePct": 1,
+      "crap": 12
+    },
+    {
+      "file": "src/lib/github.ts",
+      "name": "verifyContainerImageTag",
+      "start": 620,
+      "end": 691,
+      "complexity": 11,
+      "coveredLines": 60,
+      "executableLines": 63,
+      "coveragePct": 0.9523809523809523,
+      "crap": 11.013065543677788
+    },
+    {
+      "file": "src/lib/audit.ts",
+      "name": "normalizeAuditRecord",
+      "start": 56,
+      "end": 95,
+      "complexity": 11,
+      "coveredLines": 30,
+      "executableLines": 30,
+      "coveragePct": 1,
+      "crap": 11
+    }
+  ]
+}

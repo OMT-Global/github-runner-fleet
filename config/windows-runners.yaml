@@ -10,7 +10,7 @@ pools:
     host: ${WINDOWS_DOCKER_HOST:-windows-host.internal}
     sshUser: ${WINDOWS_DOCKER_USERNAME:-administrator}
     sshPort: ${WINDOWS_DOCKER_PORT:-22}
-    image: ghcr.io/example/github-runner-fleet:0.1.9-windows
+    image: ghcr.io/example/github-runner-fleet:0.1.10-windows
     runnerRoot: ${WINDOWS_DOCKER_RUNNER_BASE_DIR}/pools/windows-private
     labels:
       - x64

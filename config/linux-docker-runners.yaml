@@ -1,20 +1,38 @@
 version: 1
 image:
-  repository: ghcr.io/OMT-Global/github-runner-fleet
-  tag: 0.1.9
+  repository: ghcr.io/omt-global/github-runner-fleet
+  tag: 0.1.11
 
 pools:
-  - key: linux-docker-private
+  - key: linux-private
     organization: OMT-Global
-    runnerGroup: linux-docker-private
+    runnerGroup: linux-private
     repositoryAccess: selected
     allowedRepositories:
       - OMT-Global/github-runner-fleet
     labels:
       - x64
-    size: 2
+      - private
+    size: 10
     architecture: amd64
-    runnerRoot: ${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-docker-private
+    runnerRoot: ${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-private
+    resources:
+      cpus: "4"
+      memory: 8g
+  - key: linux-public
+    visibility: public
+    organization: OMT-Global
+    runnerGroup: linux-public
+    repositoryAccess: selected
+    allowedRepositories:
+      - OMT-Global/axiom
+      - OMT-Global/github-runner-fleet
+    labels:
+      - x64
+      - public
+    size: 5
+    architecture: amd64
+    runnerRoot: ${LINUX_DOCKER_RUNNER_BASE_DIR}/pools/linux-public
     resources:
       cpus: "4"
       memory: 8g

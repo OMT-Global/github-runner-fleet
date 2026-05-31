@@ -174,7 +174,7 @@ export function loadDeploymentEnv(
     : undefined;
   const composeProjectName =
     merged.COMPOSE_PROJECT_NAME || "github-runner-fleet";
-  const runnerVersion = normalizeRunnerVersion(merged.RUNNER_VERSION || "2.333.0");
+  const runnerVersion = normalizeRunnerVersion(merged.RUNNER_VERSION || "2.334.0");
 
   return {
     githubPat,

@@ -149,7 +149,7 @@ If you set `resources.cpus` or `resources.pidsLimit`, `validate-config` and `ren
 7. Build the runner image:
 
 ```bash
-./scripts/build-image.sh ghcr.io/your-org/github-runner-fleet:0.1.9 --push
+./scripts/build-image.sh ghcr.io/your-org/github-runner-fleet:0.1.10 --push
 ```
 
 When `--push` is used without an explicit `--platform`, the helper now defaults to `linux/amd64,linux/arm64` so the same tag works across Intel and ARM Synology models. A single-arch tag combined with the wrong `platform` or `architecture` setting will fail at startup with `Exec format error`.

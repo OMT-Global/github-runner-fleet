@@ -11,7 +11,7 @@ import type { DeploymentEnv } from "./env.js";
 
 export interface LinuxDockerPoolConfig {
   key: string;
-  visibility: "private";
+  visibility: "private" | "public";
   organization: string;
   runnerGroup: string;
   repositoryAccess: RepositoryAccess;
@@ -121,7 +121,7 @@ export function loadLinuxDockerConfig(
 
     return {
       ...pool,
-      visibility: "private" as const,
+      visibility: pool.visibility,
       labels: uniqueLabels(pool.labels),
       resources: {
         cpus: pool.resources.cpus,
@@ -140,7 +140,7 @@ export function loadLinuxDockerConfig(
 }
 
 function uniqueLabels(labels: string[]): string[] {
-  return [...new Set(["linux", "docker-capable", "private", ...labels])];
+  return [...new Set(["linux", "docker-capable", ...labels])];
 }
 
 function interpolate(value: unknown, env: Record<string, string>): unknown {
