@@ -15,7 +15,7 @@ describe("workflow cookbook docs", () => {
       "| Public fork pull requests | No | No | No | No | Yes |"
     );
 
-    expect(cookbook).toContain("## Recipe: trusted Node job on shell-safe self-hosted Linux");
+    expect(cookbook).toContain("## Recipe: trusted Node job on the Synology shell-only pool");
     expect(cookbook).toContain("## Recipe: trusted jobs on self-hosted, fork PRs on GitHub-hosted");
     expect(cookbook).toContain("## Recipe: Python 3.12 on shell-safe self-hosted Linux");
     expect(cookbook).toContain("## Recipe: Terraform validation on shell-safe self-hosted Linux");
