@@ -46,6 +46,8 @@ describe("Lume pool scripts", () => {
     expect(installRuntime).toContain("Library/Application Support/github-runner-fleet/controller");
     expect(installRuntime).toContain("rsync -a --delete");
     expect(installRuntime).toContain("pnpm --dir");
+    expect(installRuntime).toContain("RUNNER_VERSION=2.334.0");
+    expect(installRuntime).not.toContain("RUNNER_VERSION=2.333.0");
     expect(installRuntime).toContain("install_lume_controller_runtime");
     expect(installRuntime).toContain('if [[ -f "${runtime_env}" ]]');
     expect(installRuntime.indexOf('if [[ -f "${runtime_env}" ]]')).toBeLessThan(

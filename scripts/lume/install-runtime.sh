@@ -67,7 +67,7 @@ GITHUB_API_URL=https://api.github.com
 LUME_RUNNER_BASE_DIR='${lume_base_dir}'
 LUME_RUNNER_ENV_FILE='${lume_base_dir}/runner.env'
 COMPOSE_PROJECT_NAME=github-runner-fleet
-RUNNER_VERSION=2.333.0
+RUNNER_VERSION=2.334.0
 EOF
   install -m 0600 "${temp_path}" "${env_path}"
   rm -f "${temp_path}"
