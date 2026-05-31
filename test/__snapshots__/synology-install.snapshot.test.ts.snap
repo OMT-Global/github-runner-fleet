@@ -24,7 +24,7 @@ services:
       RUNNER_GROUP: synology-private
       FLEET_POOL_KEY: synology-private
       FLEET_PLANE: synology
-      RUNNER_LABELS: synology,shell-only,private
+      RUNNER_LABELS: linux,shell-only,private,synology
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: all
       RUNNER_STATE_DIR: /volume1/docker/github-runner-fleet/pools/synology-private/runner-01
@@ -66,7 +66,7 @@ services:
       RUNNER_GROUP: synology-private
       FLEET_POOL_KEY: synology-private
       FLEET_PLANE: synology
-      RUNNER_LABELS: synology,shell-only,private
+      RUNNER_LABELS: linux,shell-only,private,synology
       RUNNER_VISIBILITY: private
       RUNNER_REPOSITORY_ACCESS: all
       RUNNER_STATE_DIR: /volume1/docker/github-runner-fleet/pools/synology-private/runner-02
@@ -108,7 +108,7 @@ services:
       RUNNER_GROUP: synology-public
       FLEET_POOL_KEY: synology-public
       FLEET_PLANE: synology
-      RUNNER_LABELS: synology,shell-only,public
+      RUNNER_LABELS: linux,shell-only,public,synology
       RUNNER_VISIBILITY: public
       RUNNER_REPOSITORY_ACCESS: selected
       RUNNER_STATE_DIR: /volume1/docker/github-runner-fleet/pools/synology-public/runner-01

@@ -205,7 +205,7 @@ function uniqueLabels(
   labels: string[],
   visibility: RunnerVisibility
 ): string[] {
-  const merged = ["synology", "shell-only", visibility, ...labels];
+  const merged = ["linux", "shell-only", visibility, "synology", ...labels];
   return [...new Set(merged)];
 }
 

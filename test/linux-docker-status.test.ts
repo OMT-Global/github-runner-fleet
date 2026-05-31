@@ -166,7 +166,7 @@ function configFixture(): ResolvedLinuxDockerConfig {
         runnerGroup: "linux-docker-private",
         repositoryAccess: "all",
         allowedRepositories: [],
-        labels: ["linux", "docker-capable", "private", "x64"],
+        labels: ["linux", "shell-only", "synology", "docker-capable", "private", "x64"],
         size: 1,
         architecture: "amd64",
         runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private",

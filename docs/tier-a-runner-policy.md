@@ -28,8 +28,10 @@ This document is the runner-boundary control plane for Tier A `OMT-Global` repos
 
 ## Workload Rules
 
-- Synology shell-only runners are for shell-safe jobs only.
-- Linux Docker runners are for `container:`, service-container, Docker daemon, Buildx, and similar workloads.
+- Shell-safe Linux-class runners carry `linux`, `shell-only`, and `private` or `public` labels so default shell-safe jobs can land on any eligible Synology or Linux pool.
+- Private Linux runners also carry the `synology` compatibility label so existing private Synology-labeled shell jobs can overflow onto Linux capacity.
+- Do not treat `synology` as a hard NAS pin after this compatibility rollout.
+- Linux Docker runners retain the `docker-capable` plane label for `container:`, service-container, Docker daemon, Buildx, and similar workloads.
 - Lume macOS runners are for native macOS/Xcode jobs.
 - GitHub-hosted remains the default for public untrusted PRs unless the self-hosted class is explicitly hardened for that trust level.
 

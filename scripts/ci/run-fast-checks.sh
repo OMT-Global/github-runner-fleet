@@ -3,8 +3,8 @@
 #
 # Heavier validation (coverage thresholds, mutation testing) lives in
 # scripts/ci/run-extended-validation.sh and the Extended Validation
-# workflow. Keep this script shell-safe for the self-hosted Synology
-# public runner: no sudo, no extra package installs, only the built-in
+# workflow. Keep this script shell-safe for self-hosted shell-safe
+# runners: no sudo, no extra package installs, only the built-in
 # Node/Corepack toolchain.
 set -euo pipefail
 

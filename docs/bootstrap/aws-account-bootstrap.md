@@ -40,7 +40,7 @@ This repo's bootstrap policy expects environment review gates to be part of the 
 
 Use the runner plane that matches the workload instead of stretching a shell-only runner into cloud automation it should not own:
 
-- **Synology shell-only** for bash, docs, Terraform validate/plan, and light CLI jobs
+- **Shared shell-safe Linux** for bash, docs, Terraform validate/plan, and light CLI jobs
 - **Linux Docker** for container builds, service containers, and heavier integration work
 - **Lume macOS** only when the deployment or validation is truly macOS-specific
 - **GitHub-hosted** when the workflow does not need private network reachability or private runners

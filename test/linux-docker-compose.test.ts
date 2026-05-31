@@ -14,7 +14,7 @@ describe("renderLinuxDockerCompose", () => {
     const service = payload.services["linux-docker-private-runner-01"];
     expect(service.environment).toMatchObject({
       RUNNER_GROUP: "linux-docker-private",
-      RUNNER_LABELS: "linux,docker-capable,private,x64",
+      RUNNER_LABELS: "linux,shell-only,synology,docker-capable,private,x64",
       RUNNER_WORK_DIR:
         "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/_work",
       RUNNER_TEMP:
@@ -75,7 +75,7 @@ function configFixture(): ResolvedLinuxDockerConfig {
         runnerGroup: "linux-docker-private",
         repositoryAccess: "selected",
         allowedRepositories: ["example/private-app"],
-        labels: ["linux", "docker-capable", "private", "x64"],
+        labels: ["linux", "shell-only", "synology", "docker-capable", "private", "x64"],
         size: 1,
         architecture: "amd64",
         runnerRoot: "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private",
