@@ -36,11 +36,15 @@ describe("security and reusable workflows", () => {
     ) as { on: Record<string, unknown>; permissions: Record<string, string>; jobs: Record<string, Record<string, unknown>> };
 
     expect(workflow.on).not.toHaveProperty("pull_request");
-    expect(workflow.permissions).toMatchObject({
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.jobs.scorecard["runs-on"]).toBe("ubuntu-latest");
+    expect(workflow.jobs.scorecard.permissions).toMatchObject({
       "id-token": "write",
       "security-events": "write"
     });
-    expect(workflow.jobs.scorecard["runs-on"]).toBe("ubuntu-latest");
+    expect(String(JSON.stringify(workflow))).toContain(
+      "ossf/scorecard-action@v2.4.3"
+    );
     expect(String(JSON.stringify(workflow))).toContain("publish_results");
   });
 
