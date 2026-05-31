@@ -4,7 +4,6 @@ import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
 const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
-const macosXcodeRunner = ["self-hosted", "macOS", "ARM64", "xcode"];
 
 describe("CI workflow", () => {
   test("runs mutation testing in extended validation and uploads the report", () => {
@@ -291,7 +290,7 @@ describe("CI workflow", () => {
     expect(String(syntaxStep?.run)).toContain("docker/runner-entrypoint.ps1");
   });
 
-  test("keeps the Lume macOS pool contract on self-hosted macOS runners", () => {
+  test("keeps the Lume macOS pool contract on GitHub-hosted runners", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -310,7 +309,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Validate Lume shell scripts"
     );
 
-    expect(lumeJob["runs-on"]).toEqual(macosXcodeRunner);
+    expect(lumeJob["runs-on"]).toBe("ubuntu-latest");
     expect(String(renderStep?.run)).toContain("pnpm validate-lume-config");
     expect(String(renderStep?.run)).toContain("pnpm render-lume-runner-manifest");
     expect(String(lifecycleStep?.run)).toContain("pnpm install-lume-project");
