@@ -61,7 +61,7 @@ describe("release workflow", () => {
     ).toBe(true);
     expect(steps.some((step) => step.uses === "anchore/sbom-action@v0")).toBe(true);
     expect(
-      steps.some((step) => step.uses === "actions/attest-build-provenance@v3")
+      steps.some((step) => step.uses === "actions/attest-build-provenance@v4")
     ).toBe(true);
     expect(
       steps.some(
