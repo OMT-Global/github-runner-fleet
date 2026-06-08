@@ -175,7 +175,7 @@ jobs:
             "${{ steps.release_meta.outputs.image_ref }}@${{ steps.image_digest.outputs.digest }}"
 
       - name: Emit SLSA provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ steps.release_meta.outputs.image_repo }}
           subject-digest: ${{ steps.image_digest.outputs.digest }}
