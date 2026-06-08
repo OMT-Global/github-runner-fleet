@@ -86,6 +86,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: ./actions/setup-shell-safe-node
+        with:
+          node-version: 24.14.1
+
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
 
@@ -97,6 +101,10 @@ jobs:
     if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.app == 'true'
     steps:
       - uses: actions/checkout@v6
+
+      - uses: ./actions/setup-shell-safe-node
+        with:
+          node-version: 24.14.1
 
       - name: Run extended validation
         run: bash scripts/ci/run-extended-validation.sh
