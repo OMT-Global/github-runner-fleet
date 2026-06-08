@@ -6,6 +6,36 @@ import { describe, expect, test } from "vitest";
 const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
 
 describe("CI workflow", () => {
+  test("bootstraps shell-safe Node before extended validation script jobs", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(
+        path.resolve(".github/workflows/extended-validation.yml"),
+        "utf8"
+      )
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    for (const jobName of ["fast-checks", "extended-checks"]) {
+      const job = workflow.jobs[jobName];
+      const steps = job.steps as Array<Record<string, unknown>>;
+      const setupNodeIndex = steps.findIndex(
+        (step) => step.uses === "./actions/setup-shell-safe-node"
+      );
+      const scriptIndex = steps.findIndex(
+        (step) =>
+          typeof step.run === "string" &&
+          step.run.includes("scripts/ci/run-")
+      );
+
+      expect(setupNodeIndex).toBeGreaterThan(-1);
+      expect(setupNodeIndex).toBeLessThan(scriptIndex);
+      expect(steps[setupNodeIndex]?.with).toMatchObject({
+        "node-version": "24.14.1"
+      });
+    }
+  });
+
   test("runs mutation testing in extended validation and uploads the report", () => {
     const workflow = YAML.parse(
       fs.readFileSync(
@@ -104,9 +134,17 @@ describe("CI workflow", () => {
     const trustedJob = workflow.jobs.test_self_hosted_trusted;
     const steps = trustedJob.steps as Array<Record<string, unknown>>;
     const setupNodeStep = steps.find(
-      (step) => step.uses === "actions/setup-node@v6"
+      (step) => step.uses === "./actions/setup-shell-safe-node"
+    );
+    const setupNodeIndex = steps.findIndex(
+      (step) => step.uses === "./actions/setup-shell-safe-node"
     );
     const pnpmStep = steps.find((step) => step.uses === "pnpm/action-setup@v6");
+    const linuxDockerSteps = workflow.jobs.linux_docker_contract_trusted
+      .steps as Array<Record<string, unknown>>;
+    const linuxDockerSetupNodeStep = linuxDockerSteps.find(
+      (step) => step.uses === "./actions/setup-shell-safe-node"
+    );
     const forkSteps = workflow.jobs.test_public_fork_pr.steps as Array<
       Record<string, unknown>
     >;
@@ -119,14 +157,15 @@ describe("CI workflow", () => {
       version: "10.32.1"
     });
     expect(setupNodeStep?.with).toMatchObject({
-      "node-version": "24"
+      "node-version": "24.14.1"
+    });
+    expect(linuxDockerSetupNodeStep?.with).toMatchObject({
+      "node-version": "24.14.1"
     });
     expect(forkSetupNodeStep?.with).toMatchObject({
       "node-version": "24"
     });
-    expect(steps.indexOf(setupNodeStep ?? {})).toBeLessThan(
-      steps.indexOf(pnpmStep ?? {})
-    );
+    expect(setupNodeIndex).toBeLessThan(steps.indexOf(pnpmStep ?? {}));
   });
 
   test("verifies the broader shell-safe toolchain contract on self-hosted runners", () => {
