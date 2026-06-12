@@ -71,7 +71,7 @@ jobs:
           fi
       - uses: sigstore/cosign-installer@v4.1.2
       - run: cosign sign --yes ${{ inputs.image-ref }}@${{ steps.build.outputs.digest }}
-      - uses: actions/attest-build-provenance@v3
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ inputs.image-ref }}
           subject-digest: ${{ steps.build.outputs.digest }}
