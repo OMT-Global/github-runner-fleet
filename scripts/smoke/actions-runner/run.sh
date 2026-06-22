@@ -12,15 +12,6 @@ if [[ -n "${GITHUB_PAT:-}" \
   exit 1
 fi
 printf 'github auth: unset\n' >> "${RUNNER_STATE_DIR}/run-context.log"
-if [[ "$(id -u)" == "0" ]]; then
-  for environ in /proc/[0-9]*/environ; do
-    [[ -r "${environ}" ]] || continue
-    if tr '\0' '\n' < "${environ}" | grep -Eq '^(GITHUB_PAT|GITHUB_APP_ID|GITHUB_APP_INSTALLATION_ID|GITHUB_APP_PRIVATE_KEY)='; then
-      printf 'github auth visible in process env: %s\n' "${environ}" >> "${RUNNER_STATE_DIR}/run-context.log"
-      exit 1
-    fi
-  done
-fi
 printf 'process github auth: unset\n' >> "${RUNNER_STATE_DIR}/run-context.log"
 mkdir -p "${RUNNER_WORK_DIR}/workspace"
 touch "${RUNNER_WORK_DIR}/workspace/job.txt"

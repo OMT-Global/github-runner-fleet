@@ -18,6 +18,18 @@ function makeTempRoot() {
   return tempRoot;
 }
 
+function withoutGitHubAuthEnv(): NodeJS.ProcessEnv {
+  const {
+    GITHUB_PAT: _githubPat,
+    GITHUB_APP_ID: _githubAppId,
+    GITHUB_APP_INSTALLATION_ID: _githubAppInstallationId,
+    GITHUB_APP_PRIVATE_KEY: _githubAppPrivateKey,
+    ...env
+  } = process.env;
+
+  return env;
+}
+
 // Resolve as soon as the mock API prints its readiness sentinel on
 // stdout. This is event-driven (no fixed-interval polling), and rejects
 // immediately if the child fails to spawn or exits early, so the only
@@ -124,7 +136,7 @@ describe("runner registration smoke harness", () => {
     const resolvedRunnerHome = fs.realpathSync(runnerHome);
 
     const env = {
-      ...process.env,
+      ...withoutGitHubAuthEnv(),
       RUNNER_EXECUTION_MODE: "runner",
       RUNNER_STATE_DIR: tempRoot,
       RUNNER_WORK_DIR: workDir,

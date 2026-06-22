@@ -10,7 +10,7 @@ runner_configured="false"
 runner_exit_code=0
 runner_exec_mode="runner"
 RUNNER_AUDIT_DEREGISTER_EVENT="runner_deregistered"
-github_pat_for_cleanup=""
+github_token_for_cleanup=""
 github_app_id_for_cleanup=""
 github_app_installation_id_for_cleanup=""
 github_app_private_key_for_cleanup=""
@@ -85,7 +85,7 @@ prepare_runner_home() {
 }
 
 cleanup_runner() {
-  export GITHUB_PAT="${github_pat_for_cleanup}"
+  export GITHUB_PAT="${github_token_for_cleanup}"
   export GITHUB_APP_ID="${github_app_id_for_cleanup}"
   export GITHUB_APP_INSTALLATION_ID="${github_app_installation_id_for_cleanup}"
   export GITHUB_APP_PRIVATE_KEY="${github_app_private_key_for_cleanup}"
@@ -94,7 +94,7 @@ cleanup_runner() {
 }
 
 stash_github_auth_for_cleanup() {
-  github_pat_for_cleanup="${GITHUB_PAT:-}"
+  github_token_for_cleanup="${GITHUB_PAT:-}"
   github_app_id_for_cleanup="${GITHUB_APP_ID:-}"
   github_app_installation_id_for_cleanup="${GITHUB_APP_INSTALLATION_ID:-}"
   github_app_private_key_for_cleanup="${GITHUB_APP_PRIVATE_KEY:-}"
