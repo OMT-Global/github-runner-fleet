@@ -182,6 +182,7 @@ run_smoke_case() {
   grep -q "config path: /tmp/runner-state/runner-home" "${state_dir}/config-context.log"
   grep -q "run path: /tmp/runner-state/runner-home" "${state_dir}/run-context.log"
   grep -q "github auth: unset" "${state_dir}/run-context.log"
+  grep -q "process github auth: unset" "${state_dir}/run-context.log"
   grep -q "runner writable home: /tmp/runner-state/runner-home" "${runner_stdout}"
   grep -q "^job output$" "${state_dir}/logs/runner.log"
   grep -q "run.sh stub executed" "${state_dir}/run.log"
