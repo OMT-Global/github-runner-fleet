@@ -275,6 +275,31 @@ describe("CI workflow", () => {
     expect(workflow.jobs["ci-gate"]["runs-on"]).toEqual(shellSafePublicRunner);
   });
 
+  test("restricts Claude comment triggers to trusted repository actors", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/claude.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const claudeJob = workflow.jobs.claude;
+    const condition = String(claudeJob.if);
+
+    expect(claudeJob["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(condition).toContain("github.event_name == 'workflow_dispatch'");
+    expect(condition).toContain(
+      "contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)"
+    );
+    expect(condition).toContain(
+      "contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.review.author_association)"
+    );
+    expect(condition).toContain("contains(github.event.comment.body, '@claude')");
+    expect(condition).toContain("contains(github.event.review.body, '@claude')");
+    expect(condition).not.toContain("FIRST_TIME_CONTRIBUTOR");
+    expect(condition).not.toContain("CONTRIBUTOR");
+    expect(condition).not.toContain("NONE");
+  });
+
   test("renders the Linux Docker contract on shell-safe self-hosted Linux", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
