@@ -213,7 +213,10 @@ describe("runner registration smoke harness", () => {
       expect(windowsEntrypoint).toContain(`\"${name}\"`);
     }
     expect(linuxEntrypoint).toContain("run_actions_runner 2>&1");
-    expect(windowsEntrypoint).toContain("exit (Invoke-ActionsRunner)");
+    expect(windowsEntrypoint).toContain("Out-Null");
+    expect(windowsEntrypoint).toContain("$runnerExitCode = Invoke-ActionsRunner");
+    expect(windowsEntrypoint).toContain("exit $runnerExitCode");
+    expect(windowsEntrypoint).not.toContain("exit (Invoke-ActionsRunner)");
     expect(macosBootstrap).toContain(
       "unset GITHUB_PAT GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY"
     );

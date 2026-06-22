@@ -90,8 +90,11 @@ function Invoke-ActionsRunner {
   }
 
   try {
-    & .\run.cmd 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append
-    return $LASTEXITCODE
+    & .\run.cmd 2>&1 |
+      Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append |
+      Out-Null
+    $runnerExitCode = $LASTEXITCODE
+    return $runnerExitCode
   } finally {
     foreach ($name in $credentialNames) {
       [Environment]::SetEnvironmentVariable($name, $savedCredentials[$name], "Process")
@@ -203,7 +206,8 @@ try {
     & .\config.cmd @configArgs
     $script:RunnerConfigured = $true
     Write-RunnerLog "starting runner $env:RUNNER_NAME"
-    exit (Invoke-ActionsRunner)
+    $runnerExitCode = Invoke-ActionsRunner
+    exit $runnerExitCode
   } finally {
     Pop-Location
   }
