@@ -74,6 +74,31 @@ function Request-RunnerToken {
   return $response.token
 }
 
+
+function Invoke-ActionsRunner {
+  $credentialNames = @(
+    "GITHUB_PAT",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_APP_PRIVATE_KEY"
+  )
+  $savedCredentials = @{}
+
+  foreach ($name in $credentialNames) {
+    $savedCredentials[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    [Environment]::SetEnvironmentVariable($name, $null, "Process")
+  }
+
+  try {
+    & .\run.cmd 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append
+    return $LASTEXITCODE
+  } finally {
+    foreach ($name in $credentialNames) {
+      [Environment]::SetEnvironmentVariable($name, $savedCredentials[$name], "Process")
+    }
+  }
+}
+
 function Clear-RunnerState {
   Remove-Item -Force -ErrorAction SilentlyContinue `
     (Join-Path $env:RUNNER_HOME ".runner"), `
@@ -178,8 +203,7 @@ try {
     & .\config.cmd @configArgs
     $script:RunnerConfigured = $true
     Write-RunnerLog "starting runner $env:RUNNER_NAME"
-    & .\run.cmd 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append
-    exit $LASTEXITCODE
+    exit (Invoke-ActionsRunner)
   } finally {
     Pop-Location
   }
