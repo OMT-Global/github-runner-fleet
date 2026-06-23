@@ -5,6 +5,14 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
 const tempRoots: string[] = [];
+const runnerCredentialNames = [
+  "GITHUB_PAT",
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "GITHUB_APP_ID",
+  "GITHUB_APP_INSTALLATION_ID",
+  "GITHUB_APP_PRIVATE_KEY",
+];
 
 afterEach(() => {
   for (const tempRoot of tempRoots.splice(0)) {
@@ -16,6 +24,14 @@ function makeTempRoot() {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "runner-smoke-"));
   tempRoots.push(tempRoot);
   return tempRoot;
+}
+
+function withoutRunnerCredentials(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const scrubbedEnv = { ...env };
+  for (const name of runnerCredentialNames) {
+    delete scrubbedEnv[name];
+  }
+  return scrubbedEnv;
 }
 
 // Resolve as soon as the mock API prints its readiness sentinel on
@@ -124,7 +140,7 @@ describe("runner registration smoke harness", () => {
     const resolvedRunnerHome = fs.realpathSync(runnerHome);
 
     const env = {
-      ...process.env,
+      ...withoutRunnerCredentials(process.env),
       RUNNER_EXECUTION_MODE: "runner",
       RUNNER_STATE_DIR: tempRoot,
       RUNNER_WORK_DIR: workDir,
@@ -178,6 +194,34 @@ describe("runner registration smoke harness", () => {
       .toContain("run mode: runner");
     expect(fs.existsSync(path.join(runnerHome, ".runner"))).toBe(true);
     expect(fs.existsSync(path.join(workDir, "workspace", "job.txt"))).toBe(true);
+  });
+
+  test("scrubs GitHub credentials before launching runner jobs", () => {
+    const linuxEntrypoint = fs.readFileSync(
+      path.resolve("docker/runner-entrypoint.sh"),
+      "utf8"
+    );
+    const windowsEntrypoint = fs.readFileSync(
+      path.resolve("docker/runner-entrypoint.ps1"),
+      "utf8"
+    );
+    const macosBootstrap = fs.readFileSync(
+      path.resolve("scripts/guest/macos-runner-bootstrap.sh"),
+      "utf8"
+    );
+
+    for (const name of runnerCredentialNames) {
+      expect(linuxEntrypoint).toContain(`-u ${name}`);
+      expect(windowsEntrypoint).toContain(`\"${name}\"`);
+    }
+    expect(linuxEntrypoint).toContain("run_actions_runner 2>&1");
+    expect(windowsEntrypoint).toContain("Out-Null");
+    expect(windowsEntrypoint).toContain("$runnerExitCode = Invoke-ActionsRunner");
+    expect(windowsEntrypoint).toContain("exit $runnerExitCode");
+    expect(windowsEntrypoint).not.toContain("exit (Invoke-ActionsRunner)");
+    expect(macosBootstrap).toContain(
+      "unset GITHUB_PAT GITHUB_TOKEN GH_TOKEN GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY"
+    );
   });
 
   test("wires the smoke script to run both execution modes and verify cleanup", () => {

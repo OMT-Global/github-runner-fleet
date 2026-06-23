@@ -11,7 +11,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
-corepack enable
+corepack_bin_dir="${COREPACK_BIN_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/corepack-bin}"
+mkdir -p "${corepack_bin_dir}"
+corepack enable --install-directory "${corepack_bin_dir}"
+export PATH="${corepack_bin_dir}:${PATH}"
 corepack prepare pnpm@10.32.1 --activate
 
 pnpm install --frozen-lockfile

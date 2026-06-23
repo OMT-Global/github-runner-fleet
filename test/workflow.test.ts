@@ -247,7 +247,7 @@ describe("CI workflow", () => {
     }
     expect(
       (workflow.jobs["fast-checks"].steps as Array<Record<string, unknown>>).some(
-        (step) => step.uses === "actions/setup-node@v6"
+        (step) => step.uses === "./actions/setup-shell-safe-node"
       )
     ).toBe(true);
 

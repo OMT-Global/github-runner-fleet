@@ -16,11 +16,21 @@ run_runner_bash() {
   shift || true
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
-    env RUNNER_ALLOW_RUNASROOT=1 RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" bash -lc "${command}"
+    env "$@" RUNNER_ALLOW_RUNASROOT=1 RUNNER_EXECUTION_MODE="${runner_exec_mode}" bash -lc "${command}"
     return
   fi
 
-  env RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" gosu runner bash -lc "${command}"
+  env "$@" RUNNER_EXECUTION_MODE="${runner_exec_mode}" gosu runner bash -lc "${command}"
+}
+
+run_actions_runner() {
+  run_runner_bash "cd '${RUNNER_HOME}' && exec ./run.sh" \
+    -u GITHUB_PAT \
+    -u GITHUB_TOKEN \
+    -u GH_TOKEN \
+    -u GITHUB_APP_ID \
+    -u GITHUB_APP_INSTALLATION_ID \
+    -u GITHUB_APP_PRIVATE_KEY
 }
 
 cleanup_local_state() {
@@ -254,5 +264,4 @@ runner_configured="true"
 audit_event runner_registered
 
 log "starting runner ${RUNNER_NAME}"
-run_runner_bash "cd '${RUNNER_HOME}' && exec ./run.sh" \
-  2>&1 | tee -a "${RUNNER_LOG_DIR}/runner.log"
+run_actions_runner 2>&1 | tee -a "${RUNNER_LOG_DIR}/runner.log"
