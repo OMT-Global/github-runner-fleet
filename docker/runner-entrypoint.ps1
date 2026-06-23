@@ -74,6 +74,36 @@ function Request-RunnerToken {
   return $response.token
 }
 
+
+function Invoke-ActionsRunner {
+  $credentialNames = @(
+    "GITHUB_PAT",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_INSTALLATION_ID",
+    "GITHUB_APP_PRIVATE_KEY"
+  )
+  $savedCredentials = @{}
+
+  foreach ($name in $credentialNames) {
+    $savedCredentials[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    [Environment]::SetEnvironmentVariable($name, $null, "Process")
+  }
+
+  try {
+    & .\run.cmd 2>&1 |
+      Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append |
+      Out-Null
+    $runnerExitCode = $LASTEXITCODE
+    return $runnerExitCode
+  } finally {
+    foreach ($name in $credentialNames) {
+      [Environment]::SetEnvironmentVariable($name, $savedCredentials[$name], "Process")
+    }
+  }
+}
+
 function Clear-RunnerState {
   Remove-Item -Force -ErrorAction SilentlyContinue `
     (Join-Path $env:RUNNER_HOME ".runner"), `
@@ -178,8 +208,8 @@ try {
     & .\config.cmd @configArgs
     $script:RunnerConfigured = $true
     Write-RunnerLog "starting runner $env:RUNNER_NAME"
-    & .\run.cmd 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append
-    exit $LASTEXITCODE
+    $runnerExitCode = Invoke-ActionsRunner
+    exit $runnerExitCode
   } finally {
     Pop-Location
   }

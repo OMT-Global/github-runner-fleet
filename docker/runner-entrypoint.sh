@@ -20,11 +20,21 @@ run_runner_bash() {
   shift || true
 
   if [[ "${runner_exec_mode}" == "root" ]]; then
-    env RUNNER_ALLOW_RUNASROOT=1 RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" bash -lc "${command}"
+    env "$@" RUNNER_ALLOW_RUNASROOT=1 RUNNER_EXECUTION_MODE="${runner_exec_mode}" bash -lc "${command}"
     return
   fi
 
-  env RUNNER_EXECUTION_MODE="${runner_exec_mode}" "$@" gosu runner bash -lc "${command}"
+  env "$@" RUNNER_EXECUTION_MODE="${runner_exec_mode}" gosu runner bash -lc "${command}"
+}
+
+run_actions_runner() {
+  run_runner_bash "cd '${RUNNER_HOME}' && exec ./run.sh" \
+    -u GITHUB_PAT \
+    -u GITHUB_TOKEN \
+    -u GH_TOKEN \
+    -u GITHUB_APP_ID \
+    -u GITHUB_APP_INSTALLATION_ID \
+    -u GITHUB_APP_PRIVATE_KEY
 }
 
 run_runner_job_bash() {
@@ -34,6 +44,8 @@ run_runner_job_bash() {
   if [[ "${runner_exec_mode}" == "root" ]]; then
     env \
       -u GITHUB_PAT \
+      -u GITHUB_TOKEN \
+      -u GH_TOKEN \
       -u GITHUB_APP_ID \
       -u GITHUB_APP_INSTALLATION_ID \
       -u GITHUB_APP_PRIVATE_KEY \
@@ -45,6 +57,8 @@ run_runner_job_bash() {
 
   env \
     -u GITHUB_PAT \
+    -u GITHUB_TOKEN \
+    -u GH_TOKEN \
     -u GITHUB_APP_ID \
     -u GITHUB_APP_INSTALLATION_ID \
     -u GITHUB_APP_PRIVATE_KEY \
@@ -101,7 +115,7 @@ stash_github_auth_for_cleanup() {
 }
 
 scrub_github_auth_env() {
-  unset GITHUB_PAT GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY
+  unset GITHUB_PAT GITHUB_TOKEN GH_TOKEN GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY
 }
 
 prepare_runtime_dirs() {
