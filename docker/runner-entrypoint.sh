@@ -26,6 +26,8 @@ run_runner_bash() {
 run_actions_runner() {
   run_runner_bash "cd '${RUNNER_HOME}' && exec ./run.sh" \
     -u GITHUB_PAT \
+    -u GITHUB_TOKEN \
+    -u GH_TOKEN \
     -u GITHUB_APP_ID \
     -u GITHUB_APP_INSTALLATION_ID \
     -u GITHUB_APP_PRIVATE_KEY

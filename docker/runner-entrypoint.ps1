@@ -78,6 +78,8 @@ function Request-RunnerToken {
 function Invoke-ActionsRunner {
   $credentialNames = @(
     "GITHUB_PAT",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
     "GITHUB_APP_ID",
     "GITHUB_APP_INSTALLATION_ID",
     "GITHUB_APP_PRIVATE_KEY"

@@ -7,6 +7,8 @@ import { afterEach, describe, expect, test } from "vitest";
 const tempRoots: string[] = [];
 const runnerCredentialNames = [
   "GITHUB_PAT",
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
   "GITHUB_APP_ID",
   "GITHUB_APP_INSTALLATION_ID",
   "GITHUB_APP_PRIVATE_KEY",
@@ -218,7 +220,7 @@ describe("runner registration smoke harness", () => {
     expect(windowsEntrypoint).toContain("exit $runnerExitCode");
     expect(windowsEntrypoint).not.toContain("exit (Invoke-ActionsRunner)");
     expect(macosBootstrap).toContain(
-      "unset GITHUB_PAT GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY"
+      "unset GITHUB_PAT GITHUB_TOKEN GH_TOKEN GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY"
     );
   });
 
