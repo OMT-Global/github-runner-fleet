@@ -245,11 +245,12 @@ describe("CI workflow", () => {
         "github.event.pull_request.head.repo.full_name == github.repository"
       );
     }
-    expect(
-      (workflow.jobs["fast-checks"].steps as Array<Record<string, unknown>>).some(
-        (step) => step.uses === "./actions/setup-shell-safe-node"
-      )
-    ).toBe(true);
+    const fastCheckSetupNodeStep = (
+      workflow.jobs["fast-checks"].steps as Array<Record<string, unknown>>
+    ).find((step) => step.uses === "./actions/setup-shell-safe-node");
+    expect(fastCheckSetupNodeStep?.with).toMatchObject({
+      "node-version": "24.14.1"
+    });
 
     expect(workflow.jobs.changes["runs-on"]).toEqual(shellSafePublicRunner);
     expect(workflow.jobs["hosted-fork-fast-checks"]["runs-on"]).toBe(

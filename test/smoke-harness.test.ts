@@ -214,7 +214,8 @@ describe("runner registration smoke harness", () => {
       expect(linuxEntrypoint).toContain(`-u ${name}`);
       expect(windowsEntrypoint).toContain(`\"${name}\"`);
     }
-    expect(linuxEntrypoint).toContain("run_actions_runner 2>&1");
+    expect(linuxEntrypoint).toContain("scrub_github_auth_env");
+    expect(linuxEntrypoint).toContain("run_runner_job_bash");
     expect(windowsEntrypoint).toContain("Out-Null");
     expect(windowsEntrypoint).toContain("$runnerExitCode = Invoke-ActionsRunner");
     expect(windowsEntrypoint).toContain("exit $runnerExitCode");

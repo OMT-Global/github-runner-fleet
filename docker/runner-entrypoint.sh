@@ -10,6 +10,10 @@ runner_configured="false"
 runner_exit_code=0
 runner_exec_mode="runner"
 RUNNER_AUDIT_DEREGISTER_EVENT="runner_deregistered"
+github_token_for_cleanup=""
+github_app_id_for_cleanup=""
+github_app_installation_id_for_cleanup=""
+github_app_private_key_for_cleanup=""
 
 run_runner_bash() {
   local command="$1"
@@ -31,6 +35,35 @@ run_actions_runner() {
     -u GITHUB_APP_ID \
     -u GITHUB_APP_INSTALLATION_ID \
     -u GITHUB_APP_PRIVATE_KEY
+}
+
+run_runner_job_bash() {
+  local command="$1"
+  shift || true
+
+  if [[ "${runner_exec_mode}" == "root" ]]; then
+    env \
+      -u GITHUB_PAT \
+      -u GITHUB_TOKEN \
+      -u GH_TOKEN \
+      -u GITHUB_APP_ID \
+      -u GITHUB_APP_INSTALLATION_ID \
+      -u GITHUB_APP_PRIVATE_KEY \
+      RUNNER_ALLOW_RUNASROOT=1 \
+      RUNNER_EXECUTION_MODE="${runner_exec_mode}" \
+      "$@" bash -lc "${command}"
+    return
+  fi
+
+  env \
+    -u GITHUB_PAT \
+    -u GITHUB_TOKEN \
+    -u GH_TOKEN \
+    -u GITHUB_APP_ID \
+    -u GITHUB_APP_INSTALLATION_ID \
+    -u GITHUB_APP_PRIVATE_KEY \
+    RUNNER_EXECUTION_MODE="${runner_exec_mode}" \
+    "$@" gosu runner bash -lc "${command}"
 }
 
 cleanup_local_state() {
@@ -66,7 +99,23 @@ prepare_runner_home() {
 }
 
 cleanup_runner() {
+  export GITHUB_PAT="${github_token_for_cleanup}"
+  export GITHUB_APP_ID="${github_app_id_for_cleanup}"
+  export GITHUB_APP_INSTALLATION_ID="${github_app_installation_id_for_cleanup}"
+  export GITHUB_APP_PRIVATE_KEY="${github_app_private_key_for_cleanup}"
   cleanup_runner_registration "run_runner_bash \"cd '${RUNNER_HOME}' && ./config.sh remove --token \\\"\\\${RUNNER_REMOVE_TOKEN}\\\"\""
+  unset GITHUB_PAT GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY
+}
+
+stash_github_auth_for_cleanup() {
+  github_token_for_cleanup="${GITHUB_PAT:-}"
+  github_app_id_for_cleanup="${GITHUB_APP_ID:-}"
+  github_app_installation_id_for_cleanup="${GITHUB_APP_INSTALLATION_ID:-}"
+  github_app_private_key_for_cleanup="${GITHUB_APP_PRIVATE_KEY:-}"
+}
+
+scrub_github_auth_env() {
+  unset GITHUB_PAT GITHUB_TOKEN GH_TOKEN GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY
 }
 
 prepare_runtime_dirs() {
@@ -150,6 +199,7 @@ trap on_exit EXIT
 trap 'log "termination requested"; RUNNER_AUDIT_DEREGISTER_EVENT="runner_evicted"; export RUNNER_AUDIT_DEREGISTER_EVENT; exit 0' TERM INT
 
 require_github_auth
+stash_github_auth_for_cleanup
 require_env GITHUB_ORG
 require_env RUNNER_NAME
 require_env RUNNER_LABELS
@@ -264,4 +314,6 @@ runner_configured="true"
 audit_event runner_registered
 
 log "starting runner ${RUNNER_NAME}"
-run_actions_runner 2>&1 | tee -a "${RUNNER_LOG_DIR}/runner.log"
+scrub_github_auth_env
+run_runner_job_bash "cd '${RUNNER_HOME}' && exec ./run.sh" \
+  2>&1 | tee -a "${RUNNER_LOG_DIR}/runner.log"
