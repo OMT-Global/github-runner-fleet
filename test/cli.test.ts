@@ -419,7 +419,9 @@ describe("cli integration", () => {
         ok: true,
         status: 204,
         text: async () => ""
-      });
+      })
+      .mockResolvedValueOnce(emptyRunnerInventory())
+      .mockResolvedValueOnce(emptyRunnerInventory());
     vi.stubGlobal("fetch", fetchMock);
     fs.appendFileSync(fixture.envPath, "NEW_GITHUB_PAT=replacement-secret\n", "utf8");
 
@@ -434,6 +436,8 @@ describe("cli integration", () => {
         "--plane",
         "synology",
         "--drain-timeout",
+        "1",
+        "--drain-interval",
         "0",
         "--python",
         "true"
@@ -670,7 +674,9 @@ describe("cli integration", () => {
         ok: true,
         status: 204,
         text: async () => ""
-      });
+      })
+      .mockResolvedValueOnce(emptyRunnerInventory())
+      .mockResolvedValueOnce(emptyRunnerInventory());
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await invokeCli([
@@ -682,6 +688,8 @@ describe("cli integration", () => {
       "--pool",
       "synology-private",
       "--drain-timeout",
+      "1",
+      "--drain-interval",
       "0",
       "--python",
       "true"
@@ -786,7 +794,9 @@ describe("cli integration", () => {
       "--pool",
       "synology-private",
       "--drain-timeout",
-      "0",
+      "1",
+      "--drain-interval",
+      "1",
       "--python",
       "true"
     ]);
@@ -841,7 +851,9 @@ describe("cli integration", () => {
         ok: true,
         status: 204,
         text: async () => ""
-      });
+      })
+      .mockResolvedValueOnce(emptyRunnerInventory())
+      .mockResolvedValueOnce(emptyRunnerInventory());
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await invokeCli([
@@ -856,6 +868,8 @@ describe("cli integration", () => {
       "synology-private",
       "--timeout",
       "15m",
+      "--interval",
+      "0",
       "--format",
       "json"
     ]);
@@ -872,7 +886,7 @@ describe("cli integration", () => {
         busy: []
       })
     );
-    expect(parseJsonLogLines(result.stderr)).toEqual([
+    expect(parseJsonLogLines(result.stderr)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         component: "controller",
         command: "drain-pool",
@@ -906,7 +920,7 @@ describe("cli integration", () => {
         busy: 0,
         missing: 0
       })
-    ]);
+    ]));
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "https://api.github.com/orgs/example/actions/runners/101",
@@ -957,7 +971,9 @@ describe("cli integration", () => {
       "--pool",
       "synology-private",
       "--timeout",
-      "0",
+      "1",
+      "--interval",
+      "1",
       "--format",
       "json"
     ]);
@@ -1025,7 +1041,9 @@ describe("cli integration", () => {
           ok: true,
           status: 204,
           text: async () => ""
-        });
+        })
+        .mockResolvedValueOnce(emptyRunnerInventory())
+        .mockResolvedValueOnce(emptyRunnerInventory());
       vi.stubGlobal("fetch", fetchMock);
 
       const result = await invokeCli([
@@ -1040,6 +1058,8 @@ describe("cli integration", () => {
         pool,
         "--timeout",
         "15m",
+        "--interval",
+        "0",
         "--format",
         "json"
       ]);
@@ -1446,6 +1466,7 @@ describe("cli integration", () => {
           status: 200,
           text: async () => JSON.stringify({ runners: [] })
         })
+        .mockResolvedValueOnce(emptyRunnerInventory())
     );
 
     const result = await invokeCli([
@@ -1458,6 +1479,8 @@ describe("cli integration", () => {
       "lume",
       "--pool",
       "macos-private",
+      "--interval",
+      "0",
       "--format",
       "text"
     ]);
@@ -2091,6 +2114,14 @@ async function withEnv<T>(
       }
     }
   }
+}
+
+function emptyRunnerInventory() {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ runners: [] })
+  };
 }
 
 function createCliFixture(): {

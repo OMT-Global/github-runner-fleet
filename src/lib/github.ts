@@ -66,6 +66,9 @@ export interface RunnerGroupExpectation {
 export interface FetchLikeResponse {
   ok: boolean;
   status: number;
+  headers?: {
+    get(name: string): string | null;
+  };
   text(): Promise<string>;
 }
 
@@ -74,8 +77,104 @@ export type FetchLike = (
   init?: {
     method?: string;
     headers?: Record<string, string>;
+    signal?: AbortSignal;
   }
 ) => Promise<FetchLikeResponse>;
+
+export interface GitHubRequestPolicy {
+  deadlineMs?: number;
+  requestTimeoutMs?: number;
+  maxAttempts?: number;
+  retryDelayMs?: number;
+  now?: () => number;
+  sleep?: (milliseconds: number) => Promise<void>;
+}
+
+const RETRYABLE_GITHUB_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+export async function githubRequest(
+  url: string,
+  init: {
+    method?: string;
+    headers?: Record<string, string>;
+  },
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
+): Promise<FetchLikeResponse> {
+  const now = policy.now ?? Date.now;
+  const sleep = policy.sleep ?? defaultSleep;
+  const method = init.method ?? "GET";
+  const retrySafe = method === "GET" || method === "DELETE";
+  const maxAttempts = retrySafe ? Math.max(1, policy.maxAttempts ?? 3) : 1;
+  const requestTimeoutMs = Math.max(1, policy.requestTimeoutMs ?? 10_000);
+  const retryDelayMs = Math.max(0, policy.retryDelayMs ?? 250);
+
+  let responseRetryDelayMs = retryDelayMs;
+  for (let attempt = 1; ; attempt += 1) {
+    const remainingMs = policy.deadlineMs === undefined
+      ? requestTimeoutMs
+      : Math.min(requestTimeoutMs, policy.deadlineMs - now());
+    if (remainingMs <= 0) {
+      throw new Error(`GitHub API ${method} deadline exceeded for ${url}`);
+    }
+
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`GitHub API ${method} timed out after ${remainingMs}ms for ${url}`));
+        controller.abort();
+      }, remainingMs);
+    });
+
+    try {
+      const response = await Promise.race([
+        fetchImpl(url, { ...init, signal: controller.signal }),
+        timeout
+      ]);
+      if (
+        attempt >= maxAttempts ||
+        !RETRYABLE_GITHUB_STATUSES.has(response.status)
+      ) {
+        return response;
+      }
+      responseRetryDelayMs = parseRetryAfterMs(response, now()) ?? retryDelayMs;
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        throw error;
+      }
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    }
+
+    const remainingAfterRequest = policy.deadlineMs === undefined
+      ? Number.POSITIVE_INFINITY
+      : policy.deadlineMs - now();
+    if (remainingAfterRequest <= 0) {
+      throw new Error(`GitHub API ${method} deadline exceeded for ${url}`);
+    }
+    await sleep(Math.min(responseRetryDelayMs, remainingAfterRequest));
+    responseRetryDelayMs = retryDelayMs;
+  }
+}
+
+function parseRetryAfterMs(
+  response: FetchLikeResponse,
+  nowMs: number
+): number | undefined {
+  const value = response.headers?.get("retry-after")?.trim();
+  if (!value) {
+    return undefined;
+  }
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+  const dateMs = Date.parse(value);
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - nowMs) : undefined;
+}
 
 export interface FetchRunnerTokenOptions {
   plane?: string;
@@ -212,12 +311,13 @@ export async function fetchGitHubAppInstallationToken(
     privateKey,
     nowSeconds: Math.floor(now.getTime() / 1000)
   });
-  const response = await fetchImpl(
+  const response = await githubRequest(
     `${trimApiUrl(apiUrl)}/app/installations/${installationId}/access_tokens`,
     {
       method: "POST",
       headers: buildGitHubApiHeaders(jwt)
-    }
+    },
+    fetchImpl
   );
   const body = await response.text();
   if (!response.ok) {
@@ -298,10 +398,11 @@ export async function fetchRunnerToken(
   let response: FetchLikeResponse;
 
   try {
-    response = await fetchImpl(request.url, {
-      method: request.method,
-      headers: request.headers
-    });
+    response = await githubRequest(
+      request.url,
+      { method: request.method, headers: request.headers },
+      fetchImpl
+    );
   } finally {
     await emitRunnerTokenFetchDurationSeconds({
       plane: options.plane ?? "unknown",
@@ -329,12 +430,13 @@ export async function fetchLatestRunnerRelease(
   token?: string,
   fetchImpl: FetchLike = fetch as FetchLike
 ): Promise<GitHubRelease> {
-  const response = await fetchImpl(
+  const response = await githubRequest(
     `${trimApiUrl(apiUrl)}/repos/actions/runner/releases/latest`,
     {
       method: "GET",
       headers: buildGitHubApiHeaders(token)
-    }
+    },
+    fetchImpl
   );
 
   const body = await response.text();
@@ -366,17 +468,20 @@ export async function fetchOrganizationRunnerGroups(
   apiUrl: string,
   organization: string,
   token: string,
-  fetchImpl: FetchLike = fetch as FetchLike
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
 ): Promise<GitHubRunnerGroup[]> {
   const groups: GitHubRunnerGroup[] = [];
 
   for (let page = 1; ; page += 1) {
-    const response = await fetchImpl(
+    const response = await githubRequest(
       `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups?per_page=100&page=${page}`,
       {
         method: "GET",
         headers: buildGitHubApiHeaders(token)
-      }
+      },
+      fetchImpl,
+      policy
     );
 
     const body = await response.text();
@@ -428,17 +533,20 @@ export async function fetchOrganizationRunners(
   apiUrl: string,
   organization: string,
   token: string,
-  fetchImpl: FetchLike = fetch as FetchLike
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
 ): Promise<GitHubRunner[]> {
   const runners: GitHubRunner[] = [];
 
   for (let page = 1; ; page += 1) {
-    const response = await fetchImpl(
+    const response = await githubRequest(
       `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runners?per_page=100&page=${page}`,
       {
         method: "GET",
         headers: buildGitHubApiHeaders(token)
-      }
+      },
+      fetchImpl,
+      policy
     );
 
     const body = await response.text();
@@ -499,17 +607,20 @@ export async function fetchOrganizationRunnerGroupRunners(
   organization: string,
   runnerGroupId: number,
   token: string,
-  fetchImpl: FetchLike = fetch as FetchLike
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
 ): Promise<GitHubRunner[]> {
   const runners: GitHubRunner[] = [];
 
   for (let page = 1; ; page += 1) {
-    const response = await fetchImpl(
+    const response = await githubRequest(
       `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups/${runnerGroupId}/runners?per_page=100&page=${page}`,
       {
         method: "GET",
         headers: buildGitHubApiHeaders(token)
-      }
+      },
+      fetchImpl,
+      policy
     );
 
     const body = await response.text();
@@ -570,14 +681,17 @@ export async function deleteOrganizationRunner(
   organization: string,
   token: string,
   runnerId: number,
-  fetchImpl: FetchLike = fetch as FetchLike
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
 ): Promise<boolean> {
-  const response = await fetchImpl(
+  const response = await githubRequest(
     `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runners/${runnerId}`,
     {
       method: "DELETE",
       headers: buildGitHubApiHeaders(token)
-    }
+    },
+    fetchImpl,
+    policy
   );
 
   const body = await response.text();
@@ -1014,4 +1128,8 @@ function parseContainerPackageVersions(
         : []
     };
   });
+}
+
+function defaultSleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
