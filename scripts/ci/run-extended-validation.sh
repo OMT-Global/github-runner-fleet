@@ -12,5 +12,6 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
+source scripts/ci/setup-pnpm.sh
 bash scripts/ci/run-fast-checks.sh
 pnpm test:coverage
