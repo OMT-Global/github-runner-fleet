@@ -276,6 +276,127 @@ describe("CI workflow", () => {
     expect(workflow.jobs["ci-gate"]["runs-on"]).toEqual(shellSafePublicRunner);
   });
 
+  test("classifies behavior, docs-only, and unknown PR changes fail-closed", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/pr-fast-ci.yml"), "utf8")
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const changes = workflow.jobs.changes;
+    const filterStep = (changes.steps as Array<Record<string, unknown>>).find(
+      (step) => step.uses === "dorny/paths-filter@v4"
+    );
+    const filters = String((filterStep?.with as Record<string, unknown>).filters);
+    const fastChecks = workflow.jobs["fast-checks"];
+    const forkChecks = workflow.jobs["hosted-fork-fast-checks"];
+    const gateScript = String(
+      (
+        workflow.jobs["ci-gate"].steps as Array<Record<string, unknown>>
+      ).find((step) => step.name === "Check required PR jobs")?.run
+    );
+
+    for (const behaviorPath of [
+      "src/**",
+      "test/**",
+      "config/**",
+      "docker/**",
+      "actions/**",
+      "package.json",
+      "pnpm-lock.yaml"
+    ]) {
+      expect(filters).toContain(`- '${behaviorPath}'`);
+      expect(filters).toContain(`- '!${behaviorPath}'`);
+    }
+    expect(filters).toContain("docs:");
+    expect(filters).toContain("- 'docs/**'");
+    expect(filters).toContain("unknown:");
+    expect(filters).toContain("- '**'");
+    expect(changes.outputs).toMatchObject({
+      behavior: "${{ steps.filter.outputs.behavior }}",
+      docs: "${{ steps.filter.outputs.docs }}",
+      unknown: "${{ steps.filter.outputs.unknown }}"
+    });
+    for (const job of [fastChecks, forkChecks]) {
+      expect(String(job.if)).toContain(
+        "needs.changes.outputs.behavior == 'true'"
+      );
+      expect(String(job.if)).toContain(
+        "needs.changes.outputs.unknown == 'true'"
+      );
+    }
+    expect(gateScript).toContain(
+      'if [[ "$BEHAVIOR_CHANGED" == "true" || "$UNKNOWN_CHANGED" == "true" ]]'
+    );
+    expect(gateScript).toContain(
+      "INFO docs-only change; behavior checks are intentionally skipped"
+    );
+    expect(gateScript).toContain(
+      "FAIL change classification produced no matching scope"
+    );
+    expect(gateScript).toContain(
+      "INFO draft pull request; validation jobs are intentionally skipped"
+    );
+    expect(gateScript).toContain("expect_status fast-checks success");
+    expect(gateScript).toContain("expect_status hosted-fork-fast-checks success");
+  });
+
+  test("keeps extended validation classification aligned with the PR gate", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(
+        path.resolve(".github/workflows/extended-validation.yml"),
+        "utf8"
+      )
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
+    const changes = workflow.jobs.changes;
+    const filterStep = (changes.steps as Array<Record<string, unknown>>).find(
+      (step) => step.uses === "dorny/paths-filter@v4"
+    );
+    const filters = String((filterStep?.with as Record<string, unknown>).filters);
+
+    expect(filters).toContain("behavior:");
+    expect(filters).toContain("docs:");
+    expect(filters).toContain("unknown:");
+    expect(changes.outputs).toHaveProperty("behavior");
+    expect(changes.outputs).toHaveProperty("docs");
+    expect(changes.outputs).toHaveProperty("unknown");
+    for (const jobName of ["fast-checks", "extended-checks", "mutation-tests"]) {
+      const condition = String(workflow.jobs[jobName].if);
+      expect(condition).toContain("needs.changes.outputs.behavior == 'true'");
+      expect(condition).toContain("needs.changes.outputs.unknown == 'true'");
+    }
+  });
+
+  test("records the package manager and CI commands actually used by the repository", () => {
+    const bootstrap = YAML.parse(
+      fs.readFileSync(path.resolve("project.bootstrap.yaml"), "utf8")
+    ) as {
+      archetype: { packageManager: string };
+      ci: {
+        nodeVersion: string;
+        fastChecks: string[];
+        extendedChecks: string[];
+      };
+    };
+
+    expect(bootstrap.archetype.packageManager).toBe("pnpm");
+    expect(bootstrap.ci.nodeVersion).toBe("24.14.1");
+    expect(bootstrap.ci.fastChecks).toEqual([
+      "lint",
+      "test",
+      "build",
+      "secrets"
+    ]);
+    expect(bootstrap.ci.extendedChecks).toEqual([
+      "extended-validation",
+      "mutation-test",
+      "drift-detect"
+    ]);
+  });
+
   test("restricts Claude comment triggers to trusted repository actors", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/claude.yml"), "utf8")

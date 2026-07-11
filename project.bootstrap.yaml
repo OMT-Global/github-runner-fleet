@@ -23,7 +23,7 @@ repo:
     - docs/bootstrap/**
 archetype:
   kind: generic-empty
-  packageManager: npm
+  packageManager: pnpm
   moduleName: github_runner_fleet
 github:
   createRepo: false
@@ -52,12 +52,17 @@ github:
     hasDiscussions: false
 ci:
   runnerPolicy: hybrid-safe
-  nodeVersion: "20"
+  nodeVersion: "24.14.1"
   pythonVersion: "3.12"
   fastChecks:
+    - lint
+    - test
+    - build
     - secrets
   extendedChecks:
-    - template-review
+    - extended-validation
+    - mutation-test
+    - drift-detect
   nightlyCron: 0 7 * * *
 agents:
   manageCodexHome: true

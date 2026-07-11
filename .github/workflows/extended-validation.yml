@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24.14.1'
   PYTHON_VERSION: '3.12'
 
 defaults:
@@ -27,8 +27,9 @@ jobs:
     name: Detect Extended Validation Scope
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     outputs:
-      app: ${{ steps.preset.outputs.app || steps.filter.outputs.app || 'false' }}
-      ci: ${{ steps.preset.outputs.ci || steps.filter.outputs.ci || 'false' }}
+      behavior: ${{ steps.preset.outputs.behavior || steps.filter.outputs.behavior || 'false' }}
+      docs: ${{ steps.preset.outputs.docs || steps.filter.outputs.docs || 'false' }}
+      unknown: ${{ steps.preset.outputs.unknown || steps.filter.outputs.unknown || 'false' }}
       extended: ${{ steps.preset.outputs.extended || steps.filter.outputs.extended || 'false' }}
     steps:
       - uses: actions/checkout@v7
@@ -41,8 +42,9 @@ jobs:
         if: github.event_name != 'push'
         run: |
           cat >>"$GITHUB_OUTPUT" <<'EOF'
-          app=true
-          ci=true
+          behavior=true
+          docs=false
+          unknown=false
           extended=true
           EOF
 
@@ -51,28 +53,58 @@ jobs:
         if: github.event_name == 'push'
         with:
           filters: |
-            app:
+            behavior:
+              - 'src/**'
+              - 'test/**'
+              - 'config/**'
+              - 'docker/**'
+              - 'actions/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vitest*.ts'
+              - 'stryker.config.json'
               - 'project.bootstrap.yaml'
-              - 'AGENTS.md'
-              - 'CLAUDE.md'
               - '.devcontainer/**'
               - '.githooks/**'
               - '.github/workflows/**'
               - 'scripts/**'
-              - 'docs/bootstrap/**'
-              - 'README.md'
-              - 'docs/**'
-            ci:
-              - 'project.bootstrap.yaml'
-              - 'AGENTS.md'
-              - 'CLAUDE.md'
-              - '.devcontainer/**'
-              - '.githooks/**'
-              - '.github/workflows/**'
-              - 'scripts/**'
-              - 'docs/bootstrap/**'
               - '.env.example'
               - 'CODEOWNERS'
+              - 'infra/**'
+              - 'ops/**'
+            docs:
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - 'README.md'
+              - 'docs/**'
+              - 'LICENSE*'
+            unknown:
+              - '**'
+              - '!src/**'
+              - '!test/**'
+              - '!config/**'
+              - '!docker/**'
+              - '!actions/**'
+              - '!package.json'
+              - '!pnpm-lock.yaml'
+              - '!tsconfig*.json'
+              - '!vitest*.ts'
+              - '!stryker.config.json'
+              - '!project.bootstrap.yaml'
+              - '!.devcontainer/**'
+              - '!.githooks/**'
+              - '!.github/workflows/**'
+              - '!scripts/**'
+              - '!.env.example'
+              - '!CODEOWNERS'
+              - '!infra/**'
+              - '!ops/**'
+              - '!AGENTS.md'
+              - '!CLAUDE.md'
+              - '!README.md'
+              - '!docs/**'
+              - '!LICENSE*'
             extended:
               - 'infra/**'
               - 'ops/**'
@@ -82,7 +114,7 @@ jobs:
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     timeout-minutes: 15
     needs: changes
-    if: needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true'
+    if: needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -98,7 +130,7 @@ jobs:
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     timeout-minutes: 20
     needs: changes
-    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.app == 'true'
+    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -147,7 +179,7 @@ jobs:
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     timeout-minutes: 30
     needs: changes
-    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.app == 'true'
+    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
     steps:
       - uses: actions/checkout@v7
 
