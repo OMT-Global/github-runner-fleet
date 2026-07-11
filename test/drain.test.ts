@@ -3,22 +3,25 @@ import { drainRunnerPool } from "../src/lib/drain.js";
 
 describe("runner drain", () => {
   test("cordons idle runners and waits for busy runners to finish", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(runnerGroups())
-      .mockResolvedValueOnce(
-        runners([
-          runner(101, "synology-private-runner-01", false),
-          runner(102, "synology-private-runner-02", true)
-        ])
-      )
-      .mockResolvedValueOnce(emptyResponse(204))
-      .mockResolvedValueOnce(runnerGroups())
-      .mockResolvedValueOnce(
-        runners([runner(102, "synology-private-runner-02", false)])
-      )
-      .mockResolvedValueOnce(emptyResponse(204));
+    let inventory = [
+      runner(101, "synology-private-runner-01", false),
+      runner(102, "synology-private-runner-02", true)
+    ];
+    const fetchMock = vi.fn(async (url: string, init?: { method?: string }) => {
+      if (url.includes("runner-groups")) return runnerGroups();
+      if (init?.method === "DELETE") {
+        const id = Number(url.split("/").at(-1));
+        inventory = inventory.filter((entry) => entry.id !== id);
+        if (id === 101) {
+          inventory.push(runner(201, "synology-private-runner-01", false));
+        }
+        return emptyResponse(204);
+      }
+      return runners(inventory);
+    });
     const progress = vi.fn();
+    const quiesce = vi.fn(async () => undefined);
+    let sleeps = 0;
 
     await expect(
       drainRunnerPool({
@@ -33,8 +36,18 @@ describe("runner drain", () => {
         ],
         timeoutSeconds: 30,
         intervalSeconds: 0,
-        sleep: async () => undefined,
+        sleep: async () => {
+          sleeps += 1;
+          if (sleeps === 1) {
+            inventory = inventory.map((entry) =>
+              entry.id === 102
+                ? runner(102, "synology-private-runner-02", false)
+                : entry
+            );
+          }
+        },
         fetchImpl: fetchMock,
+        onQuiesce: quiesce,
         onProgress: progress
       })
     ).resolves.toEqual(
@@ -56,23 +69,20 @@ describe("runner drain", () => {
         cordoned: ["synology-private-runner-01"]
       })
     );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      "https://api.github.com/orgs/example/actions/runners/101",
-      expect.objectContaining({ method: "DELETE" })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      6,
-      "https://api.github.com/orgs/example/actions/runners/102",
-      expect.objectContaining({ method: "DELETE" })
-    );
+    expect(quiesce.mock.calls.map(([entry]) => entry.id).sort()).toEqual([
+      101,
+      102,
+      201
+    ]);
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("actions/runners?"))
+    ).toHaveLength(4);
   });
 
   test("is idempotent when configured runners are already absent", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(runnerGroups())
-      .mockResolvedValueOnce(runners([]));
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes("runner-groups") ? runnerGroups() : runners([])
+    );
 
     await expect(
       drainRunnerPool({
@@ -94,13 +104,18 @@ describe("runner drain", () => {
         missing: ["synology-private-runner-01"]
       })
     );
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("actions/runners?"))
+    ).toHaveLength(2);
   });
 
   test("returns timeout while runners are still busy", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(runnerGroups())
-      .mockResolvedValueOnce(runners([runner(101, "synology-private-runner-01", true)]));
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes("runner-groups")
+        ? runnerGroups()
+        : runners([runner(101, "synology-private-runner-01", true)])
+    );
+    let now = 0;
 
     await expect(
       drainRunnerPool({
@@ -110,9 +125,12 @@ describe("runner drain", () => {
         runnerGroup: "synology-private",
         poolKey: "synology-private",
         runnerNames: ["synology-private-runner-01"],
-        timeoutSeconds: 0,
-        intervalSeconds: 0,
-        sleep: async () => undefined,
+        timeoutSeconds: 1,
+        intervalSeconds: 5,
+        now: () => now,
+        sleep: async (milliseconds) => {
+          now += milliseconds;
+        },
         fetchImpl: fetchMock
       })
     ).resolves.toEqual(
@@ -121,6 +139,7 @@ describe("runner drain", () => {
         busy: ["synology-private-runner-01"]
       })
     );
+    expect(now).toBe(1000);
   });
 });
 

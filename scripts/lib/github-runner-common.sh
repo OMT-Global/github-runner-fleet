@@ -134,6 +134,8 @@ github_api_post() {
   bearer_token="$(github_bearer_token)"
   status="$(
     curl -sS \
+      --connect-timeout "${GITHUB_API_CONNECT_TIMEOUT_SECONDS:-5}" \
+      --max-time "${GITHUB_API_MAX_TIME_SECONDS:-15}" \
       -o "${tmp}" \
       -w '%{http_code}' \
       -X POST \
@@ -193,8 +195,10 @@ async function main() {
   const signingInput = `${header}.${payload}`;
   const signature = crypto.createSign("RSA-SHA256").update(signingInput).sign(privateKeyFromEnv());
   const jwt = `${signingInput}.${base64Url(signature)}`;
+  const timeoutMs = Number(process.env.GITHUB_API_MAX_TIME_SECONDS || "15") * 1000;
   const response = await fetch(`${apiUrl}/app/installations/${installationId}/access_tokens`, {
     method: "POST",
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       Authorization: `Bearer ${jwt}`,
       Accept: "application/vnd.github+json",

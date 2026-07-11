@@ -11,6 +11,7 @@ import {
   fetchOrganizationRunnerGroupRunners,
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
+  githubRequest,
   fetchQueuedWorkflowRuns,
   fetchLatestRunnerRelease,
   fetchWorkflowRunJobs,
@@ -997,11 +998,73 @@ describe("github release validation", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.github.com/repos/actions/runner/releases/latest",
-      {
+      expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ Authorization: "Bearer tok" })
-      }
+      })
     );
+  });
+});
+
+describe("bounded GitHub requests", () => {
+  test("aborts a hung request at its request deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn(() => new Promise(() => undefined));
+      const request = githubRequest(
+        "https://api.github.com/example",
+        { method: "GET" },
+        fetchMock,
+        { requestTimeoutMs: 100, maxAttempts: 1 }
+      );
+      const rejection = expect(request).rejects.toThrow("timed out after 100ms");
+      await vi.advanceTimersByTimeAsync(100);
+      await rejection;
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("retries transient GET responses and respects Retry-After", async () => {
+    const sleep = vi.fn(async () => undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...rawResponse("busy", 503),
+        headers: { get: () => "2" }
+      })
+      .mockResolvedValueOnce(rawResponse("ok", 200));
+
+    await expect(
+      githubRequest(
+        "https://api.github.com/example",
+        { method: "GET" },
+        fetchMock,
+        { sleep }
+      )
+    ).resolves.toMatchObject({ status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(2000);
+  });
+
+  test("does not retry authentication failures or POST requests", async () => {
+    const unauthorized = vi.fn().mockResolvedValue(rawResponse("no", 401));
+    await githubRequest(
+      "https://api.github.com/example",
+      { method: "GET" },
+      unauthorized
+    );
+    expect(unauthorized).toHaveBeenCalledTimes(1);
+
+    const post = vi.fn().mockResolvedValue(rawResponse("busy", 503));
+    await githubRequest(
+      "https://api.github.com/example",
+      { method: "POST" },
+      post,
+      { maxAttempts: 3 }
+    );
+    expect(post).toHaveBeenCalledTimes(1);
   });
 });
 
