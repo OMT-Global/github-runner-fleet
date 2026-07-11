@@ -13,7 +13,7 @@ permissions:
   pull-requests: read
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24.14.1'
   PYTHON_VERSION: '3.12'
   SHELL: /bin/bash
 
@@ -30,35 +30,66 @@ jobs:
       - shell-only
       - public
     outputs:
-      app: ${{ steps.filter.outputs.app }}
-      ci: ${{ steps.filter.outputs.ci }}
+      behavior: ${{ steps.filter.outputs.behavior }}
+      docs: ${{ steps.filter.outputs.docs }}
+      unknown: ${{ steps.filter.outputs.unknown }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
-            app:
+            behavior:
+              - 'src/**'
+              - 'test/**'
+              - 'config/**'
+              - 'docker/**'
+              - 'actions/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vitest*.ts'
+              - 'stryker.config.json'
               - 'project.bootstrap.yaml'
-              - 'AGENTS.md'
-              - 'CLAUDE.md'
               - '.devcontainer/**'
               - '.githooks/**'
               - '.github/workflows/**'
               - 'scripts/**'
-              - 'docs/bootstrap/**'
-              - 'README.md'
-              - 'docs/**'
-            ci:
-              - 'project.bootstrap.yaml'
-              - 'AGENTS.md'
-              - 'CLAUDE.md'
-              - '.devcontainer/**'
-              - '.githooks/**'
-              - '.github/workflows/**'
-              - 'scripts/**'
-              - 'docs/bootstrap/**'
               - '.env.example'
               - 'CODEOWNERS'
+              - 'infra/**'
+              - 'ops/**'
+            docs:
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - 'README.md'
+              - 'docs/**'
+              - 'LICENSE*'
+            unknown:
+              - '**'
+              - '!src/**'
+              - '!test/**'
+              - '!config/**'
+              - '!docker/**'
+              - '!actions/**'
+              - '!package.json'
+              - '!pnpm-lock.yaml'
+              - '!tsconfig*.json'
+              - '!vitest*.ts'
+              - '!stryker.config.json'
+              - '!project.bootstrap.yaml'
+              - '!.devcontainer/**'
+              - '!.githooks/**'
+              - '!.github/workflows/**'
+              - '!scripts/**'
+              - '!.env.example'
+              - '!CODEOWNERS'
+              - '!infra/**'
+              - '!ops/**'
+              - '!AGENTS.md'
+              - '!CLAUDE.md'
+              - '!README.md'
+              - '!docs/**'
+              - '!LICENSE*'
 
   fast-checks:
     name: Fast Checks
@@ -72,7 +103,7 @@ jobs:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      (needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true')
+      (needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true')
     steps:
       - uses: actions/checkout@v7
         with:
@@ -115,7 +146,7 @@ jobs:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      (needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true')
+      (needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true')
     steps:
       - uses: actions/checkout@v7
         with:
@@ -167,6 +198,11 @@ jobs:
     steps:
       - name: Check required PR jobs
         env:
+          BEHAVIOR_CHANGED: ${{ needs.changes.outputs.behavior }}
+          DOCS_CHANGED: ${{ needs.changes.outputs.docs }}
+          DRAFT_PULL_REQUEST: ${{ github.event.pull_request.draft }}
+          UNKNOWN_CHANGED: ${{ needs.changes.outputs.unknown }}
+          SAME_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           RESULTS: >-
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
@@ -174,15 +210,63 @@ jobs:
             hosted-fork-fast-checks=${{ needs.hosted-fork-fast-checks.result }}
             hosted-fork-validate-secrets=${{ needs.hosted-fork-validate-secrets.result }}
         run: |
-          failed=0
+          declare -A results
           for entry in $RESULTS; do
-            job="${entry%%=*}"
-            status="${entry##*=}"
-            if [[ "$status" == "success" || "$status" == "skipped" ]]; then
-              echo "OK   $job => $status"
-            else
-              echo "FAIL $job => $status"
-              failed=1
-            fi
+            results["${entry%%=*}"]="${entry##*=}"
           done
+
+          expect_status() {
+            local job="$1"
+            local expected="$2"
+            local actual="${results[$job]:-missing}"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "FAIL $job => $actual (expected $expected)"
+              failed=1
+            else
+              echo "OK   $job => $actual"
+            fi
+          }
+
+          failed=0
+          expect_status changes success
+
+          if [[ "$DRAFT_PULL_REQUEST" == "true" ]]; then
+            echo "INFO draft pull request; validation jobs are intentionally skipped"
+            expect_status fast-checks skipped
+            expect_status validate-secrets skipped
+            expect_status hosted-fork-fast-checks skipped
+            expect_status hosted-fork-validate-secrets skipped
+            exit "$failed"
+          fi
+
+          checks_required=false
+          if [[ "$BEHAVIOR_CHANGED" == "true" || "$UNKNOWN_CHANGED" == "true" ]]; then
+            checks_required=true
+          elif [[ "$DOCS_CHANGED" == "true" ]]; then
+            echo "INFO docs-only change; behavior checks are intentionally skipped"
+          else
+            echo "FAIL change classification produced no matching scope"
+            failed=1
+          fi
+
+          if [[ "$SAME_REPOSITORY" == "true" ]]; then
+            expect_status validate-secrets success
+            expect_status hosted-fork-validate-secrets skipped
+            if [[ "$checks_required" == "true" ]]; then
+              expect_status fast-checks success
+            else
+              expect_status fast-checks skipped
+            fi
+            expect_status hosted-fork-fast-checks skipped
+          else
+            expect_status validate-secrets skipped
+            expect_status hosted-fork-validate-secrets success
+            expect_status fast-checks skipped
+            if [[ "$checks_required" == "true" ]]; then
+              expect_status hosted-fork-fast-checks success
+            else
+              expect_status hosted-fork-fast-checks skipped
+            fi
+          fi
+
           exit "$failed"
