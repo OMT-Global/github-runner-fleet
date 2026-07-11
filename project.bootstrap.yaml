@@ -1,11 +1,13 @@
-version: 1
+version: 2
 project:
   name: github-runner-fleet
-  description: Self-hosted GitHub runner fleet for Synology, Linux Docker, Windows Docker, and Lume macOS planes.
+  description: Self-hosted GitHub runner fleet for Synology, Linux Docker, Windows Docker, and Lume
+    macOS planes.
   visibility: public
   owner: OMT-Global
   defaultBranch: main
 repo:
+  class: tooling
   managedPaths:
     - project.bootstrap.yaml
     - AGENTS.md
@@ -21,6 +23,21 @@ repo:
     - scripts/claude-cloud/**
     - scripts/claude/**
     - docs/bootstrap/**
+    - .githooks/**
+    - .github/PULL_REQUEST_TEMPLATE.md
+  docs:
+    readme: true
+    contributing: false
+    security: false
+  templates:
+    pullRequest: standard
+    issueTemplates: []
+  env:
+    exampleFile: false
+    strategy: optional
+  hooks:
+    preCommit: standard
+    prePush: none
 archetype:
   kind: generic-empty
   packageManager: pnpm
@@ -33,6 +50,98 @@ github:
     - pattern: "*"
       owners:
         - "@jmcte"
+  issueLabels:
+    - name: area:frontend
+      color: 1f77b4
+      description: Frontend and user-interface work.
+    - name: area:api
+      color: 2ca02c
+      description: API contracts, endpoints, and integrations.
+    - name: area:data
+      color: 9467bd
+      description: Data models, persistence, migration, and analytics work.
+    - name: area:ledger
+      color: 8c564b
+      description: Ledger, accounting, transaction, or reconciliation work.
+    - name: area:rules
+      color: bcbd22
+      description: Domain rules, policy logic, and decision engines.
+    - name: area:ai
+      color: 17becf
+      description: AI, agents, prompts, and model integration work.
+    - name: area:infra
+      color: 7f7f7f
+      description: Infrastructure, CI, deployment, and operations work.
+    - name: area:security
+      color: d62728
+      description: Security-sensitive implementation or hardening work.
+    - name: area:accessibility
+      color: e377c2
+      description: Accessibility and inclusive UX work.
+    - name: area:qa
+      color: ff7f0e
+      description: Quality assurance, test coverage, and release validation.
+    - name: risk:low
+      color: 0e8a16
+      description: Low implementation or operational risk.
+    - name: risk:medium
+      color: fbca04
+      description: Moderate implementation or operational risk.
+    - name: risk:high
+      color: d93f0b
+      description: High implementation or operational risk.
+    - name: risk:domain
+      color: "5319e7"
+      description: Domain correctness risk requiring subject-matter review.
+    - name: risk:security
+      color: b60205
+      description: Security risk requiring explicit review.
+    - name: risk:prod
+      color: "000000"
+      description: Production impact or rollout risk.
+    - name: status:needs-spec
+      color: cfd3d7
+      description: Needs clearer scope, acceptance criteria, or constraints.
+    - name: status:ready-for-agent
+      color: 0e8a16
+      description: Ready for assigned agent implementation.
+    - name: status:agent-building
+      color: 1d76db
+      description: Agent implementation is in progress.
+    - name: status:needs-review
+      color: fbca04
+      description: Needs review before merge or closure.
+    - name: status:needs-human-approval
+      color: d93f0b
+      description: Needs explicit human approval before proceeding.
+    - name: status:ready-to-merge
+      color: 0e8a16
+      description: Ready to merge after required checks pass.
+    - name: status:blocked
+      color: b60205
+      description: Blocked by a dependency, decision, credential, or access gate.
+    - name: review:product
+      color: 0052cc
+      description: Needs product review.
+    - name: review:architecture
+      color: "5319e7"
+      description: Needs architecture review.
+    - name: review:security
+      color: b60205
+      description: Needs security review.
+    - name: review:tax
+      color: d4c5f9
+      description: Needs tax review.
+    - name: review:legal
+      color: c2e0c6
+      description: Needs legal review.
+    - name: review:accessibility
+      color: e99695
+      description: Needs accessibility review.
+    - name: review:release
+      color: f9d0c4
+      description: Needs release review.
+  flowGovernance: false
   autoMerge: true
   deleteBranchOnMerge: true
   requiredApprovals: 1
@@ -52,7 +161,7 @@ github:
     hasDiscussions: false
 ci:
   runnerPolicy: hybrid-safe
-  nodeVersion: "24.14.1"
+  nodeVersion: 24.14.1
   pythonVersion: "3.12"
   fastChecks:
     - lint
@@ -64,15 +173,62 @@ ci:
     - mutation-test
     - drift-detect
   nightlyCron: 0 7 * * *
+  additionalWorkflows: []
+  appPaths: []
+  ciPaths: []
+  extendedPaths: []
+  macosCheck:
+    enabled: false
+    paths: []
+    runsOn:
+      - macos-14
+    command: xcodebuild -version
+  customScripts: {}
+  dependabot:
+    enabled: true
+    securityUpdates: true
+    versionUpdates: true
+    ecosystems:
+      - packageEcosystem: npm
+        directory: /
+        interval: weekly
+        groupMinorAndPatch: true
+        ignoreMajorUpdates: true
+      - packageEcosystem: github-actions
+        directory: /
+        interval: weekly
+        groupMinorAndPatch: false
+        ignoreMajorUpdates: true
+  aiAttestation:
+    enabled: false
+    artifactName: ai-attestation
+    retentionDays: 90
+    provider: unknown
+    model: unknown
+    promptHash: unknown
+    reusableWorkflowRepo: OMT-Global/bootstrap
+    reusableWorkflowRef: refs/heads/main
 agents:
   manageCodexHome: true
   manageClaudeHome: true
-  codexProfile: default
   claudeProfile: default
   enableClaudeWebEnvironment: true
   enableClaudeDevcontainer: true
   enableClaudeGitHubAction: true
+  codexProfile: default
   sharedSkills: []
+capabilities:
+  pages:
+    enabled: false
+    provider: cloudflare-pages
+    outputDir: dist
+  release:
+    enabled: false
+    kind: none
+  docsPublish:
+    enabled: false
+  containers:
+    enabled: false
 environments:
   dev:
     reviewers: []

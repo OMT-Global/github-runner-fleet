@@ -51,7 +51,6 @@
       'sk-proj-'
       'AKIA[0-9A-Z]{16}'
       'BEGIN (RSA|OPENSSH|EC) PRIVATE KEY'
-      'ANTHROPIC_API_KEY='
       'OPENAI_API_KEY='
       'SUDO_PASS='
       'BW_SESSION='

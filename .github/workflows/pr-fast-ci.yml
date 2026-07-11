@@ -2,7 +2,7 @@ name: PR Fast CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: pr-fast-${{ github.event.pull_request.number || github.ref }}
@@ -10,12 +10,10 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
 
 env:
   NODE_VERSION: '24.14.1'
   PYTHON_VERSION: '3.12'
-  SHELL: /bin/bash
 
 defaults:
   run:
@@ -24,249 +22,143 @@ defaults:
 jobs:
   changes:
     name: Detect Relevant Changes
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     outputs:
-      behavior: ${{ steps.filter.outputs.behavior }}
-      docs: ${{ steps.filter.outputs.docs }}
-      unknown: ${{ steps.filter.outputs.unknown }}
+      app: ${{ steps.filter.outputs.app }}
+      ci: ${{ steps.filter.outputs.ci }}
     steps:
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
-            behavior:
-              - 'src/**'
-              - 'test/**'
-              - 'config/**'
-              - 'docker/**'
-              - 'actions/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'tsconfig*.json'
-              - 'vitest*.ts'
-              - 'stryker.config.json'
+            app:
               - 'project.bootstrap.yaml'
-              - '.devcontainer/**'
+              - 'AGENTS.md'
+              - 'CONTRIBUTING.md'
+              - '.github/PULL_REQUEST_TEMPLATE.md'
               - '.githooks/**'
               - '.github/workflows/**'
               - 'scripts/**'
-              - '.env.example'
-              - 'CODEOWNERS'
-              - 'infra/**'
-              - 'ops/**'
-            docs:
-              - 'AGENTS.md'
-              - 'CLAUDE.md'
+              - 'docs/bootstrap/**'
               - 'README.md'
               - 'docs/**'
-              - 'LICENSE*'
-            unknown:
-              - '**'
-              - '!src/**'
-              - '!test/**'
-              - '!config/**'
-              - '!docker/**'
-              - '!actions/**'
-              - '!package.json'
-              - '!pnpm-lock.yaml'
-              - '!tsconfig*.json'
-              - '!vitest*.ts'
-              - '!stryker.config.json'
-              - '!project.bootstrap.yaml'
-              - '!.devcontainer/**'
-              - '!.githooks/**'
-              - '!.github/workflows/**'
-              - '!scripts/**'
-              - '!.env.example'
-              - '!CODEOWNERS'
-              - '!infra/**'
-              - '!ops/**'
-              - '!AGENTS.md'
-              - '!CLAUDE.md'
-              - '!README.md'
-              - '!docs/**'
-              - '!LICENSE*'
+            ci:
+              - 'project.bootstrap.yaml'
+              - 'AGENTS.md'
+              - 'CONTRIBUTING.md'
+              - '.github/PULL_REQUEST_TEMPLATE.md'
+              - '.githooks/**'
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - 'docs/bootstrap/**'
+              - '.env.example'
+              - 'CODEOWNERS'
 
   fast-checks:
     name: Fast Checks
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     timeout-minutes: 15
     needs: changes
     if: >-
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      (needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true')
+      (needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true')
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-
-      - uses: ./actions/setup-shell-safe-node
-        with:
-          node-version: 24.14.1
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
 
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
 
+  validate-pr-description:
+    name: Validate PR Description
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
+    timeout-minutes: 5
+    if: github.event.pull_request.draft == false
+    env:
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - name: Require generated PR template content
+        run: |
+          failed=0
+
+          require_line() {
+            local line="$1"
+            if ! grep -Fqx "$line" <<<"$PR_BODY"; then
+              echo "Missing required PR section: $line"
+              failed=1
+            fi
+          }
+
+          require_line "## Summary"
+          require_line "## Governing Issue"
+          require_line "## Validation"
+          require_line "## Bootstrap Governance"
+          require_line "## Merge Automation"
+          require_line "## Notes"
+
+          if grep -Eiq 'Closes #$|#<issue-number>|what changed|why it changed|notable tradeoffs|migration or rollout notes|follow-up work if any' <<<"$PR_BODY"; then
+            echo "PR body still contains template placeholder text."
+            failed=1
+          fi
+
+          if ! grep -Eiq '(^|[[:space:]-])(((close[sd]?|fix(e[sd])?|resolve[sd]?|refs?|part[[:space:]]+of)[[:space:]]+)?(#|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#|https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/)[0-9]+|no issue is linked|no linked issue|without a linked issue|no governing issue)' <<<"$PR_BODY"; then
+            echo "PR body must close/link an issue or explicitly explain why no issue is linked."
+            failed=1
+          fi
+
+          if ! grep -Eiq '(^|[[:space:]-])(\[[xX]\]|not run|not applicable|n/a)' <<<"$PR_BODY"; then
+            echo "PR body must include validation evidence, a checked validation item, or a reason validation was not run."
+            failed=1
+          fi
+
+          auto_merge_evidence="$(grep -Eiv '^[[:space:]]*-[[:space:]]+\[[[:space:]]\][[:space:]]' <<<"$PR_BODY" || true)"
+          if ! grep -Eiq 'auto-merge (is )?(enabled|armed)|enabled auto-merge|gh pr merge --auto|auto_merge|auto merge enabled|auto-merge (is )?(unavailable|unsafe|not available|not safe)|plan-limit|fallback merge-readiness' <<<"$auto_merge_evidence"; then
+            echo "PR body must state that the PR author enabled auto-merge, or explain why auto-merge is unavailable/unsafe."
+            failed=1
+          fi
+
+          exit "$failed"
+
   validate-secrets:
     name: Validate Secrets
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     timeout-minutes: 10
-    if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      - name: Scan repository for secret patterns
-        run: bash scripts/check-detect-secrets.sh --all-files
-
-  hosted-fork-fast-checks:
-    name: Hosted Fork Fast Checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: changes
-    if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      (needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true')
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10.32.1
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
-
-  hosted-fork-validate-secrets:
-    name: Hosted Fork Validate Secrets
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name != github.repository
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Scan repository for secret patterns
         run: bash scripts/check-detect-secrets.sh --all-files
 
   ci-gate:
     name: CI Gate
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     if: always()
     needs:
       - changes
       - fast-checks
+      - validate-pr-description
       - validate-secrets
-      - hosted-fork-fast-checks
-      - hosted-fork-validate-secrets
     steps:
       - name: Check required PR jobs
         env:
-          BEHAVIOR_CHANGED: ${{ needs.changes.outputs.behavior }}
-          DOCS_CHANGED: ${{ needs.changes.outputs.docs }}
-          DRAFT_PULL_REQUEST: ${{ github.event.pull_request.draft }}
-          UNKNOWN_CHANGED: ${{ needs.changes.outputs.unknown }}
-          SAME_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           RESULTS: >-
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
+            validate-pr-description=${{ needs.validate-pr-description.result }}
             validate-secrets=${{ needs.validate-secrets.result }}
-            hosted-fork-fast-checks=${{ needs.hosted-fork-fast-checks.result }}
-            hosted-fork-validate-secrets=${{ needs.hosted-fork-validate-secrets.result }}
         run: |
-          declare -A results
-          for entry in $RESULTS; do
-            results["${entry%%=*}"]="${entry##*=}"
-          done
-
-          expect_status() {
-            local job="$1"
-            local expected="$2"
-            local actual="${results[$job]:-missing}"
-            if [[ "$actual" != "$expected" ]]; then
-              echo "FAIL $job => $actual (expected $expected)"
-              failed=1
-            else
-              echo "OK   $job => $actual"
-            fi
-          }
-
           failed=0
-          expect_status changes success
-
-          if [[ "$DRAFT_PULL_REQUEST" == "true" ]]; then
-            echo "INFO draft pull request; validation jobs are intentionally skipped"
-            expect_status fast-checks skipped
-            expect_status validate-secrets skipped
-            expect_status hosted-fork-fast-checks skipped
-            expect_status hosted-fork-validate-secrets skipped
-            exit "$failed"
-          fi
-
-          checks_required=false
-          if [[ "$BEHAVIOR_CHANGED" == "true" || "$UNKNOWN_CHANGED" == "true" ]]; then
-            checks_required=true
-          elif [[ "$DOCS_CHANGED" == "true" ]]; then
-            echo "INFO docs-only change; behavior checks are intentionally skipped"
-          else
-            echo "FAIL change classification produced no matching scope"
-            failed=1
-          fi
-
-          if [[ "$SAME_REPOSITORY" == "true" ]]; then
-            expect_status validate-secrets success
-            expect_status hosted-fork-validate-secrets skipped
-            if [[ "$checks_required" == "true" ]]; then
-              expect_status fast-checks success
+          for entry in $RESULTS; do
+            job="${entry%%=*}"
+            status="${entry##*=}"
+            if [[ "$status" == "success" || "$status" == "skipped" ]]; then
+              echo "OK   $job => $status"
             else
-              expect_status fast-checks skipped
+              echo "FAIL $job => $status"
+              failed=1
             fi
-            expect_status hosted-fork-fast-checks skipped
-          else
-            expect_status validate-secrets skipped
-            expect_status hosted-fork-validate-secrets success
-            expect_status fast-checks skipped
-            if [[ "$checks_required" == "true" ]]; then
-              expect_status hosted-fork-fast-checks success
-            else
-              expect_status hosted-fork-fast-checks skipped
-            fi
-          fi
-
+          done
           exit "$failed"

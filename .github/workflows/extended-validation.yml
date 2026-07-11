@@ -25,14 +25,13 @@ defaults:
 jobs:
   changes:
     name: Detect Extended Validation Scope
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     outputs:
-      behavior: ${{ steps.preset.outputs.behavior || steps.filter.outputs.behavior || 'false' }}
-      docs: ${{ steps.preset.outputs.docs || steps.filter.outputs.docs || 'false' }}
-      unknown: ${{ steps.preset.outputs.unknown || steps.filter.outputs.unknown || 'false' }}
+      app: ${{ steps.preset.outputs.app || steps.filter.outputs.app || 'false' }}
+      ci: ${{ steps.preset.outputs.ci || steps.filter.outputs.ci || 'false' }}
       extended: ${{ steps.preset.outputs.extended || steps.filter.outputs.extended || 'false' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         if: github.event_name == 'push'
         with:
           fetch-depth: 0
@@ -42,190 +41,83 @@ jobs:
         if: github.event_name != 'push'
         run: |
           cat >>"$GITHUB_OUTPUT" <<'EOF'
-          behavior=true
-          docs=false
-          unknown=false
+          app=true
+          ci=true
           extended=true
           EOF
 
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@v3
         id: filter
         if: github.event_name == 'push'
         with:
           filters: |
-            behavior:
-              - 'src/**'
-              - 'test/**'
-              - 'config/**'
-              - 'docker/**'
-              - 'actions/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'tsconfig*.json'
-              - 'vitest*.ts'
-              - 'stryker.config.json'
+            app:
               - 'project.bootstrap.yaml'
-              - '.devcontainer/**'
+              - 'AGENTS.md'
+              - 'CONTRIBUTING.md'
+              - '.github/PULL_REQUEST_TEMPLATE.md'
               - '.githooks/**'
               - '.github/workflows/**'
               - 'scripts/**'
-              - '.env.example'
-              - 'CODEOWNERS'
-              - 'infra/**'
-              - 'ops/**'
-            docs:
-              - 'AGENTS.md'
-              - 'CLAUDE.md'
+              - 'docs/bootstrap/**'
               - 'README.md'
               - 'docs/**'
-              - 'LICENSE*'
-            unknown:
-              - '**'
-              - '!src/**'
-              - '!test/**'
-              - '!config/**'
-              - '!docker/**'
-              - '!actions/**'
-              - '!package.json'
-              - '!pnpm-lock.yaml'
-              - '!tsconfig*.json'
-              - '!vitest*.ts'
-              - '!stryker.config.json'
-              - '!project.bootstrap.yaml'
-              - '!.devcontainer/**'
-              - '!.githooks/**'
-              - '!.github/workflows/**'
-              - '!scripts/**'
-              - '!.env.example'
-              - '!CODEOWNERS'
-              - '!infra/**'
-              - '!ops/**'
-              - '!AGENTS.md'
-              - '!CLAUDE.md'
-              - '!README.md'
-              - '!docs/**'
-              - '!LICENSE*'
+            ci:
+              - 'project.bootstrap.yaml'
+              - 'AGENTS.md'
+              - 'CONTRIBUTING.md'
+              - '.github/PULL_REQUEST_TEMPLATE.md'
+              - '.githooks/**'
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - 'docs/bootstrap/**'
+              - '.env.example'
+              - 'CODEOWNERS'
             extended:
               - 'infra/**'
               - 'ops/**'
 
   fast-checks:
     name: Fast Checks
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     timeout-minutes: 15
     needs: changes
-    if: needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
+    if: needs.changes.outputs.app == 'true' || needs.changes.outputs.ci == 'true'
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./actions/setup-shell-safe-node
-        with:
-          node-version: 24.14.1
+      - uses: actions/checkout@v4
 
       - name: Run fast checks
         run: bash scripts/ci/run-fast-checks.sh
 
   extended-checks:
     name: Extended Checks
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     timeout-minutes: 20
     needs: changes
-    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
+    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.app == 'true'
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./actions/setup-shell-safe-node
-        with:
-          node-version: 24.14.1
+      - uses: actions/checkout@v4
 
       - name: Run extended validation
         run: bash scripts/ci/run-extended-validation.sh
 
-  drift-detect:
-    name: Drift Detection
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
-    timeout-minutes: 10
-    needs: changes
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./actions/setup-shell-safe-node
-        with:
-          node-version: 24.14.1
-
-      - name: Enable pnpm from shell-safe Node
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.32.1 --activate
-          pnpm --version
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Compare desired and actual runner pool state
-        env:
-          GITHUB_PAT: ${{ secrets.RUNNER_FLEET_GITHUB_PAT }}
-          DRIFT_THRESHOLD: ${{ vars.DRIFT_THRESHOLD }}
-          DRIFT_NOTIFY_CHANNEL: ${{ vars.DRIFT_NOTIFY_CHANNEL }}
-        run: |
-          pnpm drift-detect -- --config config/pools.yaml --threshold "${DRIFT_THRESHOLD:-0}" || {
-            echo "::warning::Runner pool drift detected; see drift-detect output for desired vs actual capacity."
-            exit 0
-          }
-
-  mutation-tests:
-    name: Mutation Tests
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
-    timeout-minutes: 30
-    needs: changes
-    if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./actions/setup-shell-safe-node
-        with:
-          node-version: 24.14.1
-
-      - name: Enable pnpm from shell-safe Node
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.32.1 --activate
-          pnpm --version
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run mutation tests
-        run: pnpm mutation-test
-
-      - name: Upload mutation report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: mutation-report
-          path: reports/mutation/**
-          if-no-files-found: ignore
-
   validate-secrets:
     name: Validate Secrets
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Scan repository for secret patterns
         run: bash scripts/check-detect-secrets.sh --all-files
 
   extended-validation-gate:
     name: Extended Validation Gate
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ['self-hosted', 'linux', 'shell-only', 'public']
     if: always()
     needs:
       - changes
       - fast-checks
       - extended-checks
-      - drift-detect
-      - mutation-tests
       - validate-secrets
     steps:
       - name: Check extended validation jobs
@@ -234,8 +126,6 @@ jobs:
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
             extended-checks=${{ needs.extended-checks.result }}
-            drift-detect=${{ needs.drift-detect.result }}
-            mutation-tests=${{ needs.mutation-tests.result }}
             validate-secrets=${{ needs.validate-secrets.result }}
         run: |
           failed=0

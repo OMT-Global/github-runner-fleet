@@ -1,10 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-branch="$(git branch --show-current)"
-case "$branch" in
-  main|master)
-    echo "commits to $branch are blocked; switch to a feature branch first" >&2
-    exit 1
-    ;;
-esac
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo HEAD)"
+if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+  echo "ERROR: commits to $branch are blocked. Create a feature branch." >&2
+  exit 1
+fi
+
+staged_files=()
+while IFS= read -r -d '' staged_file; do
+  staged_files+=("$staged_file")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+for f in "${staged_files[@]}"; do
+  case "$f" in
+    *.env|.env.*)
+      if [[ "$f" != *.example ]]; then
+        echo "ERROR: cannot commit env file '$f'. Use .env.example templates instead." >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -x scripts/check-detect-secrets.sh ]]; then
+  bash scripts/check-detect-secrets.sh --staged
+fi
