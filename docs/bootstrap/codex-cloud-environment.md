@@ -1,8 +1,14 @@
 # Codex Cloud Environment
 
-Configure the Codex Web environment in Codex settings for:
+Configure the Codex Web environment in Codex settings for this bootstrap-managed repository.
 
-- Repo: `OMT-Global/github-runner-fleet`
+## Project
+
+- Repository: `OMT-Global/github-runner-fleet`
+- Manifest: `project.bootstrap.yaml`
+
+## Environment Settings
+
 - Base image: `universal`
 - Setup mode: manual setup script
 - Setup script: `bash scripts/codex-cloud/setup.sh`
