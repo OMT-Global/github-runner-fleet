@@ -1210,7 +1210,8 @@ describe("cli integration", () => {
       expect(payload.options.action).toBe(
         command === "teardown-windows-project" ? "down" : "up"
       );
-      expect(payload.deploymentScript).toContain("& $Docker compose");
+      expect(payload.deploymentScript).toContain("Invoke-NativeCommand");
+      expect(payload.deploymentScript).toContain("-Operation 'docker compose");
     }
   });
 

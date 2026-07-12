@@ -157,6 +157,17 @@ function renderWindowsDockerDeploymentScript(
     `$LogFile = ${powerShellQuote(logPath)}`,
     "New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogFile) | Out-Null",
     "Start-Transcript -Path $LogFile -Append | Out-Null",
+    "function Invoke-NativeCommand {",
+    "  param([string]$FilePath, [string[]]$ArgumentList, [string]$Operation)",
+    "  $Output = @(& $FilePath @ArgumentList 2>&1)",
+    "  $ExitCode = $LASTEXITCODE",
+    "  $Output | ForEach-Object { Write-Host $_ }",
+    "  if ($ExitCode -ne 0) {",
+    "    $CommandText = \"$FilePath $($ArgumentList -join ' ')\".Trim()",
+    "    $Detail = (($Output | Select-Object -Last 20) -join [Environment]::NewLine)",
+    "    throw \"$Operation failed: command '$CommandText' exited with code $ExitCode. $Detail\"",
+    "  }",
+    "}",
     "try {",
     "  Write-Host \"[install] $(Get-Date -Format o) starting $ProjectName\"",
     "  $Docker = (Get-Command docker -ErrorAction Stop).Source",
@@ -171,12 +182,12 @@ function renderWindowsDockerDeploymentScript(
     "    New-Item -ItemType Directory -Force -Path $Directory | Out-Null",
     "  }",
     "  Set-Location $ProjectDir",
-    "  & $Docker compose -p $ProjectName -f $ComposeFile config -q"
+    "  Invoke-NativeCommand -FilePath $Docker -ArgumentList @('compose', '-p', $ProjectName, '-f', $ComposeFile, 'config', '-q') -Operation 'docker compose config'"
   ];
 
   if (options.action === "up") {
     if (options.pullImages) {
-      lines.push("  & $Docker compose -p $ProjectName -f $ComposeFile pull");
+      lines.push("  Invoke-NativeCommand -FilePath $Docker -ArgumentList @('compose', '-p', $ProjectName, '-f', $ComposeFile, 'pull') -Operation 'docker compose pull'");
     }
 
     const upArgs = ["up", "-d"];
@@ -187,7 +198,7 @@ function renderWindowsDockerDeploymentScript(
       upArgs.push("--remove-orphans");
     }
     lines.push(
-      `  & $Docker compose -p $ProjectName -f $ComposeFile ${upArgs.join(" ")}`
+      `  Invoke-NativeCommand -FilePath $Docker -ArgumentList @('compose', '-p', $ProjectName, '-f', $ComposeFile, ${upArgs.map(powerShellQuote).join(", ")}) -Operation 'docker compose up'`
     );
   } else {
     const downArgs = ["down"];
@@ -198,12 +209,12 @@ function renderWindowsDockerDeploymentScript(
       downArgs.push("--volumes");
     }
     lines.push(
-      `  & $Docker compose -p $ProjectName -f $ComposeFile ${downArgs.join(" ")}`
+      `  Invoke-NativeCommand -FilePath $Docker -ArgumentList @('compose', '-p', $ProjectName, '-f', $ComposeFile, ${downArgs.map(powerShellQuote).join(", ")}) -Operation 'docker compose down'`
     );
   }
 
   lines.push(
-    "  & $Docker compose -p $ProjectName -f $ComposeFile ps",
+    "  Invoke-NativeCommand -FilePath $Docker -ArgumentList @('compose', '-p', $ProjectName, '-f', $ComposeFile, 'ps') -Operation 'docker compose ps'",
     "  Write-Host \"[install] $(Get-Date -Format o) completed $ProjectName\"",
     "} finally {",
     "  Stop-Transcript | Out-Null",

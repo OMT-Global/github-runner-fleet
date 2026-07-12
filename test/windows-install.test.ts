@@ -23,8 +23,13 @@ describe("buildWindowsDockerInstallPlan", () => {
     });
     expect(plan.envFileContent).toContain('GITHUB_PAT="test-pat"');
     expect(plan.deploymentScript).toContain(
-      "& $Docker compose -p $ProjectName -f $ComposeFile pull"
+      "-Operation 'docker compose pull'"
     );
+    expect(plan.deploymentScript).toContain("function Invoke-NativeCommand");
+    expect(plan.deploymentScript).toContain("exited with code $ExitCode");
+    for (const operation of ["config", "pull", "up", "ps"]) {
+      expect(plan.deploymentScript).toContain(`-Operation 'docker compose ${operation}'`);
+    }
     expect(plan.stateDirectories).toEqual([
       "C:\\github-runner-fleet\\windows-docker\\pools\\windows-private\\runner-01"
     ]);
@@ -79,7 +84,7 @@ describe("buildWindowsDockerInstallPlan", () => {
     );
 
     expect(plan.deploymentScript).toContain(
-      "& $Docker compose -p $ProjectName -f $ComposeFile down --remove-orphans"
+      "-Operation 'docker compose down'"
     );
     expect(plan.deploymentScript).not.toContain(" pull");
     expect(plan.deploymentScript).not.toContain(" up -d");

@@ -19,6 +19,8 @@ describe("renderWindowsDockerCompose", () => {
         "C:\\github-runner-fleet\\windows-docker\\pools\\windows-private\\runner-01\\_work",
       RUNNER_TEMP:
         "C:\\github-runner-fleet\\windows-docker\\pools\\windows-private\\runner-01\\_temp",
+      AUDIT_LOG_FILE:
+        "C:\\github-runner-fleet\\windows-docker\\pools\\windows-private\\runner-01\\audit.jsonl",
       DOCKER_HOST: "npipe:////./pipe/docker_engine"
     });
     expect(service.volumes).toEqual([
