@@ -23,7 +23,11 @@ download_runner_bundle() {
   mkdir -p "${RUNNER_ROOT}"
 
   if [[ ! -f "${archive_path}" ]]; then
-    curl -fsSL -o "${archive_path}" "${download_url}"
+    curl -fsSL \
+      --connect-timeout "${RUNNER_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-10}" \
+      --max-time "${RUNNER_DOWNLOAD_MAX_TIME_SECONDS:-600}" \
+      --retry 3 --retry-all-errors --retry-delay 2 \
+      -o "${archive_path}" "${download_url}"
   fi
 
   rm -rf "${RUNNER_ROOT}/bin" "${RUNNER_ROOT}/externals"

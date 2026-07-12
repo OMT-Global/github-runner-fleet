@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { runBoundedCommand, sshTransportArgs } from "./lib/process.js";
 import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
 import { createAutoscaleWebhookServer } from "./lib/autoscale-webhook.js";
 import { collectConfigWarnings, loadConfig, type ResolvedConfig } from "./lib/config.js";
@@ -1289,20 +1290,12 @@ function runSynologyInstallPlan(
   python: string
 ): string {
   const scriptPath = path.resolve("scripts/install-synology-project.py");
-  const result = spawnSync(python, [scriptPath], {
-    input: JSON.stringify(plan),
-    encoding: "utf8",
-    env: process.env
+  const result = runBoundedCommand(python, [scriptPath], "Synology installer failed", {
+    timeoutMs: Number(process.env.LOCAL_INSTALL_TIMEOUT_SECONDS ?? "900") * 1000,
+    input: JSON.stringify(plan)
   });
-
-  if (result.status !== 0) {
-    const stderr = result.stderr.trim();
-    const stdout = result.stdout.trim();
-    throw new Error(stderr || stdout || `installer exited with status ${result.status}`);
-  }
-
-  process.stdout.write(result.stdout);
-  return result.stdout;
+  process.stdout.write(result);
+  return result;
 }
 
 async function teardownLinuxDockerProject(args: string[]): Promise<void> {
@@ -2636,6 +2629,7 @@ function runLinuxDockerInstall(
     output += runCommand(
       "ssh",
       [
+        ...sshTransportArgs(),
         "-p",
         plan.connection.port,
         remote,
@@ -2652,6 +2646,7 @@ function runLinuxDockerInstall(
     output += runCommand(
       "scp",
       [
+        ...sshTransportArgs(),
         "-P",
         plan.connection.port,
         composePath,
@@ -2665,6 +2660,7 @@ function runLinuxDockerInstall(
     output += runCommand(
       "ssh",
       [
+        ...sshTransportArgs(),
         "-p",
         plan.connection.port,
         remote,
@@ -2706,6 +2702,7 @@ function runWindowsDockerInstall(
     runCommand(
       "ssh",
       [
+        ...sshTransportArgs(),
         "-p",
         plan.connection.port,
         remote,
@@ -2722,6 +2719,7 @@ function runWindowsDockerInstall(
     runCommand(
       "scp",
       [
+        ...sshTransportArgs(),
         "-P",
         plan.connection.port,
         composePath,
@@ -2735,6 +2733,7 @@ function runWindowsDockerInstall(
     runCommand(
       "ssh",
       [
+        ...sshTransportArgs(),
         "-p",
         plan.connection.port,
         remote,
@@ -2858,24 +2857,11 @@ function runCommand(
   args: string[],
   errorPrefix: string
 ): string {
-  const result = spawnSync(command, args, {
-    encoding: "utf8",
-    env: process.env
+  const output = runBoundedCommand(command, args, errorPrefix, {
+    timeoutMs: Number(process.env.REMOTE_COMMAND_TIMEOUT_SECONDS ?? "300") * 1000
   });
-
-  if (result.status !== 0) {
-    const stderr = result.stderr.trim();
-    const stdout = result.stdout.trim();
-    throw new Error(
-      `${errorPrefix}: ${stderr || stdout || `${command} exited with status ${result.status}`}`
-    );
-  }
-
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-
-  return result.stdout ?? "";
+  if (output) process.stdout.write(output);
+  return output;
 }
 
 function shellQuote(value: string): string {

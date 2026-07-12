@@ -53,6 +53,10 @@ cleanup() {
 
 base_ssh() {
   sshpass -p "${GUEST_PASSWORD}" ssh \
+    -o BatchMode=no \
+    -o ConnectTimeout="${LUME_SSH_CONNECT_TIMEOUT_SECONDS:-15}" \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=2 \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     "${GUEST_USER}@${base_vm_ip}" \
