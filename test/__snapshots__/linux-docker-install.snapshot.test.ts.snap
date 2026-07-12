@@ -36,6 +36,7 @@ services:
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_EXEC_MODE_OVERRIDE: root
+      AUDIT_LOG_FILE: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/audit.jsonl
       DOCKER_HOST: unix:///var/run/docker.sock
       RUNNER_ALLOWED_REPOSITORIES: example/private-app
     volumes:
@@ -82,6 +83,7 @@ services:
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_EXEC_MODE_OVERRIDE: root
+      AUDIT_LOG_FILE: /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02/audit.jsonl
       DOCKER_HOST: unix:///var/run/docker.sock
       RUNNER_ALLOWED_REPOSITORIES: example/private-app
     volumes:
@@ -128,6 +130,7 @@ services:
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_EXEC_MODE_OVERRIDE: root
+      AUDIT_LOG_FILE: /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01/audit.jsonl
       DOCKER_HOST: unix:///var/run/docker.sock
       RUNNER_ALLOWED_REPOSITORIES: example/public-app
     volumes:

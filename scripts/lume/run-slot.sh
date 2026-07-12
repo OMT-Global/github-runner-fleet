@@ -83,6 +83,7 @@ while true; do
   lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 0 \
     "set -a && source '${LUME_GUEST_ENV_PATH}' && set +a && bash '${LUME_GUEST_BOOTSTRAP_PATH}'" \
     >> "${LUME_SLOT_LOG_FILE}" 2>&1 || true
+  collect_guest_audit "${RUNNER_ROOT}/audit.jsonl" "${LUME_AUDIT_LOG_FILE}"
 
   log "guest runner for ${LUME_VM_NAME} exited; recycling slot"
   cleanup_slot

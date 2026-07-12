@@ -43,7 +43,7 @@ export function buildRunnerStateDir(pool: PoolConfig, index: number): string {
 
 function renderService(pool: PoolConfig, index: number): Record<string, unknown> {
   const runnerStateDir = buildRunnerStateDir(pool, index);
-  const environment = {
+  const environment: Record<string, string> = {
     ...buildCommonRunnerEnv({
       organization: pool.organization,
       runnerName: buildRunnerName(pool, index),
@@ -59,6 +59,7 @@ function renderService(pool: PoolConfig, index: number): Record<string, unknown>
       runnerTemp: "/tmp/github-runner-temp",
       runnerToolCache: "/opt/hostedtoolcache"
     }),
+    AUDIT_LOG_FILE: `${runnerStateDir}/audit.jsonl`,
     ...renderTelemetryEnvironment(pool.telemetry, {
       serviceName: "github-runner-fleet.synology",
       resourceAttributes: {

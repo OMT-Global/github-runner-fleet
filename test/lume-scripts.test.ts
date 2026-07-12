@@ -24,6 +24,9 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain("uploading guest bootstrap assets");
     expect(runSlot).toContain('guest_env_file="$(render_guest_runner_env "${env_path}")"');
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
+    expect(runSlot).toContain('collect_guest_audit "${RUNNER_ROOT}/audit.jsonl" "${LUME_AUDIT_LOG_FILE}"');
+    expect(read("scripts/guest/macos-runner-bootstrap.sh")).toContain("audit_event runner_registered");
+    expect(read("scripts/guest/macos-runner-bootstrap.sh")).toContain("audit_event runner_job_start");
     expect(reconcile).toContain("retire_removed_slots_from_state");
     expect(reconcile).toContain("wait_for_registration_env");
     expect(reconcile).toContain("missing GitHub auth");

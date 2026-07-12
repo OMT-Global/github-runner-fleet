@@ -49,9 +49,11 @@ describe("doctor", () => {
   test("produces a passing full report when Synology and Lume checks succeed", async () => {
     const directory = createTempDir();
     const envPath = path.join(directory, ".env");
+    const auditLogPath = path.join(directory, "audit.jsonl");
     const lumeRunnerEnvPath = path.join(directory, "lume", "runner.env");
     fs.mkdirSync(path.dirname(lumeRunnerEnvPath), { recursive: true });
     fs.writeFileSync(lumeRunnerEnvPath, "GITHUB_PAT=secret\n", "utf8");
+    fs.writeFileSync(auditLogPath, "audit-entry\n", "utf8");
 
     fs.writeFileSync(
       envPath,
@@ -70,6 +72,7 @@ WINDOWS_DOCKER_RUNNER_BASE_DIR=C:\\github-runner-fleet\\windows-docker
 LUME_RUNNER_BASE_DIR=${directory}/lume
 LUME_RUNNER_ENV_FILE=${lumeRunnerEnvPath}
 LUME_GUEST_PASSWORD=secret
+AUDIT_LOG_FILE=${auditLogPath}
 `,
       "utf8"
     );
@@ -301,7 +304,7 @@ pools:
         summary: string;
       })
       .find((entry) => entry.check === "audit-log");
-    expect(auditLog?.summary).toContain("audit log path");
+    expect(auditLog?.summary).toContain("audit log healthy");
 
     const firstLog = JSON.parse(String(stderrWrite.mock.calls[0][0])) as {
       level: string;
@@ -324,7 +327,7 @@ pools:
 
     const rendered = renderDoctorReport(report);
     expect(rendered).toContain("doctor mode: full");
-    expect(rendered).toContain("PASS audit-log: audit log path");
+    expect(rendered).toContain("PASS audit-log: audit log healthy");
     expect(rendered).toContain("PASS synology-image");
     expect(rendered).toContain("PASS linux-docker-image");
     expect(rendered).toContain("overall: PASS");
@@ -1171,7 +1174,7 @@ ${poolBlocks}
     expect(findCheck(report, "synology-image").summary).toBe(
       "verified ghcr.io/example/github-runner-fleet:0.1.9 in GitHub Packages"
     );
-    expect(findCheck(report, "audit-log").detail).toBe("size 12 bytes");
+    expect(findCheck(report, "audit-log").detail).toMatch(/^size 12 bytes; last write \d+s ago$/);
     expect(findCheck(report, "audit-log").data).toMatchObject({
       sizeBytes: 12
     });

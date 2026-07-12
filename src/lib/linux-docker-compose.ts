@@ -71,6 +71,7 @@ function renderService(
       runnerToolCache
     }),
     RUNNER_EXEC_MODE_OVERRIDE: "root",
+    AUDIT_LOG_FILE: `${runnerStateDir}/audit.jsonl`,
     DOCKER_HOST: "unix:///var/run/docker.sock",
     ...renderTelemetryEnvironment(pool.telemetry, {
       serviceName: "github-runner-fleet.linux-docker",

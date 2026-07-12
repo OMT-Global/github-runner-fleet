@@ -32,6 +32,14 @@ export interface WriteAuditRecordOptions {
   now?: Date;
 }
 
+export interface AuditLogHealth {
+  status: "missing" | "unwritable" | "stale" | "healthy";
+  filePath: string;
+  sizeBytes: number;
+  ageSeconds?: number;
+  detail: string;
+}
+
 export function auditLogFileFromEnv(
   env: Record<string, string | undefined> = process.env
 ): string {
@@ -101,9 +109,44 @@ export function writeAuditRecord(
   const record = normalizeAuditRecord(input, options.now);
   const filePath = options.filePath ?? auditLogFileFromEnv();
   const line = `${JSON.stringify(record)}\n`;
-  rotateAuditLogIfNeeded(filePath, Buffer.byteLength(line), options.maxSizeBytes);
-  appendLineSync(filePath, line);
+  withAuditLock(filePath, () => {
+    rotateAuditLogIfNeeded(filePath, Buffer.byteLength(line), options.maxSizeBytes);
+    appendLineSync(filePath, line);
+  });
   return record;
+}
+
+export function inspectAuditLog(
+  filePath: string,
+  staleAfterSeconds = 86_400,
+  now = Date.now()
+): AuditLogHealth {
+  if (!fs.existsSync(filePath)) {
+    const parent = nearestExistingParent(path.dirname(filePath));
+    try {
+      fs.accessSync(parent, fs.constants.W_OK);
+    } catch {
+      return { status: "unwritable", filePath, sizeBytes: 0, detail: `audit log is absent and parent ${parent} is not writable` };
+    }
+    return { status: "missing", filePath, sizeBytes: 0, detail: "audit log has not been created" };
+  }
+  try {
+    fs.accessSync(filePath, fs.constants.W_OK);
+  } catch {
+    return { status: "unwritable", filePath, sizeBytes: fs.statSync(filePath).size, detail: "audit log is not writable" };
+  }
+  const stat = fs.statSync(filePath);
+  const ageSeconds = Math.max(0, Math.floor((now - stat.mtimeMs) / 1000));
+  if (stat.size === 0 || ageSeconds > staleAfterSeconds) {
+    return {
+      status: "stale",
+      filePath,
+      sizeBytes: stat.size,
+      ageSeconds,
+      detail: stat.size === 0 ? "audit log is empty" : `last audit write ${ageSeconds}s ago exceeds ${staleAfterSeconds}s threshold`
+    };
+  }
+  return { status: "healthy", filePath, sizeBytes: stat.size, ageSeconds, detail: `size ${stat.size} bytes; last write ${ageSeconds}s ago` };
 }
 
 export async function readJsonFromStdin(
@@ -149,6 +192,45 @@ function appendLineSync(filePath: string, line: string): void {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+function withAuditLock<T>(filePath: string, callback: () => T): T {
+  const lockPath = `${filePath}.lock`;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const deadline = Date.now() + 5_000;
+  while (true) {
+    try {
+      fs.mkdirSync(lockPath);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > 30_000) {
+          fs.rmSync(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() >= deadline) throw new Error(`timed out acquiring audit rotation lock ${lockPath}`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  try {
+    return callback();
+  } finally {
+    fs.rmSync(lockPath, { recursive: true, force: true });
+  }
+}
+
+function nearestExistingParent(start: string): string {
+  let current = start;
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) return current;
+    current = parent;
+  }
+  return current;
 }
 
 function isAuditEvent(value: unknown): value is AuditEvent {

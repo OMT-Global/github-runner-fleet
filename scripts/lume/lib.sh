@@ -171,10 +171,61 @@ RUNNER_WORK_DIR=${runner_work_dir}
 RUNNER_PATH=${runner_path}
 RUNNER_VERSION=${runner_version}
 RUNNER_DOWNLOAD_URL=${runner_download_url}
+AUDIT_LOG_FILE=${runner_root}/audit.jsonl
 EOF
   ) > "${temp_env}"
 
   printf '%s\n' "${temp_env}"
+}
+
+collect_guest_audit() {
+  local guest_path="$1"
+  local host_path="$2"
+  local temp_file
+  temp_file="$(mktemp)"
+  if ! lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 30 \
+    "test ! -f '${guest_path}' || cat '${guest_path}'" > "${temp_file}" 2>/dev/null; then
+    rm -f "${temp_file}"
+    log "failed to collect guest audit log from ${LUME_VM_NAME}"
+    return 0
+  fi
+
+  python3 - "${temp_file}" "${host_path}" <<'PY'
+import fcntl
+import json
+import os
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+target.parent.mkdir(parents=True, exist_ok=True)
+records = []
+for line in source.read_text(encoding="utf-8").splitlines():
+    try:
+        records.append(json.dumps(json.loads(line), separators=(",", ":"), sort_keys=True) + "\n")
+    except json.JSONDecodeError:
+        continue
+if not records:
+    raise SystemExit(0)
+lock_path = target.with_name(target.name + ".lock")
+with lock_path.open("a", encoding="utf-8") as lock:
+    fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    payload = "".join(records)
+    max_size = 10 * 1024 * 1024
+    if target.exists() and target.stat().st_size + len(payload.encode("utf-8")) > max_size:
+        rotated = target.with_name(target.name + ".1")
+        try:
+            rotated.unlink()
+        except FileNotFoundError:
+            pass
+        target.replace(rotated)
+    with target.open("a", encoding="utf-8") as output:
+        output.write(payload)
+        output.flush()
+        os.fsync(output.fileno())
+PY
+  rm -f "${temp_file}"
 }
 
 vm_exists() {

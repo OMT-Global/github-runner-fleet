@@ -35,6 +35,7 @@ services:
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
+      AUDIT_LOG_FILE: /volume1/docker/github-runner-fleet/pools/synology-private/runner-01/audit.jsonl
     volumes:
       - /volume1/docker/github-runner-fleet/pools/synology-private/runner-01:/volume1/docker/github-runner-fleet/pools/synology-private/runner-01
     security_opt:
@@ -77,6 +78,7 @@ services:
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
+      AUDIT_LOG_FILE: /volume1/docker/github-runner-fleet/pools/synology-private/runner-02/audit.jsonl
     volumes:
       - /volume1/docker/github-runner-fleet/pools/synology-private/runner-02:/volume1/docker/github-runner-fleet/pools/synology-private/runner-02
     security_opt:
@@ -119,6 +121,7 @@ services:
       AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
       RUNNER_EPHEMERAL: "true"
       RUNNER_DISABLE_UPDATE: "true"
+      AUDIT_LOG_FILE: /volume1/docker/github-runner-fleet/pools/synology-public/runner-01/audit.jsonl
       RUNNER_ALLOWED_REPOSITORIES: example/public-demo
     volumes:
       - /volume1/docker/github-runner-fleet/pools/synology-public/runner-01:/volume1/docker/github-runner-fleet/pools/synology-public/runner-01

@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   auditLogFileFromEnv,
+  inspectAuditLog,
   normalizeAuditRecord,
   writeAuditRecord
 } from "../src/lib/audit.js";
@@ -127,12 +129,61 @@ describe("audit log", () => {
       "/tmp/audit.jsonl"
     );
   });
+
+  test("distinguishes missing, empty, stale, and healthy logs", () => {
+    const directory = createTempDir();
+    const filePath = path.join(directory, "audit.jsonl");
+    expect(inspectAuditLog(filePath)).toMatchObject({ status: "missing" });
+    fs.writeFileSync(filePath, "", "utf8");
+    expect(inspectAuditLog(filePath)).toMatchObject({ status: "stale", detail: "audit log is empty" });
+    fs.writeFileSync(filePath, "{}\n", "utf8");
+    fs.utimesSync(filePath, new Date(0), new Date(0));
+    expect(inspectAuditLog(filePath, 60, 120_000)).toMatchObject({ status: "stale", ageSeconds: 120 });
+    expect(inspectAuditLog(filePath, 300, 120_000)).toMatchObject({ status: "healthy" });
+  });
+
+  test("serializes rotation across independent writer processes", async () => {
+    const directory = createTempDir();
+    const filePath = path.join(directory, "audit.jsonl");
+    fs.writeFileSync(filePath, `${JSON.stringify({ old: "x".repeat(8_800) })}\n`, "utf8");
+    await Promise.all(Array.from({ length: 8 }, (_value, index) =>
+      spawnAuditWriter(filePath, index)
+    ));
+
+    const records = [filePath, `${filePath}.1`]
+      .filter((entry) => fs.existsSync(entry))
+      .flatMap((entry) => readJsonLines(entry));
+    expect(records).toHaveLength(9);
+    expect(records).toEqual(expect.arrayContaining(
+      Array.from({ length: 8 }, (_value, index) => expect.objectContaining({ runner_name: `process-${index}` }))
+    ));
+  });
 });
 
 function createTempDir(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "audit-test-"));
   tempPaths.push(directory);
   return directory;
+}
+
+function spawnAuditWriter(filePath: string, index: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      "--import", "tsx", "src/cli.ts", "audit-log",
+      "--file", filePath, "--max-size-bytes", "10000"
+    ], { cwd: path.resolve("."), stdio: ["pipe", "ignore", "pipe"] });
+    let error = "";
+    child.stderr.on("data", (chunk) => { error += String(chunk); });
+    child.on("error", reject);
+    child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`audit writer exited ${code}: ${error}`)));
+    child.stdin.end(JSON.stringify({
+      event: "runner_job_start",
+      runner_name: `process-${index}`,
+      pool: "synology-private",
+      plane: "synology",
+      org: "omt-global"
+    }));
+  });
 }
 
 function readJsonLines(filePath: string): unknown[] {
