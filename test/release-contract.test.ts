@@ -18,4 +18,16 @@ describe("release contract", () => {
 
     expect(packageJson.version).toBe(config.image.tag);
   });
+
+  test("documents verification-only recovery without replacing an existing tag", () => {
+    const recovery = fs.readFileSync(
+      path.resolve("docs/release-recovery.md"),
+      "utf8"
+    );
+
+    expect(recovery).toContain("verification-only recovery mode");
+    expect(recovery).toContain("does not rebuild, replace, re-sign, or re-attest");
+    expect(recovery).toContain("supersede the candidate with a new version");
+    expect(recovery).toContain("bounded to five minutes");
+  });
 });
