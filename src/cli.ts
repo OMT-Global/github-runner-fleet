@@ -4,8 +4,15 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
-import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
-import { createAutoscaleWebhookServer } from "./lib/autoscale-webhook.js";
+import {
+  decideAutoscale,
+  decideWebhookAutoscale,
+  type AutoscaleDecision
+} from "./lib/autoscale.js";
+import {
+  createAutoscaleWebhookServer,
+  type AutoscaleWebhookDecision
+} from "./lib/autoscale-webhook.js";
 import { collectConfigWarnings, loadConfig, type ResolvedConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
 import {
@@ -725,29 +732,152 @@ async function scaleCommand(args: string[]): Promise<void> {
 
 async function autoscaleWebhookCommand(args: string[]): Promise<void> {
   const listen = getOption(args, "--listen", ":8080")!;
+  const envPath = getOption(args, "--env", ".env")!;
+  const configPath = getOption(args, "--config", "config/pools.yaml")!;
+  const env = loadDeploymentEnv({ envPath, requirePat: false, requireGitHubAuth: true });
   const secretEnv = getOption(args, "--secret-env", "AUTOSCALE_WEBHOOK_SECRET")!;
-  const secret = process.env[secretEnv]?.trim();
+  const secret = env.raw[secretEnv]?.trim();
   if (!secret) {
     throw new Error(`${secretEnv} is required`);
   }
-  const labels = (getOption(args, "--labels", "") ?? "")
-    .split(",")
-    .map((label) => label.trim())
-    .filter(Boolean);
-  if (labels.length === 0) {
-    throw new Error("--labels is required, for example --labels self-hosted,synology");
+  const config = loadConfig(configPath, env);
+  const routes = config.pools.map((pool) => ({
+    poolKey: pool.key,
+    labels: ["self-hosted", ...pool.labels]
+  }));
+  const statePath = getOption(args, "--state", env.raw.AUTOSCALE_WEBHOOK_STATE_FILE);
+  if (!statePath) {
+    throw new Error("AUTOSCALE_WEBHOOK_STATE_FILE or --state is required for durable delivery deduplication");
   }
-  const statePath = getOption(args, "--state", process.env.AUTOSCALE_WEBHOOK_STATE_FILE);
   const { host, port } = parseListenAddress(listen);
+  let actuationQueue = Promise.resolve();
   const server = createAutoscaleWebhookServer({
     secret,
-    ownedLabels: labels,
-    statePath
+    routes,
+    statePath,
+    onDecision: async (decision) => {
+      const actuation = actuationQueue.then(() =>
+        actuateAutoscaleWebhookDecision({
+          decision,
+          args,
+          envPath,
+          configPath
+        })
+      );
+      actuationQueue = actuation.catch(() => undefined);
+      await actuation;
+    }
   });
   await new Promise<void>((resolve) => {
     server.listen(port, host, resolve);
   });
   process.stdout.write(`autoscale webhook listening on ${host}:${port}\n`);
+}
+
+async function actuateAutoscaleWebhookDecision(input: {
+  decision: AutoscaleWebhookDecision;
+  args: string[];
+  envPath: string;
+  configPath: string;
+}): Promise<void> {
+  const event = input.decision.event;
+  if (!event || input.decision.signal === "none") return;
+
+  const env = loadDeploymentEnv({
+    envPath: input.envPath,
+    requirePat: false,
+    requireGitHubAuth: true
+  });
+  const config = loadConfig(input.configPath, env);
+  const pool = config.pools.find((entry) => entry.key === event.poolKey);
+  if (!pool) {
+    throw new Error(`webhook selected unknown pool ${event.poolKey}`);
+  }
+  if (!pool.scaling) {
+    log.info("ignored autoscale webhook for pool without scaling config", {
+      pool: pool.key,
+      jobId: event.jobId,
+      signal: input.decision.signal
+    });
+    return;
+  }
+
+  const token = await resolveGitHubAccessToken(env);
+  const queuedJobs = input.decision.signal === "scale-up"
+    ? pool.scaling.queueThreshold
+    : await getQueuedJobCount(env.githubApiUrl, token, {
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        repositories:
+          pool.repositoryAccess === "selected" ? pool.allowedRepositories : [],
+        labels: pool.labels
+      });
+  const autoscaleDecision = decideWebhookAutoscale({
+    signal: input.decision.signal,
+    poolKey: pool.key,
+    currentSize: pool.size,
+    scaling: pool.scaling,
+    cooldownElapsedSeconds: getConfigAgeSeconds(input.configPath),
+    queuedJobs
+  });
+  if (autoscaleDecision.action === "none") {
+    log.info("autoscale webhook converged without capacity change", {
+      pool: pool.key,
+      jobId: event.jobId,
+      reason: autoscaleDecision.reason
+    });
+    return;
+  }
+
+  await withControllerAction({
+    command: "autoscale-webhook",
+    action: autoscaleDecision.action,
+    plane: "synology",
+    pool: pool.key,
+    dryRun: false
+  }, async () => {
+    if (autoscaleDecision.action === "scale-down") {
+      const drainReport = await drainRunnerPool({
+        apiUrl: env.githubApiUrl,
+        token,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        poolKey: pool.key,
+        runnerNames: buildIndexedRunnerNames(
+          pool.key,
+          autoscaleDecision.targetSize + 1,
+          pool.size
+        ),
+        timeoutSeconds: parseDurationSeconds(
+          getOption(input.args, "--drain-timeout", "300")!,
+          "--drain-timeout"
+        ),
+        intervalSeconds: parseDurationSeconds(
+          getOption(input.args, "--drain-interval", "5")!,
+          "--drain-interval"
+        ),
+        onProgress: (progress) => writeDrainProgress("synology", progress)
+      });
+      if (drainReport.status === "timeout") {
+        throw new Error(
+          `timed out draining ${pool.key} after workflow_job ${event.jobId}`
+        );
+      }
+    }
+
+    const scaledConfig = applyAutoscaleDecisions(config, [autoscaleDecision]);
+    const compose = renderCompose(scaledConfig, env);
+    const plan = buildSynologyInstallPlan(scaledConfig, env, compose, {
+      action: "up"
+    });
+    runSynologyInstallPlan(plan, getOption(input.args, "--python", "python3")!);
+    writeScaledPoolSizes(input.configPath, [autoscaleDecision]);
+  }, () => ({
+    jobId: event.jobId,
+    deliveryAction: event.action,
+    targetSize: autoscaleDecision.targetSize,
+    queuedJobs
+  }));
 }
 
 async function drainPoolCommand(args: string[]): Promise<void> {
@@ -2916,7 +3046,7 @@ function printUsage(): void {
   pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
   pnpm rotate-token [--plane synology|linux-docker|lume] [--pool synology-private] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--new-token-env NEW_GITHUB_PAT] [--dry-run|--apply] [--drain-timeout 15m] [--drain-interval 5]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
-  pnpm autoscale-webhook -- --labels self-hosted,synology [--listen :8080] [--secret-env AUTOSCALE_WEBHOOK_SECRET] [--state .tmp/autoscale-webhook.json]
+  pnpm autoscale-webhook -- [--config config/pools.yaml] [--env .env] [--listen :8080] [--secret-env AUTOSCALE_WEBHOOK_SECRET] [--state .tmp/autoscale-webhook.json]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]
