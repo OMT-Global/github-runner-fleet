@@ -2,9 +2,9 @@
 
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
-ARG RUNNER_VERSION=2.334.0
-
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
+
+COPY .runner-version C:/.runner-version
 
 ENV RUNNER_SOURCE_HOME="C:\\actions-runner" `
     RUNNER_TEMP="C:\\github-runner-temp" `
@@ -20,8 +20,9 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
 
 WORKDIR C:\\actions-runner
 
-RUN $runnerZip = 'actions-runner-win-x64-' + $env:RUNNER_VERSION + '.zip'; `
-    $runnerUrl = 'https://github.com/actions/runner/releases/download/v' + $env:RUNNER_VERSION + '/' + $runnerZip; `
+RUN $runnerVersion = (Get-Content C:\.runner-version -Raw).Trim(); `
+    $runnerZip = 'actions-runner-win-x64-' + $runnerVersion + '.zip'; `
+    $runnerUrl = 'https://github.com/actions/runner/releases/download/v' + $runnerVersion + '/' + $runnerZip; `
     Invoke-WebRequest -Uri $runnerUrl -OutFile $runnerZip; `
     Expand-Archive -Path $runnerZip -DestinationPath $env:RUNNER_SOURCE_HOME; `
     Remove-Item $runnerZip

@@ -2,7 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import dotenv from "dotenv";
-import { normalizeRunnerVersion } from "./runner-version.js";
+import {
+  normalizeRunnerVersion,
+  readCanonicalRunnerVersion
+} from "./runner-version.js";
 
 export interface DeploymentEnv {
   githubPat?: string;
@@ -192,7 +195,9 @@ export function loadDeploymentEnv(
     : undefined;
   const composeProjectName =
     merged.COMPOSE_PROJECT_NAME || "github-runner-fleet";
-  const runnerVersion = normalizeRunnerVersion(merged.RUNNER_VERSION || "2.334.0");
+  const runnerVersion = normalizeRunnerVersion(
+    merged.RUNNER_VERSION || readCanonicalRunnerVersion()
+  );
 
   return {
     githubPat,

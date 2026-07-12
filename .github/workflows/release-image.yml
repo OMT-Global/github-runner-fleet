@@ -46,6 +46,9 @@ jobs:
 
       - run: pnpm validate-config -- --config config/pools.yaml --env /tmp/release.env
 
+      - name: Enforce runner release freshness
+        run: pnpm check-runner-version -- --fail-after-days 21
+
       - run: SMOKE_PLATFORM=linux/amd64 pnpm smoke-test
 
       - uses: docker/setup-qemu-action@v4
@@ -273,11 +276,11 @@ jobs:
 
       - run: |
           docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
-            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "2.334.0" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
+            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "$(cat /.runner-version)" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
 
       - run: |
           docker run --rm --platform linux/arm64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
-            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "2.334.0" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
+            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "$(cat /.runner-version)" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
 
       - if: ${{ inputs.publish_project_release }}
         env:

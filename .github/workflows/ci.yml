@@ -195,15 +195,8 @@ jobs:
           pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
 
   windows_contract_trusted:
-    name: windows docker contract
-    if: >-
-      vars.WINDOWS_DOCKER_CONTRACT_ENABLED == 'true' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on:
-      - self-hosted
-      - windows
-      - docker-capable
-      - private
+    name: windows template contract
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7

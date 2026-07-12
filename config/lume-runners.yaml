@@ -21,7 +21,6 @@ pool:
   guestPassword: ${LUME_GUEST_PASSWORD}
   guestRunnerRoot: /Users/lume/actions-runner
   guestWorkRoot: /Users/lume/actions-runner/_work
-  runnerVersion: 2.335.1
   # telemetry:
   #   enabled: true
   #   endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}

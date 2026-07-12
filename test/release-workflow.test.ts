@@ -72,6 +72,21 @@ describe("release workflow", () => {
     expect(
       steps.some(
         (step) =>
+          step.name === "Enforce runner release freshness" &&
+          step.run === "pnpm check-runner-version -- --fail-after-days 21"
+      )
+    ).toBe(true);
+    expect(
+      steps.filter(
+        (step) =>
+          typeof step.run === "string" &&
+          step.run.includes("Runner.Listener --version") &&
+          step.run.includes("cat /.runner-version")
+      )
+    ).toHaveLength(2);
+    expect(
+      steps.some(
+        (step) =>
           step.name === "Emit SLSA provenance" &&
           step.with &&
           (step.with as Record<string, unknown>)["subject-name"] ===
