@@ -78,6 +78,7 @@ import {
 } from "./lib/github.js";
 import {
   buildRunnerDownloadUrl,
+  runnerReleaseAgeDays,
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
 import {
@@ -1515,11 +1516,21 @@ async function checkRunnerVersion(args: string[]): Promise<void> {
   const currentVersion = getOption(args, "--current", env.runnerVersion) ?? env.runnerVersion;
   const release = await fetchLatestRunnerRelease(env.githubApiUrl, env.githubPat);
   const status = summarizeRunnerVersion(currentVersion, release.version);
+  const failAfterDays = parseNonNegativeInteger(
+    getOption(args, "--fail-after-days", "21")!,
+    "--fail-after-days"
+  );
+  const ageDays = runnerReleaseAgeDays(release.publishedAt);
+  const blocked =
+    status.outdated && (ageDays === undefined || ageDays >= failAfterDays);
 
   process.stdout.write(
     `${JSON.stringify(
       {
         ...status,
+        ageDays,
+        failAfterDays,
+        blocked,
         publishedAt: release.publishedAt,
         htmlUrl: release.htmlUrl
       },
@@ -1527,6 +1538,9 @@ async function checkRunnerVersion(args: string[]): Promise<void> {
       2
     )}\n`
   );
+  if (blocked) {
+    process.exitCode = 1;
+  }
 }
 
 async function runnerReleaseManifest(args: string[]): Promise<void> {

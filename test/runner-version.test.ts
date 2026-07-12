@@ -3,6 +3,8 @@ import {
   buildRunnerAssetName,
   buildRunnerDownloadUrl,
   compareRunnerVersions,
+  readCanonicalRunnerVersion,
+  runnerReleaseAgeDays,
   summarizeRunnerVersion
 } from "../src/lib/runner-version.js";
 
@@ -36,5 +38,18 @@ describe("runner version helpers", () => {
       latest: "2.327.1",
       outdated: false
     });
+  });
+
+  test("reads the canonical disabled-update runner version", () => {
+    expect(readCanonicalRunnerVersion()).toBe("2.335.1");
+  });
+
+  test("computes whole days since the latest runner release", () => {
+    expect(
+      runnerReleaseAgeDays(
+        "2026-06-09T01:32:05Z",
+        new Date("2026-07-12T01:32:05Z")
+      )
+    ).toBe(33);
   });
 });

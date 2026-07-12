@@ -3,9 +3,10 @@
 FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm
 
 ARG TARGETARCH
-ARG RUNNER_VERSION=2.334.0
 ARG NODE_VERSION=18.20.8
 ARG TERRAFORM_VERSION=1.6.6
+
+COPY .runner-version /.runner-version
 
 ENV DEBIAN_FRONTEND=noninteractive \
     SHELL=/bin/bash \
@@ -79,9 +80,10 @@ RUN case "${TARGETARCH}" in \
       arm64) runner_arch="arm64" ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
+    && runner_version="$(cat /.runner-version)" \
     && curl -fsSL \
       -o runner.tar.gz \
-      "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${runner_arch}-${RUNNER_VERSION}.tar.gz" \
+      "https://github.com/actions/runner/releases/download/v${runner_version}/actions-runner-linux-${runner_arch}-${runner_version}.tar.gz" \
     && tar -xzf runner.tar.gz \
     && rm runner.tar.gz \
     && ./bin/installdependencies.sh \

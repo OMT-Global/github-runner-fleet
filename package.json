@@ -1,6 +1,6 @@
 {
   "name": "github-runner-fleet",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "license": "MIT",
   "description": "Self-hosted GitHub runner fleet for Synology shell-only pools, Linux Docker hosts, and ephemeral Lume macOS VMs.",

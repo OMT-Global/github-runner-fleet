@@ -56,8 +56,10 @@ write_default_runtime_env() {
   local target_home="$2"
   local lume_base_dir="${target_home}/Library/Application Support/github-runner-fleet/lume"
   local temp_path
+  local runner_version
 
   temp_path="$(mktemp)"
+  runner_version="$(tr -d '[:space:]' < "${REPO_ROOT}/.runner-version")"
   cat > "${temp_path}" <<EOF
 GITHUB_PAT=
 GITHUB_APP_ID=
@@ -67,7 +69,7 @@ GITHUB_API_URL=https://api.github.com
 LUME_RUNNER_BASE_DIR='${lume_base_dir}'
 LUME_RUNNER_ENV_FILE='${lume_base_dir}/runner.env'
 COMPOSE_PROJECT_NAME=github-runner-fleet
-RUNNER_VERSION=2.334.0
+RUNNER_VERSION=${runner_version}
 EOF
   install -m 0600 "${temp_path}" "${env_path}"
   rm -f "${temp_path}"

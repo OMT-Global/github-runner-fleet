@@ -1567,9 +1567,9 @@ describe("cli integration", () => {
         status: 200,
         text: async () =>
           JSON.stringify({
-            tag_name: "v2.334.0",
-            published_at: "2026-04-20T00:00:00Z",
-            html_url: "https://github.com/actions/runner/releases/tag/v2.334.0"
+            tag_name: "v2.335.1",
+            published_at: "2026-06-09T01:32:05Z",
+            html_url: "https://github.com/actions/runner/releases/tag/v2.335.1"
           })
       }))
     );
@@ -1579,15 +1579,20 @@ describe("cli integration", () => {
       "--env",
       fixture.envPath,
       "--current",
-      "2.333.0"
+      "2.334.0",
+      "--fail-after-days",
+      "21"
     ]);
     expect(version.error).toBeUndefined();
+    expect(version.exitCode).toBe(1);
     expect(JSON.parse(version.stdout)).toEqual(
       expect.objectContaining({
-        current: "2.333.0",
-        latest: "2.334.0",
+        current: "2.334.0",
+        latest: "2.335.1",
         outdated: true,
-        publishedAt: "2026-04-20T00:00:00Z"
+        blocked: true,
+        failAfterDays: 21,
+        publishedAt: "2026-06-09T01:32:05Z"
       })
     );
 
@@ -1596,17 +1601,17 @@ describe("cli integration", () => {
       "--env",
       fixture.envPath,
       "--current",
-      "2.334.0"
+      "2.335.1"
     ]);
     expect(manifest.error).toBeUndefined();
     expect(JSON.parse(manifest.stdout)).toEqual(
       expect.objectContaining({
-        current: "2.334.0",
-        latest: "2.334.0",
+        current: "2.335.1",
+        latest: "2.335.1",
         outdated: false,
         assets: expect.objectContaining({
-          amd64: expect.stringContaining("actions-runner-linux-x64-2.334.0.tar.gz"),
-          arm64: expect.stringContaining("actions-runner-linux-arm64-2.334.0.tar.gz")
+          amd64: expect.stringContaining("actions-runner-linux-x64-2.335.1.tar.gz"),
+          arm64: expect.stringContaining("actions-runner-linux-arm64-2.335.1.tar.gz")
         })
       })
     );
