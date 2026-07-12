@@ -210,10 +210,11 @@ jobs:
       - name: Render Windows Docker runner manifests
         shell: pwsh
         run: |
-          Copy-Item .env.example $env:TEMP\windows-docker.env
-          pnpm validate-windows-config -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
-          pnpm render-windows-compose -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
-          pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
+          $windowsEnv = Join-Path $env:RUNNER_TEMP "windows-docker.env"
+          Copy-Item .env.example $windowsEnv
+          pnpm validate-windows-config -- --config config/windows-runners.yaml --env $windowsEnv
+          pnpm render-windows-compose -- --config config/windows-runners.yaml --env $windowsEnv
+          pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env $windowsEnv
       - name: Validate Windows entrypoint syntax
         shell: pwsh
         run: |
