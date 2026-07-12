@@ -20,6 +20,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  reusable_contract_changes:
+    name: reusable workflow smoke scope
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.filter.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
+        id: filter
+        with:
+          filters: |
+            changed:
+              - '.github/workflows/rg-ci.yml'
+              - '.github/workflows/rg-security.yml'
+              - '.github/workflows/rg-release.yml'
+              - '.github/workflows/reusable-workflow-smoke.yml'
+              - 'test/reusable-workflow-contract.test.ts'
+              - 'test/fixtures/reusable-workflow.Dockerfile'
+
+  reusable_ci_smoke:
+    name: reusable rg-ci caller smoke
+    needs: reusable_contract_changes
+    if: needs.reusable_contract_changes.outputs.changed == 'true'
+    uses: ./.github/workflows/rg-ci.yml
+    with:
+      runner-class: hosted
+
+  reusable_security_smoke:
+    name: reusable rg-security caller smoke
+    needs: reusable_contract_changes
+    if: needs.reusable_contract_changes.outputs.changed == 'true'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      security-events: write
+    uses: ./.github/workflows/rg-security.yml
+    with:
+      enable-dependency-review: false
+      enforce-osv: false
+
+  reusable_release_smoke:
+    name: reusable rg-release caller smoke
+    needs: reusable_contract_changes
+    if: needs.reusable_contract_changes.outputs.changed == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/rg-release.yml
+    with:
+      image-ref: local/reusable-workflow-smoke:${{ github.sha }}
+      dockerfile: test/fixtures/reusable-workflow.Dockerfile
+      platforms: linux/amd64
+      publish: false
+
   test_self_hosted_trusted:
     name: test
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
