@@ -64,7 +64,17 @@ fi
 
 log "cloning ${LUME_VM_BASE_NAME} -> ${LUME_VM_NAME}"
 lume clone "${LUME_VM_BASE_NAME}" "${LUME_VM_NAME}" $(clone_args) >/dev/null
-lume set "${LUME_VM_NAME}" --cpu "${LUME_VM_CPU}" --memory "${LUME_VM_MEMORY}" --disk-size "${LUME_VM_DISK_SIZE}" $(storage_args) >/dev/null
+
+if ! resize_output="$(lume set "${LUME_VM_NAME}" --cpu "${LUME_VM_CPU}" --memory "${LUME_VM_MEMORY}" --disk-size "${LUME_VM_DISK_SIZE}" $(storage_args) 2>&1)"; then
+  if [[ "${resize_output}" =~ Cannot\ shrink\ the\ disk\ \(current\ ([0-9]+)\ bytes,\ requested\ ([0-9]+)\ bytes\) ]] \
+    && [[ "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]]; then
+    log "Lume rejected an equal-size disk resize for ${LUME_VM_NAME}; keeping the cloned disk"
+    lume set "${LUME_VM_NAME}" --cpu "${LUME_VM_CPU}" --memory "${LUME_VM_MEMORY}" $(storage_args) >/dev/null
+  else
+    printf '%s\n' "${resize_output}" >&2
+    exit 1
+  fi
+fi
 
 log "starting ${LUME_VM_NAME}"
 vm_pid="$(
