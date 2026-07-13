@@ -72,6 +72,7 @@ function renderService(
     }),
     RUNNER_EXEC_MODE_OVERRIDE: "root",
     DOCKER_HOST: "unix:///var/run/docker.sock",
+    DOCKER_MIN_SERVER_API_VERSION: "1.44",
     ...renderTelemetryEnvironment(pool.telemetry, {
       serviceName: "github-runner-fleet.linux-docker",
       resourceAttributes: {
