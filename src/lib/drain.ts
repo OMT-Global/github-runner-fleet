@@ -61,13 +61,27 @@ export async function drainRunnerPool(
     missing: [...runnerNames].sort()
   };
 
-  const groups = await fetchOrganizationRunnerGroups(
-    options.apiUrl,
-    options.organization,
-    options.token,
-    fetchImpl,
-    { deadlineMs: deadline, now, sleep }
-  );
+  const timeoutReport = (): DrainReport => {
+    const report = toReport(options, { ...lastProgress, status: "timeout" });
+    options.onProgress?.(report);
+    return report;
+  };
+
+  let groups;
+  try {
+    groups = await fetchOrganizationRunnerGroups(
+      options.apiUrl,
+      options.organization,
+      options.token,
+      fetchImpl,
+      { deadlineMs: deadline, now, sleep }
+    );
+  } catch (error) {
+    if (isDeadlineError(error, now(), deadline)) {
+      return timeoutReport();
+    }
+    throw error;
+  }
   const group = groups.find((entry) => entry.name === options.runnerGroup);
   if (!group) {
     throw new Error(
@@ -77,20 +91,25 @@ export async function drainRunnerPool(
 
   while (true) {
     if (iteration > 0 && now() >= deadline) {
-      const report = toReport(options, { ...lastProgress, status: "timeout" });
-      options.onProgress?.(report);
-      return report;
+      return timeoutReport();
     }
     iteration += 1;
-    const runners = (
-      await fetchOrganizationRunners(
+    let inventory;
+    try {
+      inventory = await fetchOrganizationRunners(
         options.apiUrl,
         options.organization,
         options.token,
         fetchImpl,
         { deadlineMs: deadline, now, sleep }
-      )
-    ).filter(
+      );
+    } catch (error) {
+      if (isDeadlineError(error, now(), deadline)) {
+        return timeoutReport();
+      }
+      throw error;
+    }
+    const runners = inventory.filter(
       (runner) =>
         runner.runnerGroupId === group.id && runnerNameSet.has(runner.name)
     );
@@ -107,14 +126,21 @@ export async function drainRunnerPool(
       }
 
       await options.onQuiesce?.({ id: runner.id, name: runner.name });
-      await deleteOrganizationRunner(
-        options.apiUrl,
-        options.organization,
-        options.token,
-        runner.id,
-        fetchImpl,
-        { deadlineMs: deadline, now, sleep }
-      );
+      try {
+        await deleteOrganizationRunner(
+          options.apiUrl,
+          options.organization,
+          options.token,
+          runner.id,
+          fetchImpl,
+          { deadlineMs: deadline, now, sleep }
+        );
+      } catch (error) {
+        if (isDeadlineError(error, now(), deadline)) {
+          return timeoutReport();
+        }
+        throw error;
+      }
       deletedIds.add(runner.id);
       cordoned.add(runner.name);
     }
@@ -149,14 +175,20 @@ export async function drainRunnerPool(
     }
 
     if (now() >= deadline) {
-      const report = toReport(options, { ...progress, status: "timeout" });
-      options.onProgress?.(report);
-      return report;
+      return timeoutReport();
     }
 
     options.onProgress?.(progress);
     await sleep(Math.min(options.intervalSeconds * 1000, Math.max(0, deadline - now())));
   }
+}
+
+function isDeadlineError(error: unknown, nowMs: number, deadlineMs: number): boolean {
+  return (
+    nowMs >= deadlineMs &&
+    error instanceof Error &&
+    /GitHub API .* (?:deadline exceeded|timed out)/.test(error.message)
+  );
 }
 
 function toReport(
