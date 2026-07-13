@@ -141,6 +141,43 @@ describe("runner drain", () => {
     );
     expect(now).toBe(1000);
   });
+
+  test("returns the last progress report when an in-flight inventory request reaches the deadline", async () => {
+    let now = 0;
+    let inventoryCalls = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("runner-groups")) {
+        return runnerGroups();
+      }
+      inventoryCalls += 1;
+      if (inventoryCalls === 1) {
+        return runners([runner(101, "synology-private-runner-01", true)]);
+      }
+      now = 1000;
+      throw new Error(
+        "GitHub API GET deadline exceeded for https://api.github.com/orgs/example/actions/runners"
+      );
+    });
+
+    await expect(
+      drainRunnerPool({
+        apiUrl: "https://api.github.com",
+        token: "secret",
+        organization: "example",
+        runnerGroup: "synology-private",
+        poolKey: "synology-private",
+        runnerNames: ["synology-private-runner-01"],
+        timeoutSeconds: 1,
+        intervalSeconds: 0,
+        now: () => now,
+        sleep: async () => undefined,
+        fetchImpl: fetchMock
+      })
+    ).resolves.toMatchObject({
+      status: "timeout",
+      busy: ["synology-private-runner-01"]
+    });
+  });
 });
 
 function runnerGroups() {
