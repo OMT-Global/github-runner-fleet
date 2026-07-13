@@ -371,6 +371,7 @@ pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env 
 pnpm drain-pool -- --pool macos-private --plane lume --timeout 15m --lume-config config/lume-runners.yaml --env .env
 bash scripts/lume/create-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/setup-base-vm.sh --config config/lume-runners.yaml --env .env
+bash scripts/lume/provision-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/install-runtime.sh
@@ -385,6 +386,8 @@ The launchd installers publish a source-independent controller runtime under `~/
 If launchd reports `Bootstrap failed: 5: Input/output error`, check the disabled override first with `launchctl print-disabled system | rg github-runner-fleet` or `launchctl print-disabled gui/$(id -u) | rg github-runner-fleet`. The installers clear their own disabled overrides before bootstrapping; the system installer only disables the per-user Lume jobs after the root services load successfully.
 
 `create-base-vm.sh` now caches the macOS IPSW under `LUME_RUNNER_BASE_DIR/cache/` by default so rebuilding the base image does not re-download the restore image every time. Override that path with `LUME_RUNNER_IPSW_PATH` if you want the cache elsewhere. If unattended setup drifts or gets interrupted, rerun `scripts/lume/setup-base-vm.sh` against the existing base VM instead of deleting and recreating it.
+
+The Lume base-VM provisioner installs the checksum-pinned Sparkle release tools at `/Users/lume/.local/share/omt-tools/sparkle/2.9.4/bin/` and the pool advertises `sparkle-release` only after that base VM is rebuilt. Run `scripts/lume/provision-base-vm.sh`, then drain and reconcile the pool before routing a workflow to `runs-on: [self-hosted, private, macOS, ARM64, xcode, sparkle-release]`. Sparkle tools are public build dependencies; do not put Apple signing material, notarization credentials, or private Sparkle EdDSA keys in the base VM.
 
 ## Security Notes
 

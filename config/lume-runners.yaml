@@ -7,11 +7,12 @@ pool:
     - macOS
     - ARM64
     - xcode
+    - sparkle-release
     - private
   size: 2
   vmBaseName: macos-runner-base-v2
   vmSlotPrefix: macos-runner-slot
-  imageTag: sequoia-xcode-16
+  imageTag: sequoia-xcode-16-sparkle-2.9.4
   cpu: 6
   memory: 14GB
   diskSize: 80GB
