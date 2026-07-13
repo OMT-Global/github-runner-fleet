@@ -37,6 +37,33 @@ run_actions_runner() {
     -u GITHUB_APP_PRIVATE_KEY
 }
 
+verify_docker_api_compatibility() {
+  local minimum_server_api="${DOCKER_MIN_SERVER_API_VERSION:-1.44}"
+  local version_output
+  local server_api
+
+  if [[ ",${RUNNER_LABELS}," != *",docker-capable,"* && "${FLEET_PLANE:-}" != "linux-docker" ]]; then
+    return
+  fi
+
+  log "checking Docker client/server compatibility (minimum server API ${minimum_server_api})"
+  if ! version_output="$(run_runner_bash "docker version --format 'client_version={{.Client.Version}} client_api={{.Client.APIVersion}} server_version={{.Server.Version}} server_api={{.Server.APIVersion}}'")"; then
+    log "Docker compatibility preflight failed for ${RUNNER_NAME}: the runner execution account cannot negotiate with ${DOCKER_HOST:-the configured daemon}"
+    exit 1
+  fi
+  log "Docker compatibility preflight: ${version_output}"
+
+  server_api="$(printf '%s\n' "${version_output}" | sed -n 's/.*server_api=\([^ ]*\).*/\1/p')"
+  if [[ -z "${server_api}" ]]; then
+    log "Docker compatibility preflight failed: docker version did not report server_api"
+    exit 1
+  fi
+  if [[ "$(printf '%s\n%s\n' "${minimum_server_api}" "${server_api}" | sort -V | sed -n '1p')" != "${minimum_server_api}" ]]; then
+    log "Docker compatibility preflight failed: server API ${server_api} is older than required ${minimum_server_api}"
+    exit 1
+  fi
+}
+
 run_runner_job_bash() {
   local command="$1"
   shift || true
@@ -257,6 +284,7 @@ prepare_state_dir() {
 
 prepare_state_dir
 prepare_runtime_dirs
+verify_docker_api_compatibility
 prepare_runner_home
 prepare_audit_log
 install_runner_hooks
