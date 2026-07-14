@@ -9,7 +9,7 @@ Use this checklist after the first bootstrap render or whenever `project.bootstr
 
 ## Repo Governance
 
-- Confirm branch protection or rulesets on `main` require one approval, code owner review, and approval from someone other than the most recent pusher.
+- Confirm branch protection or rulesets on `main` require one approval and code owner review, dismiss stale approvals, and do not require last-push approval.
 - Confirm branch protection points at the `CI Gate` status.
 - Confirm `CONTRIBUTING.md` and `.github/PULL_REQUEST_TEMPLATE.md` are present as the required contributor and PR guidance surfaces.
 - Confirm the pull request template is present and PR Fast CI validates the required PR description sections before CI Gate can pass.

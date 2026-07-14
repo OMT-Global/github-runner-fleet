@@ -10,21 +10,14 @@ repo:
   class: tooling
   managedPaths:
     - project.bootstrap.yaml
-    - AGENTS.md
-    - CLAUDE.md
     - CODEOWNERS
     - .devcontainer/**
-    - .github/workflows/pr-fast-ci.yml
-    - .github/workflows/extended-validation.yml
-    - .github/workflows/claude.yml
-    - scripts/check-detect-secrets.sh
-    - scripts/ci/**
     - scripts/codex-cloud/**
     - scripts/claude-cloud/**
     - scripts/claude/**
-    - docs/bootstrap/**
+    - docs/bootstrap/claude-environment.md
+    - docs/bootstrap/codex-cloud-environment.md
     - .githooks/**
-    - .github/PULL_REQUEST_TEMPLATE.md
   docs:
     readme: true
     contributing: false
@@ -45,11 +38,11 @@ archetype:
 github:
   createRepo: false
   reviewers:
-    - jmcte
+    - OMT-Global/omt-codeowners
   codeowners:
     - pattern: "*"
       owners:
-        - "@jmcte"
+        - "@OMT-Global/omt-codeowners"
   issueLabels:
     - name: area:frontend
       color: 1f77b4
