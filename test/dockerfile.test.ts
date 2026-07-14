@@ -40,6 +40,14 @@ describe("Dockerfile packaging", () => {
     );
   });
 
+  test("keeps the release smoke test connected to a real Docker daemon", () => {
+    const smoke = fs.readFileSync(path.resolve("scripts/smoke-test.sh"), "utf8");
+
+    expect(smoke).toContain("-v /var/run/docker.sock:/var/run/docker.sock");
+    expect(smoke).toContain("server_api={{.Server.APIVersion}}");
+    expect(smoke).toContain("docker build --tag github-runner-fleet-api-smoke:local");
+  });
+
   test("adds a Windows Server Core runner image with PowerShell entrypoint", () => {
     const dockerfile = fs.readFileSync(
       path.resolve("docker/Dockerfile.windows"),
