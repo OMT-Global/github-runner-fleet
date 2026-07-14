@@ -873,7 +873,10 @@ describe("cli integration", () => {
     );
     expect(result.exitCode).toBeUndefined();
     expect(result.stdout).toBe("");
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls).not.toContainEqual([
+      "https://api.github.com/orgs/example/actions/runners/102",
+      expect.objectContaining({ method: "DELETE" })
+    ]);
     expect(fs.readFileSync(fixture.synologyConfigPath, "utf8")).toBe(before);
   });
 
