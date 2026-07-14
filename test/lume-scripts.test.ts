@@ -24,7 +24,11 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain("uploading guest bootstrap assets");
     expect(runSlot).toContain('guest_env_file="$(render_guest_runner_env "${env_path}")"');
     expect(runSlot).toContain('lume ssh "${LUME_VM_NAME}"');
+    expect(runSlot).toContain("trap cleanup_slot EXIT");
+    expect(runSlot).toContain("trap shutdown_slot INT TERM");
+    expect(runSlot).toContain("trap - EXIT INT TERM");
     expect(reconcile).toContain("retire_removed_slots_from_state");
+    expect(reconcile).toContain('terminate_tracked_process "${worker_pid_file}" "run-slot.sh"');
     expect(reconcile).toContain("wait_for_registration_env");
     expect(reconcile).toContain("missing GitHub auth");
     expect(reconcile).toContain("write_reconcile_state");
