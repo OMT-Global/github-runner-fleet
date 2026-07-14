@@ -1,6 +1,17 @@
 name: Extended Validation
 
 on:
+  pull_request:
+    paths:
+      - 'project.bootstrap.yaml'
+      - 'CODEOWNERS'
+      - '.github/CODEOWNERS'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - '.devcontainer/**'
+      - '.github/workflows/**'
+      - 'scripts/ci/**'
+      - 'docs/bootstrap/**'
   push:
     branches: [main]
   schedule:
@@ -23,8 +34,41 @@ defaults:
     shell: bash
 
 jobs:
+  bootstrap-drift:
+    name: Bootstrap Drift
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          repository: OMT-Global/bootstrap
+          ref: 35eb9a907bb53f9bcf771a1435b72f17a7c7ad0c
+          path: .bootstrap-control-plane
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.14.1'
+          cache: npm
+          cache-dependency-path: .bootstrap-control-plane/package-lock.json
+
+      - name: Build pinned Bootstrap control plane
+        working-directory: .bootstrap-control-plane
+        run: |
+          npm ci
+          npm run build
+
+      - name: Require an empty managed-file plan
+        env:
+          BOOTSTRAP_CLI: ${{ github.workspace }}/.bootstrap-control-plane/dist/cli.js
+          GH_TOKEN: ${{ secrets.RUNNER_FLEET_GITHUB_PAT || github.token }}
+          VERIFY_GITHUB_GOVERNANCE: ${{ github.event_name != 'pull_request' }}
+        run: bash scripts/ci/check-bootstrap-drift.sh
+
   changes:
     name: Detect Extended Validation Scope
+    if: github.event_name != 'pull_request'
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     outputs:
       behavior: ${{ steps.preset.outputs.behavior || steps.filter.outputs.behavior || 'false' }}
@@ -209,6 +253,7 @@ jobs:
 
   validate-secrets:
     name: Validate Secrets
+    if: github.event_name != 'pull_request'
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
     timeout-minutes: 10
     steps:
@@ -219,7 +264,7 @@ jobs:
   extended-validation-gate:
     name: Extended Validation Gate
     runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
-    if: always()
+    if: ${{ always() && github.event_name != 'pull_request' }}
     needs:
       - changes
       - fast-checks
