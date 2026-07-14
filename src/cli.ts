@@ -97,6 +97,7 @@ import {
   saveSynologyResult
 } from "./lib/synology-status.js";
 import { log, type LogFields, type LogLevel } from "./lib/logger.js";
+import { terminateTrackedProcess } from "./lib/process-lifecycle.js";
 
 export async function main(
   commandLineArgs = process.argv.slice(2)
@@ -1904,9 +1905,9 @@ async function teardownLumeProject(args: string[]): Promise<void> {
         busy: drainReport.busy,
         missing: drainReport.missing
       };
-      stopLumeSupervisor(config);
+      await stopLumeSupervisor(config);
       for (const slot of config.slots) {
-        stopLumeWorker(slot.workerPidFile);
+        await stopLumeWorker(slot.workerPidFile);
         runLumeSlotTeardown(configPath, getOption(args, "--env", ".env")!, slot.index);
         fs.rmSync(slot.hostDir, { recursive: true, force: true });
       }
@@ -2918,21 +2919,13 @@ function startLumeSupervisor(
   return child.pid;
 }
 
-function stopLumeSupervisor(config: ReturnType<typeof loadLumeConfig>): void {
+async function stopLumeSupervisor(config: ReturnType<typeof loadLumeConfig>): Promise<void> {
   const pidFile = defaultLumeProjectPidFile(config);
-  const pid = readPidFile(pidFile);
-  if (pid && isProcessRunning(pid)) {
-    process.kill(pid, "SIGTERM");
-  }
-  fs.rmSync(pidFile, { force: true });
+  await terminateTrackedProcess({ pidFile, expectedCommand: "reconcile-pool.sh" });
 }
 
-function stopLumeWorker(pidFile: string): void {
-  const pid = readPidFile(pidFile);
-  if (pid && isProcessRunning(pid)) {
-    process.kill(pid, "SIGTERM");
-  }
-  fs.rmSync(pidFile, { force: true });
+async function stopLumeWorker(pidFile: string): Promise<void> {
+  await terminateTrackedProcess({ pidFile, expectedCommand: "run-slot.sh" });
 }
 
 function runLumeSlotTeardown(
