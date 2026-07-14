@@ -67,7 +67,11 @@ ensure_cached_lume_ipsw() {
   ipsw_url="$(latest_ipsw_url)"
   partial_path="${target_path}.partial"
   log "downloading IPSW ${ipsw_url} -> ${target_path}"
-  curl -fL --continue-at - --output "${partial_path}" "${ipsw_url}"
+  curl -fL --continue-at - \
+    --connect-timeout "${LUME_DOWNLOAD_CONNECT_TIMEOUT_SECONDS:-15}" \
+    --max-time "${LUME_DOWNLOAD_MAX_TIME_SECONDS:-7200}" \
+    --retry 3 --retry-all-errors --retry-delay 5 \
+    --output "${partial_path}" "${ipsw_url}"
   mv "${partial_path}" "${target_path}"
   printf '%s\n' "${target_path}"
 }
@@ -121,7 +125,7 @@ upload_guest_file() {
   local content
 
   content="$(base64 < "${source_path}" | tr -d '\n')"
-  lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 0 \
+  lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout "${LUME_SSH_TIMEOUT_SECONDS:-60}" \
     "mkdir -p '$(dirname "${destination_path}")' && printf '%s' '${content}' | base64 -D > '${destination_path}' && chmod 0755 '${destination_path}'"
 }
 
@@ -131,7 +135,7 @@ upload_env_file() {
   local content
 
   content="$(base64 < "${source_path}" | tr -d '\n')"
-  lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 0 \
+  lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout "${LUME_SSH_TIMEOUT_SECONDS:-60}" \
     "mkdir -p '$(dirname "${destination_path}")' && printf '%s' '${content}' | base64 -D > '${destination_path}' && chmod 0600 '${destination_path}'"
 }
 

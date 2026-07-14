@@ -238,6 +238,8 @@ pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml 
 
 The installer path uses `ssh` and `scp` to stage `compose.yaml`, a project-local `.env`, and a generated deployment script onto `LINUX_DOCKER_HOST`, then runs `docker compose up -d` or `docker compose down` there. Keep access key-based and host-managed; do not bake long-lived GitHub credentials into the runner image.
 
+Remote commands are noninteractive and bounded. SSH connects within 15 seconds, detects an unresponsive connection after two 15-second keepalive intervals, and each SSH/SCP command has a five-minute wall-clock limit. Override the command boundary with `REMOTE_COMMAND_TIMEOUT_SECONDS`. Synology installer subprocesses default to 15 minutes via `LOCAL_INSTALL_TIMEOUT_SECONDS`. GitHub API calls use a 10-second request deadline with at most three attempts only for safe GET/DELETE operations; token POSTs are never blindly retried. Runner downloads allow 10 seconds to connect and 10 minutes total, while large Lume IPSW downloads allow 15 seconds to connect and two hours total. Lume file operations default to 60 seconds and runner sessions to 24 hours. Their `*_TIMEOUT_SECONDS` environment variables can tune those finite boundaries for slower links.
+
 Recommended workflow labels:
 
 - Docker-capable private repos: `runs-on: [self-hosted, linux, docker-capable, private]`
