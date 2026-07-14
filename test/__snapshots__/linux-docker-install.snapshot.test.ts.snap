@@ -37,6 +37,7 @@ services:
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_EXEC_MODE_OVERRIDE: root
       DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_MIN_SERVER_API_VERSION: "1.44"
       RUNNER_ALLOWED_REPOSITORIES: example/private-app
     volumes:
       - /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01:/srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01
@@ -83,6 +84,7 @@ services:
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_EXEC_MODE_OVERRIDE: root
       DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_MIN_SERVER_API_VERSION: "1.44"
       RUNNER_ALLOWED_REPOSITORIES: example/private-app
     volumes:
       - /srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02:/srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-02
@@ -129,6 +131,7 @@ services:
       RUNNER_DISABLE_UPDATE: "true"
       RUNNER_EXEC_MODE_OVERRIDE: root
       DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_MIN_SERVER_API_VERSION: "1.44"
       RUNNER_ALLOWED_REPOSITORIES: example/public-app
     volumes:
       - /srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01:/srv/github-runner-fleet/linux-docker/pools/linux-docker-public/runner-01
