@@ -138,6 +138,17 @@ pool:
     ).toThrow(/LUME_GUEST_PASSWORD/);
   });
 
+  test("advertises Sparkle release capability from the checked-in Lume pool", () => {
+    const config = loadLumeConfig(
+      path.resolve("config/lume-runners.yaml"),
+      deploymentEnv()
+    );
+
+    expect(config.pool.imageTag).toBe("sequoia-xcode-16-sparkle-2.9.4");
+    expect(config.pool.labels).toContain("sparkle-release");
+    expect(config.slots[0].runnerLabels).toContain("sparkle-release");
+  });
+
   test("renders OTEL shell exports when telemetry is enabled", () => {
     const directory = createTempDir();
     const configPath = path.join(directory, "lume-runners.yaml");

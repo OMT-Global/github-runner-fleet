@@ -17,6 +17,7 @@
     "doctor": "tsx src/cli.ts doctor",
     "drift-detect": "tsx src/cli.ts drift-detect",
     "drain-pool": "tsx src/cli.ts drain-pool",
+    "reconcile-linux-pool": "tsx src/cli.ts reconcile-linux-pool",
     "install-synology-project": "tsx src/cli.ts install-synology-project",
     "install-linux-docker-project": "tsx src/cli.ts install-linux-docker-project",
     "linux-docker-status": "tsx src/cli.ts linux-docker-status",

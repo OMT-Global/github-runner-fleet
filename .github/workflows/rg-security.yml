@@ -1,5 +1,5 @@
 # Reusable rg-security workflow.
-# Required secrets: none. Runs only on GitHub-hosted runners.
+# Required secrets: none. The caller must grant security-events: write for SARIF upload.
 name: rg-security
 
 on:
@@ -10,6 +10,21 @@ on:
         required: false
         type: string
         default: pnpm-lock.yaml
+      codeql-languages:
+        description: Comma-separated CodeQL languages.
+        required: false
+        type: string
+        default: javascript-typescript
+      enable-dependency-review:
+        description: Run dependency review on pull requests; requires the caller repository dependency graph.
+        required: false
+        type: boolean
+        default: true
+      enforce-osv:
+        description: Fail when OSV reports vulnerable dependencies; SARIF is uploaded in either mode.
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -20,27 +35,30 @@ permissions:
 jobs:
   security:
     name: rg-security
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
         with:
-          languages: javascript-typescript,python
-      - uses: github/codeql-action/analyze@v4
-      - uses: actions/dependency-review-action@v5
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
+          languages: ${{ inputs.codeql-languages }}
+      - uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        if: inputs.enable-dependency-review && github.event_name == 'pull_request'
         with:
           fail-on-severity: high
-      - uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
+      - uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        id: osv
         continue-on-error: true
         with:
           scan-args: |-
             --lockfile=${{ inputs.lockfile }}
             --format=sarif
             --output=osv-results.sarif
-      - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+      - uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
+        if: always() && hashFiles('osv-results.sarif') != ''
         with:
           sarif_file: osv-results.sarif
+      - name: Enforce OSV result
+        if: inputs.enforce-osv && steps.osv.outcome == 'failure'
+        run: exit 1

@@ -130,12 +130,21 @@ verify_python_toolcache() {
 }
 
 verify_docker_cli() {
-  log "verifying Docker CLI is present for the linux-docker plane"
+  log "verifying Docker CLI and daemon API compatibility for the linux-docker plane"
 
   docker_cmd run --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     --entrypoint /bin/bash \
     "${IMAGE_REF}" \
-    -lc 'set -Eeuo pipefail && docker --version'
+    -lc '
+      set -Eeuo pipefail
+      docker version --format "client_version={{.Client.Version}} client_api={{.Client.APIVersion}} server_version={{.Server.Version}} server_api={{.Server.APIVersion}}"
+      build_dir="$(mktemp -d)"
+      printf "FROM scratch\n" > "${build_dir}/Dockerfile"
+      docker build --tag github-runner-fleet-api-smoke:local "${build_dir}"
+      docker image rm github-runner-fleet-api-smoke:local >/dev/null
+      rm -rf "${build_dir}"
+    '
 }
 
 run_smoke_case() {

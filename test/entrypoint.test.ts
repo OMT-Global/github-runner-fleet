@@ -68,4 +68,20 @@ describe("runner entrypoint", () => {
       expect(script).toContain(`${auditField} =`);
     }
   });
+
+  test("fails Docker-capable runners before registration when client and daemon APIs are incompatible", () => {
+    const script = fs.readFileSync(
+      path.resolve("docker/runner-entrypoint.sh"),
+      "utf8"
+    );
+
+    expect(script).toContain("verify_docker_api_compatibility()");
+    expect(script).toContain('DOCKER_MIN_SERVER_API_VERSION:-1.44');
+    expect(script).toContain("client_version={{.Client.Version}}");
+    expect(script).toContain("server_api={{.Server.APIVersion}}");
+    expect(script).toContain("Docker compatibility preflight failed");
+    expect(script.lastIndexOf("verify_docker_api_compatibility")).toBeLessThan(
+      script.lastIndexOf("prepare_runner_home")
+    );
+  });
 });

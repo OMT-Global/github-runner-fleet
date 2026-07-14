@@ -254,6 +254,71 @@ describe("cli integration", () => {
     );
   });
 
+  test("dry-runs Linux pool reconciliation without draining or writing state", async () => {
+    const fixture = createCliFixture();
+    const statePath = path.join(fixture.directory, "reconcile.json");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify([
+              { id: 41, metadata: { container: { tags: ["0.1.9"] } } }
+            ])
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify([
+              { id: 42, metadata: { container: { tags: ["0.1.9"] } } }
+            ])
+        })
+    );
+
+    const result = await invokeCli([
+      "reconcile-linux-pool",
+      "--plane",
+      "both",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.synologyConfigPath,
+      "--linux-config",
+      fixture.linuxConfigPath,
+      "--state",
+      statePath,
+      "--dry-run",
+      "--format",
+      "json"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({
+      statePath,
+      results: [
+        expect.objectContaining({
+          plane: "synology",
+          imageRef: "ghcr.io/example/github-runner-fleet:0.1.9",
+          versionId: 41,
+          status: "would-apply",
+          dryRun: true
+        }),
+        expect.objectContaining({
+          plane: "linux-docker",
+          imageRef: "ghcr.io/example/github-runner-fleet:0.1.9",
+          versionId: 42,
+          status: "would-apply",
+          dryRun: true
+        })
+      ]
+    });
+    expect(fs.existsSync(statePath)).toBe(false);
+  });
+
   test("builds a token rotation dry-run plan after validating the replacement PAT", async () => {
     const fixture = createCliFixture();
     const fetchMock = vi
@@ -808,7 +873,10 @@ describe("cli integration", () => {
     );
     expect(result.exitCode).toBeUndefined();
     expect(result.stdout).toBe("");
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls).not.toContainEqual([
+      "https://api.github.com/orgs/example/actions/runners/102",
+      expect.objectContaining({ method: "DELETE" })
+    ]);
     expect(fs.readFileSync(fixture.synologyConfigPath, "utf8")).toBe(before);
   });
 

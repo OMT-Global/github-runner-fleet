@@ -1,0 +1,35 @@
+name: Reusable Workflow Caller Smoke
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/rg-ci.yml
+    with:
+      runner-class: hosted
+
+  security:
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      security-events: write
+    uses: ./.github/workflows/rg-security.yml
+    with:
+      enable-dependency-review: false
+      enforce-osv: false
+
+  release:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/rg-release.yml
+    with:
+      image-ref: local/reusable-workflow-smoke:${{ github.sha }}
+      dockerfile: test/fixtures/reusable-workflow.Dockerfile
+      platforms: linux/amd64
+      publish: false

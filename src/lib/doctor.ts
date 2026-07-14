@@ -324,7 +324,7 @@ async function runSynologyDoctor(input: {
   );
   const webhookFreshnessCheck = buildAutoscaleWebhookFreshnessCheck(
     input.env.raw.AUTOSCALE_WEBHOOK_STATE_FILE,
-    Math.max(60, ...config.pools.map((pool) => pool.scaling?.cooldownSeconds ?? 0))
+    autoscalePollIntervalSeconds(input.env.raw.AUTOSCALE_POLL_INTERVAL_SECONDS)
   );
   if (webhookFreshnessCheck) {
     checks.push(webhookFreshnessCheck);
@@ -402,6 +402,11 @@ async function runSynologyDoctor(input: {
   }
 
   return checks;
+}
+
+function autoscalePollIntervalSeconds(raw: string | undefined): number {
+  const parsed = Number(raw ?? "300");
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 300;
 }
 
 function buildAutoscaleWebhookFreshnessCheck(

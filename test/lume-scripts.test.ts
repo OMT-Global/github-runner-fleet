@@ -27,7 +27,11 @@ describe("Lume pool scripts", () => {
     expect(runSlot).toContain('collect_guest_audit "${RUNNER_ROOT}/audit.jsonl" "${LUME_AUDIT_LOG_FILE}"');
     expect(read("scripts/guest/macos-runner-bootstrap.sh")).toContain("audit_event runner_registered");
     expect(read("scripts/guest/macos-runner-bootstrap.sh")).toContain("audit_event runner_job_start");
+    expect(runSlot).toContain("trap cleanup_slot EXIT");
+    expect(runSlot).toContain("trap shutdown_slot INT TERM");
+    expect(runSlot).toContain("trap - EXIT INT TERM");
     expect(reconcile).toContain("retire_removed_slots_from_state");
+    expect(reconcile).toContain('terminate_tracked_process "${worker_pid_file}" "run-slot.sh"');
     expect(reconcile).toContain("wait_for_registration_env");
     expect(reconcile).toContain("missing GitHub auth");
     expect(reconcile).toContain("write_reconcile_state");
@@ -114,6 +118,20 @@ describe("Lume pool scripts", () => {
     expect(bootstrap).toContain('cleanup_runner_registration');
     expect(helper).toContain("github_runner_endpoint_base");
     expect(helper).toContain("request_runner_token");
+  });
+
+  test("provisions pinned Sparkle tools in the Lume base VM", () => {
+    const provisionBase = read("scripts/lume/provision-base-vm.sh");
+    const sparkleInstaller = read("scripts/guest/install-sparkle-tools.sh");
+
+    expect(provisionBase).toContain("install-sparkle-tools.sh");
+    expect(provisionBase).toContain("sparkle-release labels");
+    expect(sparkleInstaller).toContain('SPARKLE_VERSION="2.9.4"');
+    expect(sparkleInstaller).toContain("SPARKLE_SHA256=");
+    expect(sparkleInstaller).toContain("SPARKLE_ARCHIVE_PATH");
+    expect(sparkleInstaller).toContain(".local/share/omt-tools/sparkle");
+    expect(sparkleInstaller).toContain("generate_appcast");
+    expect(sparkleInstaller).toContain("generate_keys");
   });
 });
 

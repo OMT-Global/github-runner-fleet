@@ -19,16 +19,18 @@ Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Do
 - [Tier A runner policy](docs/tier-a-runner-policy.md)
 - [Tier A rollout ledger](docs/tier-a-rollout-ledger.md)
 - [Release image flow](#publishing-a-release-image)
+- [Event-driven autoscaling](docs/autoscale-webhook.md)
 - [Roadmap](ROADMAP.md)
 
 ## Roadmap Snapshot
 
 | Status | Focus | Tracking |
 | --- | --- | --- |
-| Next | Unified preflight and health diagnostics for the whole fleet | [#26](https://github.com/OMT-Global/github-runner-fleet/issues/26) |
-| Next | Synology deployment status and troubleshooting surfaces | [#29](https://github.com/OMT-Global/github-runner-fleet/issues/29) |
-| Next | Shell-safe workflow cookbook and compatibility matrix follow-through | [#28](https://github.com/OMT-Global/github-runner-fleet/issues/28) |
-| Later | Stronger Lume base-VM lifecycle and pool operations playbook | [#27](https://github.com/OMT-Global/github-runner-fleet/issues/27) |
+| Now | Release integrity, artifact parity, and runner freshness | [#149](https://github.com/OMT-Global/github-runner-fleet/issues/149)–[#151](https://github.com/OMT-Global/github-runner-fleet/issues/151) |
+| Now | Drain, teardown, deadline, and audit reliability | [#152](https://github.com/OMT-Global/github-runner-fleet/issues/152)–[#156](https://github.com/OMT-Global/github-runner-fleet/issues/156) |
+| Next | Reusable CI, security, and release workflows | [#117](https://github.com/OMT-Global/github-runner-fleet/issues/117) |
+| Next | Event-driven autoscaling | [#119](https://github.com/OMT-Global/github-runner-fleet/issues/119) |
+| Human gate | Repository access to isolated public macOS runners | [#166](https://github.com/OMT-Global/github-runner-fleet/issues/166) |
 
 The roadmap doc keeps the operator view short; the GitHub issues are the execution-level source of truth.
 
@@ -320,6 +322,27 @@ To keep the repository release and GHCR image tag aligned, merge the version bum
 - On Synology bind mounts that reject `chown`, the entrypoint falls back to root runner execution with `RUNNER_ALLOW_RUNASROOT=1` so the service can still start cleanly from that writable runner home.
 - The writable-home copy intentionally extracts without restoring archive ownership, so Synology mounts do not emit a `tar: Cannot change ownership ... Operation not permitted` line for every runner file.
 
+## Automated Linux Pool Reconciliation
+
+Ephemeral Linux runners do not update themselves in place. The safe update boundary is the pool controller: it verifies that the configured GHCR image tag exists, drains active jobs, pulls the image, recreates the Compose services, and records the verified package version ID. New containers then register from the updated image; the container that just finished a job is still deregistered and discarded normally.
+
+Run the reconciler from a dedicated, trusted checkout after a verified release, or from a bounded host timer:
+
+```bash
+pnpm reconcile-linux-pool -- \
+  --plane both \
+  --env /etc/github-runner-fleet/.env \
+  --config config/pools.yaml \
+  --linux-config config/linux-docker-runners.yaml \
+  --state /var/lib/github-runner-fleet/reconcile.json \
+  --lock /var/run/github-runner-fleet-reconcile.lock \
+  --timeout 15m
+```
+
+Use `--dry-run` to verify the configured image tags without draining or changing a pool. The reconciler is serialized by the lock path, skips a plane whose image tag and verified package version ID are already recorded, removes stale lock directories only when their recorded process is no longer running, and writes state atomically only after a successful drain and reinstall. A failed image lookup, drain, or deployment leaves the previous pool running and does not advance that plane's state.
+
+The command can target `synology`, `linux-docker`, or `both`. It always forces image pull, service recreation, and orphan removal for the selected Linux plane. It should be triggered by a release controller or host timer; the `workflow_job: completed` webhook may request reconciliation, but must not mutate a live runner directly.
+
 Recommended workflow labels:
 
 - Private repos: `runs-on: [self-hosted, synology, shell-only, private]`
@@ -371,6 +394,7 @@ pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env 
 pnpm drain-pool -- --pool macos-private --plane lume --timeout 15m --lume-config config/lume-runners.yaml --env .env
 bash scripts/lume/create-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/setup-base-vm.sh --config config/lume-runners.yaml --env .env
+bash scripts/lume/provision-base-vm.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/reconcile-pool.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/status.sh --config config/lume-runners.yaml --env .env
 bash scripts/lume/install-runtime.sh
@@ -385,6 +409,8 @@ The launchd installers publish a source-independent controller runtime under `~/
 If launchd reports `Bootstrap failed: 5: Input/output error`, check the disabled override first with `launchctl print-disabled system | rg github-runner-fleet` or `launchctl print-disabled gui/$(id -u) | rg github-runner-fleet`. The installers clear their own disabled overrides before bootstrapping; the system installer only disables the per-user Lume jobs after the root services load successfully.
 
 `create-base-vm.sh` now caches the macOS IPSW under `LUME_RUNNER_BASE_DIR/cache/` by default so rebuilding the base image does not re-download the restore image every time. Override that path with `LUME_RUNNER_IPSW_PATH` if you want the cache elsewhere. If unattended setup drifts or gets interrupted, rerun `scripts/lume/setup-base-vm.sh` against the existing base VM instead of deleting and recreating it.
+
+The Lume base-VM provisioner installs the checksum-pinned Sparkle release tools at `/Users/lume/.local/share/omt-tools/sparkle/2.9.4/bin/` and the pool advertises `sparkle-release` only after that base VM is rebuilt. Run `scripts/lume/provision-base-vm.sh`, then drain and reconcile the pool before routing a workflow to `runs-on: [self-hosted, private, macOS, ARM64, xcode, sparkle-release]`. Sparkle tools are public build dependencies; do not put Apple signing material, notarization credentials, or private Sparkle EdDSA keys in the base VM.
 
 ## Security Notes
 

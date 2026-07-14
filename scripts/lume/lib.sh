@@ -263,3 +263,46 @@ os.close(log_fd)
 os.execvp(command[0], command)
 PY
 }
+
+terminate_tracked_process() {
+  local pid_file="$1"
+  local expected_command="$2"
+  local timeout_seconds="${3:-10}"
+  local pid command deadline kill_deadline
+
+  [[ -f "${pid_file}" ]] || return 0
+  pid="$(<"${pid_file}")"
+  if [[ ! "${pid}" =~ ^[1-9][0-9]*$ ]]; then
+    log "refusing to signal invalid pid from ${pid_file}: ${pid}"
+    return 1
+  fi
+  if ! kill -0 "${pid}" >/dev/null 2>&1; then
+    rm -f "${pid_file}"
+    return 0
+  fi
+
+  command="$(ps -p "${pid}" -o command= 2>/dev/null || true)"
+  if [[ "${command}" != *"${expected_command}"* ]]; then
+    log "refusing to signal pid ${pid} from ${pid_file}; expected ${expected_command}, found ${command:-unknown}"
+    return 1
+  fi
+
+  kill -TERM "${pid}"
+  deadline=$((SECONDS + timeout_seconds))
+  while kill -0 "${pid}" >/dev/null 2>&1 && (( SECONDS < deadline )); do
+    sleep 0.1
+  done
+  if kill -0 "${pid}" >/dev/null 2>&1; then
+    log "pid ${pid} did not stop within ${timeout_seconds}s; sending SIGKILL"
+    kill -KILL "${pid}"
+    kill_deadline=$((SECONDS + 2))
+    while kill -0 "${pid}" >/dev/null 2>&1 && (( SECONDS < kill_deadline )); do
+      sleep 0.1
+    done
+  fi
+  if kill -0 "${pid}" >/dev/null 2>&1; then
+    log "pid ${pid} remained alive after SIGKILL"
+    return 1
+  fi
+  rm -f "${pid_file}"
+}
