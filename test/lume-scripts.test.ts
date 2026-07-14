@@ -116,6 +116,20 @@ describe("Lume pool scripts", () => {
     expect(helper).toContain("github_runner_endpoint_base");
     expect(helper).toContain("request_runner_token");
   });
+
+  test("provisions pinned Sparkle tools in the Lume base VM", () => {
+    const provisionBase = read("scripts/lume/provision-base-vm.sh");
+    const sparkleInstaller = read("scripts/guest/install-sparkle-tools.sh");
+
+    expect(provisionBase).toContain("install-sparkle-tools.sh");
+    expect(provisionBase).toContain("sparkle-release labels");
+    expect(sparkleInstaller).toContain('SPARKLE_VERSION="2.9.4"');
+    expect(sparkleInstaller).toContain("SPARKLE_SHA256=");
+    expect(sparkleInstaller).toContain("SPARKLE_ARCHIVE_PATH");
+    expect(sparkleInstaller).toContain(".local/share/omt-tools/sparkle");
+    expect(sparkleInstaller).toContain("generate_appcast");
+    expect(sparkleInstaller).toContain("generate_keys");
+  });
 });
 
 function read(relativePath: string): string {
