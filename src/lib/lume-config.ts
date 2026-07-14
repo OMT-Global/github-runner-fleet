@@ -165,6 +165,7 @@ export function renderLumeShellExports(
     LUME_HOST_IPSW_PATH: config.host.ipswPath ?? "",
     LUME_CONFIG_PATH: config.host.configPath,
     LUME_RECONCILE_STATE_FILE: config.host.reconcileStateFile,
+    LUME_AUDIT_LOG_FILE: path.join(config.host.baseDir, "audit", `${config.pool.key}.jsonl`),
     GITHUB_ORG: config.pool.organization,
     RUNNER_GROUP: config.pool.runnerGroup,
     FLEET_POOL_KEY: config.pool.key,

@@ -72,6 +72,7 @@ function renderService(
       runnerTemp: runnerTempDir,
       runnerToolCache
     }),
+    AUDIT_LOG_FILE: path.win32.join(runnerStateDir, "audit.jsonl"),
     DOCKER_HOST: "npipe:////./pipe/docker_engine",
     ...renderTelemetryEnvironment(pool.telemetry, {
       serviceName: "github-runner-fleet.windows-docker",

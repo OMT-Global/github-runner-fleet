@@ -54,6 +54,7 @@ prepare_runner_home() {
 cleanup_runner() {
   if [[ ! -f "${RUNNER_ROOT}/.runner" ]]; then
     log "runner registration already removed by ephemeral listener"
+    audit_event runner_deregistered
     cleanup_local_state
     return 0
   fi
@@ -78,6 +79,10 @@ require_env RUNNER_NAME
 require_env RUNNER_ROOT
 require_env RUNNER_WORK_DIR
 require_env RUNNER_VERSION
+
+: "${AUDIT_LOG_FILE:=${RUNNER_ROOT}/audit.jsonl}"
+mkdir -p "$(dirname "${AUDIT_LOG_FILE}")"
+touch "${AUDIT_LOG_FILE}"
 
 export PATH="${RUNNER_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin}"
 
@@ -109,6 +114,19 @@ log "configuring ephemeral macOS runner ${RUNNER_NAME} in group ${RUNNER_GROUP}"
   ./config.sh "${config_args[@]}"
 )
 RUNNER_CONFIGURED="true"
+audit_event runner_registered
+
+hook_dir="${RUNNER_ROOT}/hooks"
+mkdir -p "${hook_dir}"
+cat > "${hook_dir}/job-started.sh" <<'HOOK'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/../github-runner-common.sh"
+audit_event runner_job_start
+HOOK
+cp "${SCRIPT_DIR}/github-runner-common.sh" "${RUNNER_ROOT}/github-runner-common.sh"
+chmod 0755 "${hook_dir}/job-started.sh"
+export ACTIONS_RUNNER_HOOK_JOB_STARTED="${hook_dir}/job-started.sh"
 
 log "starting runner ${RUNNER_NAME}"
 (

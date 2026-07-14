@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { auditLogFileFromEnv } from "./audit.js";
+import { auditLogFileFromEnv, inspectAuditLog } from "./audit.js";
 import { collectConfigWarnings, loadConfig } from "./config.js";
 import { loadDeploymentEnv } from "./env.js";
 import { loadLinuxDockerConfig } from "./linux-docker-config.js";
@@ -601,20 +601,20 @@ async function runLinuxDockerDoctor(input: {
 
 function buildAuditLogCheck(env: Record<string, string | undefined>): DoctorCheck {
   const filePath = auditLogFileFromEnv(env);
-  let sizeBytes = 0;
-  if (fs.existsSync(filePath)) {
-    sizeBytes = fs.statSync(filePath).size;
-  }
+  const staleAfter = Number(env.AUDIT_LOG_STALE_AFTER_SECONDS ?? "86400");
+  const health = inspectAuditLog(filePath, Number.isFinite(staleAfter) && staleAfter > 0 ? staleAfter : 86_400);
 
   return {
     id: "audit-log",
     target: "synology",
-    status: "pass",
-    summary: `audit log path ${filePath}`,
-    detail: `size ${sizeBytes} bytes`,
+    status: health.status === "healthy" ? "pass" : health.status === "unwritable" ? "fail" : "warn",
+    summary: `audit log ${health.status}: ${filePath}`,
+    detail: health.detail,
     data: {
       auditLogFile: filePath,
-      sizeBytes
+      sizeBytes: health.sizeBytes,
+      ageSeconds: health.ageSeconds,
+      health: health.status
     }
   };
 }

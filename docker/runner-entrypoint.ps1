@@ -6,6 +6,68 @@ function Write-RunnerLog {
   Write-Host "[$timestamp] $Message"
 }
 
+function Invoke-NativeCommand {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [string[]]$ArgumentList = @(),
+    [Parameter(Mandatory = $true)][string]$Operation,
+    [string]$OutputLogPath,
+    [switch]$AllowFailure
+  )
+
+  $displayArguments = @()
+  $redactNext = $false
+  foreach ($argument in $ArgumentList) {
+    if ($redactNext) {
+      $displayArguments += "<redacted>"
+      $redactNext = $false
+      continue
+    }
+    $displayArguments += $argument
+    if ($argument -eq "--token") {
+      $redactNext = $true
+    }
+  }
+  $commandText = "$FilePath $($displayArguments -join ' ')".Trim()
+  $output = @(& $FilePath @ArgumentList 2>&1)
+  $exitCode = $LASTEXITCODE
+  if (-not [string]::IsNullOrWhiteSpace($OutputLogPath)) {
+    $output | Tee-Object -FilePath $OutputLogPath -Append | Out-Null
+  }
+  foreach ($line in $output) {
+    Write-Host $line
+  }
+
+  if ($exitCode -ne 0 -and -not $AllowFailure) {
+    $detail = (($output | Select-Object -Last 20) -join [Environment]::NewLine)
+    throw "$Operation failed: command '$commandText' exited with code $exitCode. $detail"
+  }
+
+  return $exitCode
+}
+
+function Write-AuditEvent {
+  param(
+    [Parameter(Mandatory = $true)][string]$Event,
+    [hashtable]$Details = @{}
+  )
+
+  $record = @{
+    ts = (Get-Date).ToUniversalTime().ToString("o")
+    event = $Event
+    runner_name = $env:RUNNER_NAME
+    pool = if ([string]::IsNullOrWhiteSpace($env:FLEET_POOL_KEY)) { $env:RUNNER_GROUP } else { $env:FLEET_POOL_KEY }
+    plane = if ([string]::IsNullOrWhiteSpace($env:FLEET_PLANE)) { "windows-docker" } else { $env:FLEET_PLANE }
+    org = $env:GITHUB_ORG
+  }
+  foreach ($key in $Details.Keys) {
+    $record[$key] = $Details[$key]
+  }
+  $auditDirectory = Split-Path -Parent $env:AUDIT_LOG_FILE
+  New-Item -ItemType Directory -Force -Path $auditDirectory | Out-Null
+  ($record | ConvertTo-Json -Compress) | Add-Content -Path $env:AUDIT_LOG_FILE -Encoding UTF8
+}
+
 function Require-Env {
   param([string]$Name)
   if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($Name))) {
@@ -92,11 +154,11 @@ function Invoke-ActionsRunner {
   }
 
   try {
-    & .\run.cmd 2>&1 |
-      Tee-Object -FilePath (Join-Path $env:RUNNER_LOG_DIR "runner.log") -Append |
-      Out-Null
-    $runnerExitCode = $LASTEXITCODE
-    return $runnerExitCode
+    return Invoke-NativeCommand `
+      -FilePath ".\run.cmd" `
+      -Operation "runner execution" `
+      -OutputLogPath (Join-Path $env:RUNNER_LOG_DIR "runner.log") `
+      -AllowFailure
   } finally {
     foreach ($name in $credentialNames) {
       [Environment]::SetEnvironmentVariable($name, $savedCredentials[$name], "Process")
@@ -133,7 +195,11 @@ function Remove-RunnerRegistration {
     if (-not [string]::IsNullOrWhiteSpace($removeToken)) {
       Push-Location $env:RUNNER_HOME
       try {
-        & .\config.cmd remove --token $removeToken
+        Invoke-NativeCommand `
+          -FilePath ".\config.cmd" `
+          -ArgumentList @("remove", "--token", $removeToken) `
+          -Operation "runner removal" | Out-Null
+        Write-AuditEvent -Event "runner_deregistered"
       } finally {
         Pop-Location
       }
@@ -161,6 +227,7 @@ if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { $env:RUNNER_TEMP = "C:\git
 if ([string]::IsNullOrWhiteSpace($env:RUNNER_TOOL_CACHE)) { $env:RUNNER_TOOL_CACHE = "C:\hostedtoolcache" }
 if ([string]::IsNullOrWhiteSpace($env:AGENT_TOOLSDIRECTORY)) { $env:AGENT_TOOLSDIRECTORY = $env:RUNNER_TOOL_CACHE }
 if ([string]::IsNullOrWhiteSpace($env:RUNNER_HOME)) { $env:RUNNER_HOME = Join-Path $env:RUNNER_STATE_DIR "runner-home" }
+if ([string]::IsNullOrWhiteSpace($env:AUDIT_LOG_FILE)) { $env:AUDIT_LOG_FILE = Join-Path $env:RUNNER_STATE_DIR "audit.jsonl" }
 
 if ($env:RUNNER_SCOPE -ne "organization") {
   throw "RUNNER_SCOPE=$env:RUNNER_SCOPE is unsupported in v1; only organization runners are implemented"
@@ -205,8 +272,12 @@ try {
 
   Push-Location $env:RUNNER_HOME
   try {
-    & .\config.cmd @configArgs
+    Invoke-NativeCommand `
+      -FilePath ".\config.cmd" `
+      -ArgumentList $configArgs `
+      -Operation "runner configuration" | Out-Null
     $script:RunnerConfigured = $true
+    Write-AuditEvent -Event "runner_registered"
     Write-RunnerLog "starting runner $env:RUNNER_NAME"
     $runnerExitCode = Invoke-ActionsRunner
     exit $runnerExitCode

@@ -46,6 +46,29 @@ describe("runner entrypoint", () => {
     expect(script).toContain('RUNNER_AUDIT_DEREGISTER_EVENT="runner_evicted"');
   });
 
+  test("checks Windows native command exits before reporting lifecycle success", () => {
+    const script = fs.readFileSync(
+      path.resolve("docker/runner-entrypoint.ps1"),
+      "utf8"
+    );
+
+    expect(script).toContain("function Invoke-NativeCommand");
+    expect(script).toContain('throw "$Operation failed: command');
+    expect(script).toContain('$displayArguments += "<redacted>"');
+    expect(script).toContain('if ($argument -eq "--token")');
+    expect(script).toContain('-Operation "runner configuration"');
+    expect(script.indexOf('-Operation "runner configuration"')).toBeLessThan(
+      script.indexOf("$script:RunnerConfigured = $true")
+    );
+    expect(script).toContain('-Operation "runner removal"');
+    expect(script).toContain('Write-AuditEvent -Event "runner_registered"');
+    expect(script).toContain('Write-AuditEvent -Event "runner_deregistered"');
+    expect(script).toContain('Join-Path $env:RUNNER_STATE_DIR "audit.jsonl"');
+    for (const auditField of ["ts", "runner_name", "pool", "plane", "org"]) {
+      expect(script).toContain(`${auditField} =`);
+    }
+  });
+
   test("fails Docker-capable runners before registration when client and daemon APIs are incompatible", () => {
     const script = fs.readFileSync(
       path.resolve("docker/runner-entrypoint.sh"),
