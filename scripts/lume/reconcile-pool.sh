@@ -113,10 +113,7 @@ NODE
 
     log "retiring removed slot ${slot_index} (${vm_name}) from persisted reconciliation state"
     if [[ -n "${worker_pid_file}" && -f "${worker_pid_file}" ]]; then
-      local worker_pid
-      worker_pid="$(cat "${worker_pid_file}")"
-      kill "${worker_pid}" >/dev/null 2>&1 || true
-      rm -f "${worker_pid_file}"
+      terminate_tracked_process "${worker_pid_file}" "run-slot.sh"
     fi
 
     local state_storage_args=()
