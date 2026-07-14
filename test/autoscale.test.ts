@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { decideAutoscale } from "../src/lib/autoscale.js";
+import { decideAutoscale, decideWebhookAutoscale } from "../src/lib/autoscale.js";
 
 const scaling = {
   min: 2,
@@ -9,6 +9,24 @@ const scaling = {
 };
 
 describe("decideAutoscale", () => {
+  test("maps webhook signals through the polling controller rules", () => {
+    expect(decideWebhookAutoscale({
+      signal: "scale-up",
+      poolKey: "synology-private",
+      currentSize: 2,
+      scaling,
+      cooldownElapsedSeconds: 0
+    })).toMatchObject({ action: "scale-up", targetSize: 3, queuedJobs: 3 });
+
+    expect(decideWebhookAutoscale({
+      signal: "scale-down",
+      poolKey: "synology-private",
+      currentSize: 3,
+      scaling,
+      cooldownElapsedSeconds: 120,
+      queuedJobs: 1
+    })).toMatchObject({ action: "none", targetSize: 3, queuedJobs: 1 });
+  });
   test("scales up when queued jobs reach the configured threshold", () => {
     expect(
       decideAutoscale({
