@@ -19,6 +19,26 @@ export interface AutoscaleDecision {
   reason: string;
 }
 
+export function decideWebhookAutoscale(input: {
+  signal: "scale-up" | "scale-down";
+  poolKey: string;
+  currentSize: number;
+  scaling?: PoolScaling;
+  cooldownElapsedSeconds: number;
+  queuedJobs?: number;
+}): AutoscaleDecision {
+  return decideAutoscale({
+    poolKey: input.poolKey,
+    currentSize: input.currentSize,
+    queuedJobs:
+      input.signal === "scale-up"
+        ? input.scaling?.queueThreshold ?? 1
+        : input.queuedJobs ?? 0,
+    scaling: input.scaling,
+    cooldownElapsedSeconds: input.cooldownElapsedSeconds
+  });
+}
+
 export function decideAutoscale(
   input: AutoscaleDecisionInput
 ): AutoscaleDecision {

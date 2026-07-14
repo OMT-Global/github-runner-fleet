@@ -5,8 +5,15 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { runBoundedCommand, sshTransportArgs } from "./lib/process.js";
-import { decideAutoscale, type AutoscaleDecision } from "./lib/autoscale.js";
-import { createAutoscaleWebhookServer } from "./lib/autoscale-webhook.js";
+import {
+  decideAutoscale,
+  decideWebhookAutoscale,
+  type AutoscaleDecision
+} from "./lib/autoscale.js";
+import {
+  createAutoscaleWebhookServer,
+  type AutoscaleWebhookDecision
+} from "./lib/autoscale-webhook.js";
 import { collectConfigWarnings, loadConfig, type ResolvedConfig } from "./lib/config.js";
 import { renderCompose } from "./lib/compose.js";
 import {
@@ -82,6 +89,13 @@ import {
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
 import {
+  decideLinuxReconcile,
+  emptyLinuxReconcileState,
+  parseLinuxReconcileState,
+  type LinuxReconcilePlane,
+  type LinuxReconcileState
+} from "./lib/reconcile.js";
+import {
   buildSynologyInstallPlan,
   summarizeSynologyInstallPlan
 } from "./lib/synology-install.js";
@@ -128,6 +142,9 @@ export async function main(
       break;
     case "drain-pool":
       await drainPoolCommand(args);
+      break;
+    case "reconcile-linux-pool":
+      await reconcileLinuxPoolCommand(args);
       break;
     case "prune-stale-runners":
       await pruneStaleRunnersCommand(args);
@@ -727,29 +744,152 @@ async function scaleCommand(args: string[]): Promise<void> {
 
 async function autoscaleWebhookCommand(args: string[]): Promise<void> {
   const listen = getOption(args, "--listen", ":8080")!;
+  const envPath = getOption(args, "--env", ".env")!;
+  const configPath = getOption(args, "--config", "config/pools.yaml")!;
+  const env = loadDeploymentEnv({ envPath, requirePat: false, requireGitHubAuth: true });
   const secretEnv = getOption(args, "--secret-env", "AUTOSCALE_WEBHOOK_SECRET")!;
-  const secret = process.env[secretEnv]?.trim();
+  const secret = env.raw[secretEnv]?.trim();
   if (!secret) {
     throw new Error(`${secretEnv} is required`);
   }
-  const labels = (getOption(args, "--labels", "") ?? "")
-    .split(",")
-    .map((label) => label.trim())
-    .filter(Boolean);
-  if (labels.length === 0) {
-    throw new Error("--labels is required, for example --labels self-hosted,synology");
+  const config = loadConfig(configPath, env);
+  const routes = config.pools.map((pool) => ({
+    poolKey: pool.key,
+    labels: ["self-hosted", ...pool.labels]
+  }));
+  const statePath = getOption(args, "--state", env.raw.AUTOSCALE_WEBHOOK_STATE_FILE);
+  if (!statePath) {
+    throw new Error("AUTOSCALE_WEBHOOK_STATE_FILE or --state is required for durable delivery deduplication");
   }
-  const statePath = getOption(args, "--state", process.env.AUTOSCALE_WEBHOOK_STATE_FILE);
   const { host, port } = parseListenAddress(listen);
+  let actuationQueue = Promise.resolve();
   const server = createAutoscaleWebhookServer({
     secret,
-    ownedLabels: labels,
-    statePath
+    routes,
+    statePath,
+    onDecision: async (decision) => {
+      const actuation = actuationQueue.then(() =>
+        actuateAutoscaleWebhookDecision({
+          decision,
+          args,
+          envPath,
+          configPath
+        })
+      );
+      actuationQueue = actuation.catch(() => undefined);
+      await actuation;
+    }
   });
   await new Promise<void>((resolve) => {
     server.listen(port, host, resolve);
   });
   process.stdout.write(`autoscale webhook listening on ${host}:${port}\n`);
+}
+
+async function actuateAutoscaleWebhookDecision(input: {
+  decision: AutoscaleWebhookDecision;
+  args: string[];
+  envPath: string;
+  configPath: string;
+}): Promise<void> {
+  const event = input.decision.event;
+  if (!event || input.decision.signal === "none") return;
+
+  const env = loadDeploymentEnv({
+    envPath: input.envPath,
+    requirePat: false,
+    requireGitHubAuth: true
+  });
+  const config = loadConfig(input.configPath, env);
+  const pool = config.pools.find((entry) => entry.key === event.poolKey);
+  if (!pool) {
+    throw new Error(`webhook selected unknown pool ${event.poolKey}`);
+  }
+  if (!pool.scaling) {
+    log.info("ignored autoscale webhook for pool without scaling config", {
+      pool: pool.key,
+      jobId: event.jobId,
+      signal: input.decision.signal
+    });
+    return;
+  }
+
+  const token = await resolveGitHubAccessToken(env);
+  const queuedJobs = input.decision.signal === "scale-up"
+    ? pool.scaling.queueThreshold
+    : await getQueuedJobCount(env.githubApiUrl, token, {
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        repositories:
+          pool.repositoryAccess === "selected" ? pool.allowedRepositories : [],
+        labels: pool.labels
+      });
+  const autoscaleDecision = decideWebhookAutoscale({
+    signal: input.decision.signal,
+    poolKey: pool.key,
+    currentSize: pool.size,
+    scaling: pool.scaling,
+    cooldownElapsedSeconds: getConfigAgeSeconds(input.configPath),
+    queuedJobs
+  });
+  if (autoscaleDecision.action === "none") {
+    log.info("autoscale webhook converged without capacity change", {
+      pool: pool.key,
+      jobId: event.jobId,
+      reason: autoscaleDecision.reason
+    });
+    return;
+  }
+
+  await withControllerAction({
+    command: "autoscale-webhook",
+    action: autoscaleDecision.action,
+    plane: "synology",
+    pool: pool.key,
+    dryRun: false
+  }, async () => {
+    if (autoscaleDecision.action === "scale-down") {
+      const drainReport = await drainRunnerPool({
+        apiUrl: env.githubApiUrl,
+        token,
+        organization: pool.organization,
+        runnerGroup: pool.runnerGroup,
+        poolKey: pool.key,
+        runnerNames: buildIndexedRunnerNames(
+          pool.key,
+          autoscaleDecision.targetSize + 1,
+          pool.size
+        ),
+        timeoutSeconds: parseDurationSeconds(
+          getOption(input.args, "--drain-timeout", "300")!,
+          "--drain-timeout"
+        ),
+        intervalSeconds: parseDurationSeconds(
+          getOption(input.args, "--drain-interval", "5")!,
+          "--drain-interval"
+        ),
+        onProgress: (progress) => writeDrainProgress("synology", progress)
+      });
+      if (drainReport.status === "timeout") {
+        throw new Error(
+          `timed out draining ${pool.key} after workflow_job ${event.jobId}`
+        );
+      }
+    }
+
+    const scaledConfig = applyAutoscaleDecisions(config, [autoscaleDecision]);
+    const compose = renderCompose(scaledConfig, env);
+    const plan = buildSynologyInstallPlan(scaledConfig, env, compose, {
+      action: "up"
+    });
+    runSynologyInstallPlan(plan, getOption(input.args, "--python", "python3")!);
+    writeScaledPoolSizes(input.configPath, [autoscaleDecision]);
+  }, () => ({
+    jobId: event.jobId,
+    deliveryAction: event.action,
+    targetSize: autoscaleDecision.targetSize,
+    queuedJobs
+  }));
 }
 
 async function drainPoolCommand(args: string[]): Promise<void> {
@@ -805,6 +945,254 @@ async function drainPoolCommand(args: string[]): Promise<void> {
 
   if (report.status === "timeout") {
     process.exitCode = 1;
+  }
+}
+
+async function reconcileLinuxPoolCommand(args: string[]): Promise<void> {
+  const requestedPlane = getOption(args, "--plane", "both");
+  const planes: LinuxReconcilePlane[] =
+    requestedPlane === "both"
+      ? ["synology", "linux-docker"]
+      : requestedPlane === "synology" || requestedPlane === "linux-docker"
+        ? [requestedPlane]
+        : (() => {
+            throw new Error(`unknown reconcile plane: ${requestedPlane}`);
+          })();
+  const format = getOption(args, "--format", "text");
+  if (format !== "text" && format !== "json") {
+    throw new Error(`unknown reconcile format: ${format}`);
+  }
+
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false,
+    requireGitHubAuth: true
+  });
+  const statePath = path.resolve(
+    getOption(
+      args,
+      "--state",
+      process.env.RUNNER_RECONCILE_STATE_FILE ??
+        path.join(os.homedir(), ".local", "state", "github-runner-fleet", "reconcile.json")
+    )!
+  );
+  const lockPath = path.resolve(
+    getOption(args, "--lock", `${statePath}.lock`)!
+  );
+  const dryRun = args.includes("--dry-run");
+  const force = args.includes("--force");
+
+  const results = await withReconcileLock(lockPath, async () => {
+    const state = readLinuxReconcileState(statePath);
+    const token = await resolveGitHubAccessToken(env);
+    const nextState: LinuxReconcileState = {
+      version: 1,
+      planes: { ...state.planes }
+    };
+    const reports: Array<Record<string, unknown>> = [];
+
+    for (const plane of planes) {
+      const configPath =
+        plane === "synology"
+          ? getOption(args, "--config", "config/pools.yaml")!
+          : getOption(args, "--linux-config", "config/linux-docker-runners.yaml")!;
+      const imageRef = readLinuxPlaneImageRef(plane, configPath, env);
+      const verified = await verifyContainerImageTag(
+        env.githubApiUrl,
+        token,
+        imageRef
+      );
+      const decision = decideLinuxReconcile({
+        current: state.planes[plane],
+        desiredImageRef: imageRef,
+        verifiedVersionId: verified.versionId,
+        force
+      });
+      const report: Record<string, unknown> = {
+        plane,
+        imageRef,
+        versionId: verified.versionId,
+        decision: decision.action,
+        reason: decision.reason,
+        dryRun
+      };
+
+      if (decision.action === "apply" && !dryRun) {
+        await withControllerAction(
+          {
+            command: "reconcile-linux-pool",
+            action: "reconcile",
+            plane,
+            pool: "all"
+          },
+          async () => {
+            const definitions = collectDrainPoolDefinitions(
+              [...args, "--plane", plane],
+              env,
+              plane
+            );
+            const timeoutSeconds = parseDurationSeconds(
+              getOption(args, "--timeout", "15m")!,
+              "--timeout"
+            );
+            const intervalSeconds = parseDurationSeconds(
+              getOption(args, "--interval", "5")!,
+              "--interval"
+            );
+            for (const definition of definitions) {
+              const drain = await drainRunnerPool({
+                apiUrl: env.githubApiUrl,
+                token,
+                organization: definition.organization,
+                runnerGroup: definition.runnerGroup,
+                poolKey: definition.key,
+                runnerNames: definition.runnerNames,
+                timeoutSeconds,
+                intervalSeconds,
+                onProgress: (progress) => writeDrainProgress(plane, progress)
+              });
+              if (drain.status === "timeout") {
+                throw new Error(
+                  `timed out draining ${plane}/${definition.key}: ${drain.busy.join(", ") || "busy runners remain"}`
+                );
+              }
+            }
+
+            runLinuxReconcileInstall(plane, args, env);
+          },
+          () => ({ imageRef, versionId: verified.versionId })
+        );
+
+        nextState.planes[plane] = {
+          imageRef,
+          versionId: verified.versionId,
+          reconciledAt: new Date().toISOString()
+        };
+        writeLinuxReconcileState(statePath, nextState);
+        report.status = "applied";
+      } else {
+        report.status = decision.action === "skip" ? "current" : "would-apply";
+      }
+
+      reports.push(report);
+    }
+
+    return reports;
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify({ statePath, results }, null, 2)}\n`);
+    return;
+  }
+
+  process.stdout.write(
+    `${results
+      .map(
+        (result) =>
+          `reconcile ${String(result.plane)} image=${String(result.imageRef)} status=${String(result.status)} reason=${String(result.reason)}`
+      )
+      .join("\n")}\n`
+  );
+}
+
+function readLinuxPlaneImageRef(
+  plane: LinuxReconcilePlane,
+  configPath: string,
+  env: ReturnType<typeof loadDeploymentEnv>
+): string {
+  if (plane === "synology") {
+    const config = loadConfig(configPath, env);
+    return `${config.image.repository}:${config.image.tag}`;
+  }
+  const config = loadLinuxDockerConfig(configPath, env);
+  return `${config.image.repository}:${config.image.tag}`;
+}
+
+function runLinuxReconcileInstall(
+  plane: LinuxReconcilePlane,
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>
+): void {
+  const installEnv = {
+    ...env,
+    synologyInstallPullImages: true,
+    synologyInstallForceRecreate: true,
+    synologyInstallRemoveOrphans: true,
+    linuxDockerInstallPullImages: true,
+    linuxDockerInstallForceRecreate: true,
+    linuxDockerInstallRemoveOrphans: true
+  };
+
+  if (plane === "synology") {
+    const config = loadConfig(
+      getOption(args, "--config", "config/pools.yaml")!,
+      installEnv
+    );
+    emitWarnings(config);
+    const plan = buildSynologyInstallPlan(
+      config,
+      installEnv,
+      renderCompose(config, installEnv),
+      { action: "up" }
+    );
+    runSynologyInstallPlan(plan, getOption(args, "--python", "python3")!);
+    return;
+  }
+
+  const config = loadLinuxDockerConfig(
+    getOption(args, "--linux-config", "config/linux-docker-runners.yaml")!,
+    installEnv
+  );
+  const plan = buildLinuxDockerInstallPlan(
+    config,
+    installEnv,
+    renderLinuxDockerCompose(config, installEnv),
+    { action: "up" }
+  );
+  runLinuxDockerInstall(plan);
+}
+
+function readLinuxReconcileState(statePath: string): LinuxReconcileState {
+  if (!fs.existsSync(statePath)) {
+    return emptyLinuxReconcileState();
+  }
+  return parseLinuxReconcileState(
+    JSON.parse(fs.readFileSync(statePath, "utf8")) as unknown
+  );
+}
+
+function writeLinuxReconcileState(
+  statePath: string,
+  state: LinuxReconcileState
+): void {
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  const tempPath = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  fs.renameSync(tempPath, statePath);
+}
+
+async function withReconcileLock<T>(
+  lockPath: string,
+  callback: () => T | Promise<T>
+): Promise<Awaited<T>> {
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  if (fs.existsSync(lockPath)) {
+    const ownerPath = path.join(lockPath, "owner");
+    const owner = fs.existsSync(ownerPath)
+      ? Number.parseInt(fs.readFileSync(ownerPath, "utf8").trim(), 10)
+      : undefined;
+    if (owner && isProcessRunning(owner)) {
+      throw new Error(`reconcile already running under pid ${owner}`);
+    }
+    fs.rmSync(lockPath, { recursive: true, force: true });
+  }
+
+  fs.mkdirSync(lockPath, { recursive: false });
+  fs.writeFileSync(path.join(lockPath, "owner"), `${process.pid}\n`, "utf8");
+  try {
+    return await callback();
+  } finally {
+    fs.rmSync(lockPath, { recursive: true, force: true });
   }
 }
 
@@ -2892,10 +3280,11 @@ function printUsage(): void {
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm config-diff [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm drain-pool -- --pool synology-private [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--timeout 15m] [--interval 5] [--format text|json]
+  pnpm reconcile-linux-pool -- [--plane synology|linux-docker|both] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--state path] [--lock path] [--timeout 15m] [--interval 5] [--format text|json] [--dry-run] [--force]
   pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
   pnpm rotate-token [--plane synology|linux-docker|lume] [--pool synology-private] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--new-token-env NEW_GITHUB_PAT] [--dry-run|--apply] [--drain-timeout 15m] [--drain-interval 5]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]
-  pnpm autoscale-webhook -- --labels self-hosted,synology [--listen :8080] [--secret-env AUTOSCALE_WEBHOOK_SECRET] [--state .tmp/autoscale-webhook.json]
+  pnpm autoscale-webhook -- [--config config/pools.yaml] [--env .env] [--listen :8080] [--secret-env AUTOSCALE_WEBHOOK_SECRET] [--state .tmp/autoscale-webhook.json]
   pnpm validate-config [--config config/pools.yaml] [--env .env]
   pnpm validate-linux-docker-config [--config config/linux-docker-runners.yaml] [--env .env]
   pnpm validate-linux-docker-github [--config config/linux-docker-runners.yaml] [--env .env]
