@@ -67,7 +67,14 @@ cleanup_slot() {
   "${SCRIPT_DIR}/destroy-slot.sh" --slot "${slot}" --config "${config_path}" --env "${env_path}" >/dev/null 2>&1 || true
 }
 
-trap cleanup_slot EXIT INT TERM
+shutdown_slot() {
+  trap - EXIT INT TERM
+  cleanup_slot
+  exit 0
+}
+
+trap cleanup_slot EXIT
+trap shutdown_slot INT TERM
 
 while true; do
   cleanup_slot
