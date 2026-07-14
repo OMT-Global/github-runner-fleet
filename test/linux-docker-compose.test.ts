@@ -20,6 +20,7 @@ describe("renderLinuxDockerCompose", () => {
       RUNNER_TEMP:
         "/srv/github-runner-fleet/linux-docker/pools/linux-docker-private/runner-01/_temp",
       RUNNER_EXEC_MODE_OVERRIDE: "root",
+      DOCKER_MIN_SERVER_API_VERSION: "1.44",
       DOCKER_HOST: "unix:///var/run/docker.sock"
     });
     expect(service.volumes).toEqual([
