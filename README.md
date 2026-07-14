@@ -25,10 +25,11 @@ Self-hosted GitHub runner infrastructure for Synology shell-only pools, Linux Do
 
 | Status | Focus | Tracking |
 | --- | --- | --- |
-| Next | Unified preflight and health diagnostics for the whole fleet | [#26](https://github.com/OMT-Global/github-runner-fleet/issues/26) |
-| Next | Synology deployment status and troubleshooting surfaces | [#29](https://github.com/OMT-Global/github-runner-fleet/issues/29) |
-| Next | Shell-safe workflow cookbook and compatibility matrix follow-through | [#28](https://github.com/OMT-Global/github-runner-fleet/issues/28) |
-| Later | Stronger Lume base-VM lifecycle and pool operations playbook | [#27](https://github.com/OMT-Global/github-runner-fleet/issues/27) |
+| Now | Release integrity, artifact parity, and runner freshness | [#149](https://github.com/OMT-Global/github-runner-fleet/issues/149)–[#151](https://github.com/OMT-Global/github-runner-fleet/issues/151) |
+| Now | Drain, teardown, deadline, and audit reliability | [#152](https://github.com/OMT-Global/github-runner-fleet/issues/152)–[#156](https://github.com/OMT-Global/github-runner-fleet/issues/156) |
+| Next | Reusable CI, security, and release workflows | [#117](https://github.com/OMT-Global/github-runner-fleet/issues/117) |
+| Next | Event-driven autoscaling | [#119](https://github.com/OMT-Global/github-runner-fleet/issues/119) |
+| Human gate | Repository access to isolated public macOS runners | [#166](https://github.com/OMT-Global/github-runner-fleet/issues/166) |
 
 The roadmap doc keeps the operator view short; the GitHub issues are the execution-level source of truth.
 
