@@ -51,16 +51,19 @@ describe("security and reusable workflows", () => {
   });
 
   test("exposes rg-ci, rg-security, and rg-release as workflow_call artifacts", () => {
-    for (const fileName of ["rg-ci.yml", "rg-release.yml"]) {
+    for (const fileName of ["rg-ci.yml", "rg-security.yml", "rg-release.yml"]) {
       const workflow = YAML.parse(
         fs.readFileSync(path.resolve(".github/workflows", fileName), "utf8")
       ) as { on: Record<string, unknown>; jobs: Record<string, Record<string, unknown>> };
 
       expect(workflow.on).toHaveProperty("workflow_call");
-      for (const job of Object.values(workflow.jobs)) {
-        expect(job["runs-on"]).toEqual(shellSafePublicRunner);
-      }
     }
+
+    const rgCi = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/rg-ci.yml"), "utf8")
+    ) as { jobs: Record<string, Record<string, unknown>> };
+    expect(rgCi.jobs["shell-safe-public"]["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(rgCi.jobs.hosted["runs-on"]).toBe("ubuntu-24.04");
 
     const rgSecurity = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/rg-security.yml"), "utf8")
@@ -68,7 +71,12 @@ describe("security and reusable workflows", () => {
 
     expect(rgSecurity.on).toHaveProperty("workflow_call");
     for (const job of Object.values(rgSecurity.jobs)) {
-      expect(job["runs-on"]).toBe("ubuntu-latest");
+      expect(job["runs-on"]).toBe("ubuntu-24.04");
     }
+
+    const rgRelease = YAML.parse(
+      fs.readFileSync(path.resolve(".github/workflows/rg-release.yml"), "utf8")
+    ) as { jobs: Record<string, Record<string, unknown>> };
+    expect(rgRelease.jobs.release["runs-on"]).toBe("ubuntu-24.04");
   });
 });

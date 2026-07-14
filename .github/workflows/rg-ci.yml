@@ -1,17 +1,23 @@
 # Reusable rg-ci workflow.
-# Required secrets: none. Optional secrets are inherited by callers for their own scripts.
+# Required secrets: none.
+# Inputs: runner-class selects hosted (default, safe for forks) or the public shell-only fleet.
 name: rg-ci
 
 on:
   workflow_call:
     inputs:
-      node-version:
-        description: Node.js version used by hosted lanes.
+      runner-class:
+        description: "Execution boundary: hosted or shell-safe-public."
         required: false
         type: string
-        default: "24"
+        default: hosted
+      node-version:
+        description: Exact Node.js version.
+        required: false
+        type: string
+        default: "24.14.1"
       package-manager-version:
-        description: pnpm version used by hosted lanes.
+        description: pnpm version.
         required: false
         type: string
         default: "10.32.1"
@@ -28,22 +34,71 @@ env:
   SHELL: /bin/bash
 
 jobs:
-  ci:
-    name: rg-ci
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+  validate-inputs:
+    name: rg-ci input contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate runner class
+        env:
+          RUNNER_CLASS: ${{ inputs.runner-class }}
+        run: |
+          case "${RUNNER_CLASS}" in
+            hosted|shell-safe-public) ;;
+            *) echo "runner-class must be hosted or shell-safe-public" >&2; exit 2 ;;
+          esac
+
+  hosted:
+    name: rg-ci hosted
+    needs: validate-inputs
+    if: inputs.runner-class == 'hosted'
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ inputs.node-version }}
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           version: ${{ inputs.package-manager-version }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - if: inputs.run-build
+        run: pnpm build
+
+  shell-safe-public:
+    name: rg-ci shell-safe public
+    needs: validate-inputs
+    if: inputs.runner-class == 'shell-safe-public'
+    runs-on: [self-hosted, linux, shell-only, public]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Install shell-safe Node
+        env:
+          NODE_VERSION: ${{ inputs.node-version }}
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) node_arch=x64 ;;
+            aarch64|arm64) node_arch=arm64 ;;
+            *) echo "unsupported architecture: $(uname -m)" >&2; exit 2 ;;
+          esac
+          runner_temp="${RUNNER_TEMP:-/tmp/github-runner-temp}"
+          archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"
+          install_dir="${runner_temp}/node-${NODE_VERSION}-${node_arch}"
+          mkdir -p "${runner_temp}" "${install_dir}"
+          curl --fail --silent --show-error --location --connect-timeout 10 --max-time 120 \
+            "https://nodejs.org/dist/v${NODE_VERSION}/${archive}" --output "${runner_temp}/${archive}"
+          tar -xJf "${runner_temp}/${archive}" --strip-components=1 --no-same-owner -C "${install_dir}"
+          echo "${install_dir}/bin" >> "${GITHUB_PATH}"
+      - name: Enable pnpm
+        env:
+          PNPM_VERSION: ${{ inputs.package-manager-version }}
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test

@@ -38,14 +38,25 @@ Downstream repos can consume the canonical governance lanes without copying YAML
 ```yaml
 jobs:
   ci:
-    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v1
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v0.2.2
+    with:
+      runner-class: hosted
 
   security:
-    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v1
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      security-events: write
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v0.2.2
+    # Set false only when the caller repository does not provide Dependency Graph.
+    with:
+      enable-dependency-review: true
+      enforce-osv: true
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v1
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v0.2.2
     permissions:
       contents: read
       packages: write
@@ -55,9 +66,16 @@ jobs:
       image-ref: ghcr.io/omt-global/example:${{ github.ref_name }}
 ```
 
-Keep `rg-security` and `rg-release` on GitHub-hosted runners. Reference an exact
-tag such as `v1.2.3` when reproducibility matters, or a compatibility tag such
-as `v1` for the standard org lane.
+`rg-security` and `rg-release` always use GitHub-hosted runners. `rg-ci` defaults
+to hosted execution so fork pull requests do not reach self-hosted capacity; set
+`runner-class: shell-safe-public` only in a trusted caller job. Reference an exact
+published release tag. The `v0.2.2` contract becomes consumable after its verified
+release is published; do not point consumers at a branch or a moving compatibility
+tag.
+
+Every external action inside these workflows is pinned to a full commit SHA. The
+human-readable version comments are maintained by Dependabot, but the resolved
+workflow dependency remains immutable between reviewed updates.
 
 ## Recipe: trusted Node job on the Synology shell-only pool
 
