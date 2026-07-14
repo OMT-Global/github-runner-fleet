@@ -88,6 +88,13 @@ import {
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
 import {
+  decideLinuxReconcile,
+  emptyLinuxReconcileState,
+  parseLinuxReconcileState,
+  type LinuxReconcilePlane,
+  type LinuxReconcileState
+} from "./lib/reconcile.js";
+import {
   buildSynologyInstallPlan,
   summarizeSynologyInstallPlan
 } from "./lib/synology-install.js";
@@ -134,6 +141,9 @@ export async function main(
       break;
     case "drain-pool":
       await drainPoolCommand(args);
+      break;
+    case "reconcile-linux-pool":
+      await reconcileLinuxPoolCommand(args);
       break;
     case "prune-stale-runners":
       await pruneStaleRunnersCommand(args);
@@ -934,6 +944,254 @@ async function drainPoolCommand(args: string[]): Promise<void> {
 
   if (report.status === "timeout") {
     process.exitCode = 1;
+  }
+}
+
+async function reconcileLinuxPoolCommand(args: string[]): Promise<void> {
+  const requestedPlane = getOption(args, "--plane", "both");
+  const planes: LinuxReconcilePlane[] =
+    requestedPlane === "both"
+      ? ["synology", "linux-docker"]
+      : requestedPlane === "synology" || requestedPlane === "linux-docker"
+        ? [requestedPlane]
+        : (() => {
+            throw new Error(`unknown reconcile plane: ${requestedPlane}`);
+          })();
+  const format = getOption(args, "--format", "text");
+  if (format !== "text" && format !== "json") {
+    throw new Error(`unknown reconcile format: ${format}`);
+  }
+
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false,
+    requireGitHubAuth: true
+  });
+  const statePath = path.resolve(
+    getOption(
+      args,
+      "--state",
+      process.env.RUNNER_RECONCILE_STATE_FILE ??
+        path.join(os.homedir(), ".local", "state", "github-runner-fleet", "reconcile.json")
+    )!
+  );
+  const lockPath = path.resolve(
+    getOption(args, "--lock", `${statePath}.lock`)!
+  );
+  const dryRun = args.includes("--dry-run");
+  const force = args.includes("--force");
+
+  const results = await withReconcileLock(lockPath, async () => {
+    const state = readLinuxReconcileState(statePath);
+    const token = await resolveGitHubAccessToken(env);
+    const nextState: LinuxReconcileState = {
+      version: 1,
+      planes: { ...state.planes }
+    };
+    const reports: Array<Record<string, unknown>> = [];
+
+    for (const plane of planes) {
+      const configPath =
+        plane === "synology"
+          ? getOption(args, "--config", "config/pools.yaml")!
+          : getOption(args, "--linux-config", "config/linux-docker-runners.yaml")!;
+      const imageRef = readLinuxPlaneImageRef(plane, configPath, env);
+      const verified = await verifyContainerImageTag(
+        env.githubApiUrl,
+        token,
+        imageRef
+      );
+      const decision = decideLinuxReconcile({
+        current: state.planes[plane],
+        desiredImageRef: imageRef,
+        verifiedVersionId: verified.versionId,
+        force
+      });
+      const report: Record<string, unknown> = {
+        plane,
+        imageRef,
+        versionId: verified.versionId,
+        decision: decision.action,
+        reason: decision.reason,
+        dryRun
+      };
+
+      if (decision.action === "apply" && !dryRun) {
+        await withControllerAction(
+          {
+            command: "reconcile-linux-pool",
+            action: "reconcile",
+            plane,
+            pool: "all"
+          },
+          async () => {
+            const definitions = collectDrainPoolDefinitions(
+              [...args, "--plane", plane],
+              env,
+              plane
+            );
+            const timeoutSeconds = parseDurationSeconds(
+              getOption(args, "--timeout", "15m")!,
+              "--timeout"
+            );
+            const intervalSeconds = parseDurationSeconds(
+              getOption(args, "--interval", "5")!,
+              "--interval"
+            );
+            for (const definition of definitions) {
+              const drain = await drainRunnerPool({
+                apiUrl: env.githubApiUrl,
+                token,
+                organization: definition.organization,
+                runnerGroup: definition.runnerGroup,
+                poolKey: definition.key,
+                runnerNames: definition.runnerNames,
+                timeoutSeconds,
+                intervalSeconds,
+                onProgress: (progress) => writeDrainProgress(plane, progress)
+              });
+              if (drain.status === "timeout") {
+                throw new Error(
+                  `timed out draining ${plane}/${definition.key}: ${drain.busy.join(", ") || "busy runners remain"}`
+                );
+              }
+            }
+
+            runLinuxReconcileInstall(plane, args, env);
+          },
+          () => ({ imageRef, versionId: verified.versionId })
+        );
+
+        nextState.planes[plane] = {
+          imageRef,
+          versionId: verified.versionId,
+          reconciledAt: new Date().toISOString()
+        };
+        writeLinuxReconcileState(statePath, nextState);
+        report.status = "applied";
+      } else {
+        report.status = decision.action === "skip" ? "current" : "would-apply";
+      }
+
+      reports.push(report);
+    }
+
+    return reports;
+  });
+
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify({ statePath, results }, null, 2)}\n`);
+    return;
+  }
+
+  process.stdout.write(
+    `${results
+      .map(
+        (result) =>
+          `reconcile ${String(result.plane)} image=${String(result.imageRef)} status=${String(result.status)} reason=${String(result.reason)}`
+      )
+      .join("\n")}\n`
+  );
+}
+
+function readLinuxPlaneImageRef(
+  plane: LinuxReconcilePlane,
+  configPath: string,
+  env: ReturnType<typeof loadDeploymentEnv>
+): string {
+  if (plane === "synology") {
+    const config = loadConfig(configPath, env);
+    return `${config.image.repository}:${config.image.tag}`;
+  }
+  const config = loadLinuxDockerConfig(configPath, env);
+  return `${config.image.repository}:${config.image.tag}`;
+}
+
+function runLinuxReconcileInstall(
+  plane: LinuxReconcilePlane,
+  args: string[],
+  env: ReturnType<typeof loadDeploymentEnv>
+): void {
+  const installEnv = {
+    ...env,
+    synologyInstallPullImages: true,
+    synologyInstallForceRecreate: true,
+    synologyInstallRemoveOrphans: true,
+    linuxDockerInstallPullImages: true,
+    linuxDockerInstallForceRecreate: true,
+    linuxDockerInstallRemoveOrphans: true
+  };
+
+  if (plane === "synology") {
+    const config = loadConfig(
+      getOption(args, "--config", "config/pools.yaml")!,
+      installEnv
+    );
+    emitWarnings(config);
+    const plan = buildSynologyInstallPlan(
+      config,
+      installEnv,
+      renderCompose(config, installEnv),
+      { action: "up" }
+    );
+    runSynologyInstallPlan(plan, getOption(args, "--python", "python3")!);
+    return;
+  }
+
+  const config = loadLinuxDockerConfig(
+    getOption(args, "--linux-config", "config/linux-docker-runners.yaml")!,
+    installEnv
+  );
+  const plan = buildLinuxDockerInstallPlan(
+    config,
+    installEnv,
+    renderLinuxDockerCompose(config, installEnv),
+    { action: "up" }
+  );
+  runLinuxDockerInstall(plan);
+}
+
+function readLinuxReconcileState(statePath: string): LinuxReconcileState {
+  if (!fs.existsSync(statePath)) {
+    return emptyLinuxReconcileState();
+  }
+  return parseLinuxReconcileState(
+    JSON.parse(fs.readFileSync(statePath, "utf8")) as unknown
+  );
+}
+
+function writeLinuxReconcileState(
+  statePath: string,
+  state: LinuxReconcileState
+): void {
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  const tempPath = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  fs.renameSync(tempPath, statePath);
+}
+
+async function withReconcileLock<T>(
+  lockPath: string,
+  callback: () => T | Promise<T>
+): Promise<Awaited<T>> {
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  if (fs.existsSync(lockPath)) {
+    const ownerPath = path.join(lockPath, "owner");
+    const owner = fs.existsSync(ownerPath)
+      ? Number.parseInt(fs.readFileSync(ownerPath, "utf8").trim(), 10)
+      : undefined;
+    if (owner && isProcessRunning(owner)) {
+      throw new Error(`reconcile already running under pid ${owner}`);
+    }
+    fs.rmSync(lockPath, { recursive: true, force: true });
+  }
+
+  fs.mkdirSync(lockPath, { recursive: false });
+  fs.writeFileSync(path.join(lockPath, "owner"), `${process.pid}\n`, "utf8");
+  try {
+    return await callback();
+  } finally {
+    fs.rmSync(lockPath, { recursive: true, force: true });
   }
 }
 
@@ -3036,6 +3294,7 @@ function printUsage(): void {
   pnpm drift-detect [--config config/pools.yaml] [--env .env] [--threshold 0]
   pnpm config-diff [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json]
   pnpm drain-pool -- --pool synology-private [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--timeout 15m] [--interval 5] [--format text|json]
+  pnpm reconcile-linux-pool -- [--plane synology|linux-docker|both] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--state path] [--lock path] [--timeout 15m] [--interval 5] [--format text|json] [--dry-run] [--force]
   pnpm prune-stale-runners [--plane synology|linux-docker|windows-docker|lume] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--windows-config config/windows-runners.yaml] [--lume-config config/lume-runners.yaml] [--format text|json] [--apply]
   pnpm rotate-token [--plane synology|linux-docker|lume] [--pool synology-private] [--env .env] [--config config/pools.yaml] [--linux-config config/linux-docker-runners.yaml] [--lume-config config/lume-runners.yaml] [--new-token-env NEW_GITHUB_PAT] [--dry-run|--apply] [--drain-timeout 15m] [--drain-interval 5]
   pnpm scale [--config config/pools.yaml] [--env .env] [--pool synology-private] [--dry-run] [--drain-timeout 300] [--drain-interval 5] [--python python3]

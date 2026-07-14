@@ -322,6 +322,27 @@ To keep the repository release and GHCR image tag aligned, merge the version bum
 - On Synology bind mounts that reject `chown`, the entrypoint falls back to root runner execution with `RUNNER_ALLOW_RUNASROOT=1` so the service can still start cleanly from that writable runner home.
 - The writable-home copy intentionally extracts without restoring archive ownership, so Synology mounts do not emit a `tar: Cannot change ownership ... Operation not permitted` line for every runner file.
 
+## Automated Linux Pool Reconciliation
+
+Ephemeral Linux runners do not update themselves in place. The safe update boundary is the pool controller: it verifies that the configured GHCR image tag exists, drains active jobs, pulls the image, recreates the Compose services, and records the verified package version ID. New containers then register from the updated image; the container that just finished a job is still deregistered and discarded normally.
+
+Run the reconciler from a dedicated, trusted checkout after a verified release, or from a bounded host timer:
+
+```bash
+pnpm reconcile-linux-pool -- \
+  --plane both \
+  --env /etc/github-runner-fleet/.env \
+  --config config/pools.yaml \
+  --linux-config config/linux-docker-runners.yaml \
+  --state /var/lib/github-runner-fleet/reconcile.json \
+  --lock /var/run/github-runner-fleet-reconcile.lock \
+  --timeout 15m
+```
+
+Use `--dry-run` to verify the configured image tags without draining or changing a pool. The reconciler is serialized by the lock path, skips a plane whose image tag and verified package version ID are already recorded, removes stale lock directories only when their recorded process is no longer running, and writes state atomically only after a successful drain and reinstall. A failed image lookup, drain, or deployment leaves the previous pool running and does not advance that plane's state.
+
+The command can target `synology`, `linux-docker`, or `both`. It always forces image pull, service recreation, and orphan removal for the selected Linux plane. It should be triggered by a release controller or host timer; the `workflow_job: completed` webhook may request reconciliation, but must not mutate a live runner directly.
+
 Recommended workflow labels:
 
 - Private repos: `runs-on: [self-hosted, synology, shell-only, private]`
