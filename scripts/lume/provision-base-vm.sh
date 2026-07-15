@@ -138,6 +138,7 @@ fi
 
 host_xcode_name="$(basename "${host_xcode_app}")"
 guest_xcode_archive="/Users/${GUEST_USER}/${host_xcode_name}.tar"
+guest_ios_runtime_installer="/tmp/github-runner-fleet/install-ios-simulator-runtime.sh"
 guest_sparkle_installer="/tmp/github-runner-fleet/install-sparkle-tools.sh"
 
 log "streaming ${host_xcode_app} into ${guest_xcode_archive} on ${LUME_VM_BASE_NAME}"
@@ -156,6 +157,12 @@ base_ssh \
   xcodebuild -showsdks
   "
 
+log "installing and verifying the iOS Simulator runtime in ${LUME_VM_BASE_NAME}"
+base_ssh "mkdir -p '$(dirname "${guest_ios_runtime_installer}")'"
+tar -C "${REPO_ROOT}/scripts/guest" -cf - install-ios-simulator-runtime.sh \
+  | base_ssh "tar -xf - -C '$(dirname "${guest_ios_runtime_installer}")'"
+base_ssh "/bin/bash '${guest_ios_runtime_installer}'"
+
 log "installing pinned Sparkle release tools in ${LUME_VM_BASE_NAME}"
 base_ssh "mkdir -p '$(dirname "${guest_sparkle_installer}")'"
 tar -C "${REPO_ROOT}/scripts/guest" -cf - install-sparkle-tools.sh \
@@ -163,7 +170,7 @@ tar -C "${REPO_ROOT}/scripts/guest" -cf - install-sparkle-tools.sh \
 base_ssh "/bin/bash '${guest_sparkle_installer}'"
 
 cat <<EOF
-Base VM ${LUME_VM_BASE_NAME} provisioned with host Xcode ${host_xcode_app}.
+Base VM ${LUME_VM_BASE_NAME} provisioned with host Xcode ${host_xcode_app} and an available iOS Simulator runtime.
 Next steps:
 1. Start the pool with scripts/lume/reconcile-pool.sh.
 2. Verify a slot runner registers with the xcode and sparkle-release labels.
