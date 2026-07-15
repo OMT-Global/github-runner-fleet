@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -47,6 +49,7 @@ describe("Lume pool scripts", () => {
     expect(setupBase).toContain('lume stop "${LUME_VM_BASE_NAME}"');
     expect(setupBase).toContain('lume "${setup_args[@]}"');
     expect(provisionBase).toContain("tar -C");
+    expect(provisionBase).toContain("install-ios-simulator-runtime.sh");
     expect(provisionBase).toContain("sudo -S -p '' tar -xf");
     expect(provisionBase).toContain("sudo -S -p '' xcodebuild -runFirstLaunch");
     expect(installRuntime).toContain("GITHUB_RUNNER_FLEET_RUNTIME_ROOT");
@@ -133,8 +136,110 @@ describe("Lume pool scripts", () => {
     expect(sparkleInstaller).toContain("generate_appcast");
     expect(sparkleInstaller).toContain("generate_keys");
   });
+
+  test("preinstalls and verifies an iOS Simulator runtime in the Lume base VM", () => {
+    const provisionBase = read("scripts/lume/provision-base-vm.sh");
+    const runtimeInstaller = read("scripts/guest/install-ios-simulator-runtime.sh");
+
+    expect(provisionBase).toContain("installing and verifying the iOS Simulator runtime");
+    expect(provisionBase).toContain("install-ios-simulator-runtime.sh");
+    expect(runtimeInstaller).toContain("xcodebuild -downloadPlatform iOS");
+    expect(runtimeInstaller).toContain("IOS_SIMULATOR_DOWNLOAD_TIMEOUT_SECONDS");
+    expect(runtimeInstaller).toContain("xcrun simctl list runtimes available -j");
+    expect(runtimeInstaller).toContain('runtime.get("isAvailable")');
+    expect(runtimeInstaller).toContain("No available iOS Simulator runtime exists after Xcode platform provisioning.");
+  });
+
+  test("downloads a missing iOS runtime and skips an available one", () => {
+    const missing = runRuntimeInstaller({ downloadInstallsRuntime: true });
+    expect(missing.status).toBe(0);
+    expect(missing.commands).toContain("-downloadPlatform iOS");
+
+    const available = runRuntimeInstaller({ runtimeInitiallyAvailable: true, downloadInstallsRuntime: true });
+    expect(available.status).toBe(0);
+    expect(available.commands).not.toContain("-downloadPlatform iOS");
+    expect(available.stdout).toContain("already installed");
+  });
+
+  test("fails closed when Xcode does not make an iOS runtime available", () => {
+    const result = runRuntimeInstaller({ downloadInstallsRuntime: false });
+
+    expect(result.status).toBe(1);
+    expect(result.commands).toContain("-downloadPlatform iOS");
+    expect(result.stderr).toContain("No available iOS Simulator runtime exists");
+  });
+
+  test("bounds a stalled iOS platform download", () => {
+    const result = runRuntimeInstaller({
+      downloadInstallsRuntime: true,
+      downloadSleepSeconds: 3,
+      timeoutSeconds: 1,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("failed or exceeded 1 seconds");
+  });
 });
 
 function read(relativePath: string): string {
   return fs.readFileSync(path.resolve(relativePath), "utf8");
+}
+
+function runRuntimeInstaller(options: {
+  downloadSleepSeconds?: number;
+  runtimeInitiallyAvailable?: boolean;
+  downloadInstallsRuntime: boolean;
+  timeoutSeconds?: number;
+}): { commands: string; status: number | null; stderr: string; stdout: string } {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ios-runtime-installer-"));
+  const runtimeState = path.join(directory, "runtime-available");
+  const commandLog = path.join(directory, "commands.log");
+  if (options.runtimeInitiallyAvailable) {
+    fs.writeFileSync(runtimeState, "available\n", "utf8");
+  }
+
+  writeExecutable(
+    path.join(directory, "xcrun"),
+    [
+      "#!/bin/bash",
+      'if [[ -f "${RUNTIME_STATE}" ]]; then',
+      "  printf '%s\\n' '{\"runtimes\":[{\"name\":\"iOS 26.5\",\"isAvailable\":true}]}'",
+      "else",
+      "  printf '%s\\n' '{\"runtimes\":[]}'",
+      "fi",
+    ].join("\n"),
+  );
+  writeExecutable(
+    path.join(directory, "xcodebuild"),
+    [
+      "#!/bin/bash",
+      'printf "%s\\n" "$*" >> "${COMMAND_LOG}"',
+      'if [[ "$1" == "-downloadPlatform" && "${DOWNLOAD_SLEEP_SECONDS}" != "0" ]]; then',
+      '  sleep "${DOWNLOAD_SLEEP_SECONDS}"',
+      "fi",
+      'if [[ "$1" == "-downloadPlatform" && "${DOWNLOAD_INSTALLS_RUNTIME}" == "true" ]]; then',
+      '  printf "available\\n" > "${RUNTIME_STATE}"',
+      "fi",
+    ].join("\n"),
+  );
+
+  const result = spawnSync("bash", [path.resolve("scripts/guest/install-ios-simulator-runtime.sh")], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      COMMAND_LOG: commandLog,
+      DOWNLOAD_INSTALLS_RUNTIME: String(options.downloadInstallsRuntime),
+      DOWNLOAD_SLEEP_SECONDS: String(options.downloadSleepSeconds ?? 0),
+      IOS_SIMULATOR_DOWNLOAD_TIMEOUT_SECONDS: String(options.timeoutSeconds ?? 60),
+      PATH: `${directory}:${process.env.PATH ?? ""}`,
+      RUNTIME_STATE: runtimeState,
+    },
+  });
+  const commands = fs.existsSync(commandLog) ? fs.readFileSync(commandLog, "utf8") : "";
+  fs.rmSync(directory, { force: true, recursive: true });
+  return { commands, status: result.status, stderr: result.stderr, stdout: result.stdout };
+}
+
+function writeExecutable(filePath: string, contents: string): void {
+  fs.writeFileSync(filePath, `${contents}\n`, { encoding: "utf8", mode: 0o755 });
 }
