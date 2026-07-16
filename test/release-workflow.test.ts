@@ -4,7 +4,7 @@ import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
 describe("release workflow", () => {
-  test("publishes on GitHub-hosted runners, verifies the pushed tag, and can create a repo release from main", () => {
+  test("publishes transactionally from explicit dispatch and can recover an existing digest", () => {
     const workflow = YAML.parse(
       fs.readFileSync(
         path.resolve(".github/workflows/release-image.yml"),
@@ -30,9 +30,7 @@ describe("release workflow", () => {
     };
 
     expect(workflow.on).toHaveProperty("workflow_dispatch");
-    expect(workflow.on.push).toMatchObject({
-      branches: ["main"]
-    });
+    expect(workflow.on).not.toHaveProperty("push");
     expect(workflow.permissions).toMatchObject({
       contents: "write",
       packages: "write",
@@ -46,7 +44,7 @@ describe("release workflow", () => {
     });
     expect(dispatch.inputs?.publish_project_release).toMatchObject({
       type: "boolean",
-      default: false
+      default: true
     });
 
     expect(steps.some((step) => step.uses === "docker/setup-qemu-action@v4")).toBe(
@@ -71,6 +69,21 @@ describe("release workflow", () => {
           step.run.includes("image_repo=${config.image.repository}")
       )
     ).toBe(true);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === "Enforce runner release freshness" &&
+          step.run === "pnpm check-runner-version -- --fail-after-days 21"
+      )
+    ).toBe(true);
+    expect(
+      steps.filter(
+        (step) =>
+          typeof step.run === "string" &&
+          step.run.includes("Runner.Listener --version") &&
+          step.run.includes("cat /.runner-version")
+      )
+    ).toHaveLength(2);
     expect(
       steps.some(
         (step) =>
@@ -107,15 +120,22 @@ describe("release workflow", () => {
           step.run.includes("cosign sign")
       )
     ).toBe(true);
-    expect(
-      steps.some(
-        (step) =>
-          step.name === "Sign per-platform image digests" &&
-          typeof step.run === "string" &&
-          step.run.includes(".manifests[].digest") &&
-          step.run.includes("cosign sign")
-      )
-    ).toBe(true);
+    const perPlatformSignIndex = steps.findIndex(
+      (step) => step.name === "Sign per-platform image digests"
+    );
+    const perPlatformSignStep = steps[perPlatformSignIndex];
+    expect(perPlatformSignIndex).toBeGreaterThan(-1);
+    expect(String(perPlatformSignStep?.run)).toContain(
+      "steps.release_state.outputs.working_ref"
+    );
+    expect(String(perPlatformSignStep?.run)).toContain(
+      "steps.image_digest.outputs.digest"
+    );
+    expect(String(perPlatformSignStep?.run)).not.toContain(
+      "steps.release_meta.outputs.image_ref"
+    );
+    expect(String(perPlatformSignStep?.run)).toContain(".manifests[].digest");
+    expect(String(perPlatformSignStep?.run)).toContain("cosign sign");
     expect(
       steps.some(
         (step) =>
@@ -150,13 +170,13 @@ describe("release workflow", () => {
           step.run.includes("release-image may only publish from main")
       )
     ).toBe(true);
-    const automaticPublishGuardIndex = steps.findIndex(
+    const releasePreflightIndex = steps.findIndex(
       (step) =>
-        step.name === "guard automatic publish version" &&
-        step.if === "${{ github.event_name == 'push' }}" &&
+        step.name === "Preflight immutable release state" &&
         typeof step.run === "string" &&
-        step.run.includes("gh release view") &&
-        step.run.includes("bump package.json and config/pools.yaml")
+        step.run.includes("candidate-") &&
+        step.run.includes("verification-only recovery mode") &&
+        step.run.includes("refusing registry mutation")
     );
     const imagePublishIndex = steps.findIndex(
       (step) =>
@@ -164,8 +184,31 @@ describe("release workflow", () => {
         step.run.includes("./scripts/build-image.sh") &&
         step.run.includes("--push")
     );
-    expect(automaticPublishGuardIndex).toBeGreaterThan(-1);
-    expect(imagePublishIndex).toBeGreaterThan(automaticPublishGuardIndex);
+    expect(releasePreflightIndex).toBeGreaterThan(-1);
+    expect(imagePublishIndex).toBeGreaterThan(releasePreflightIndex);
+    const verifyIndex = steps.findIndex(
+      (step) => step.name === "Verify image signature and attestations"
+    );
+    const promoteIndex = steps.findIndex(
+      (step) => step.name === "Promote verified digest to final tag"
+    );
+    expect(String(steps[verifyIndex]?.run)).toContain("timeout 5m cosign verify");
+    expect(String(steps[verifyIndex]?.run)).toContain(
+      "timeout 5m cosign verify-attestation"
+    );
+    expect(perPlatformSignIndex).toBeLessThan(promoteIndex);
+    expect(promoteIndex).toBeGreaterThan(verifyIndex);
+    expect(String(steps[promoteIndex]?.run)).toContain(
+      "docker buildx imagetools create"
+    );
+    expect(
+      steps.some(
+        (step) =>
+          step.name === "Preserve verification diagnostics" &&
+          step.if === "${{ failure() }}" &&
+          step.uses === "actions/upload-artifact@v6"
+      )
+    ).toBe(true);
     expect(
       steps.filter(
         (step) =>
@@ -178,11 +221,11 @@ describe("release workflow", () => {
     expect(
       steps.some(
         (step) =>
-          step.if ===
-            "${{ github.event_name == 'push' || inputs.publish_project_release }}" &&
+          step.if === "${{ inputs.publish_project_release }}" &&
           typeof step.run === "string" &&
           step.run.includes("gh release create") &&
-          step.run.includes("--generate-notes")
+          step.run.includes("--generate-notes") &&
+          step.run.includes("verification completed without mutation")
       )
     ).toBe(true);
   });

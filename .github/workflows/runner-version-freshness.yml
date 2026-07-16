@@ -1,0 +1,32 @@
+name: Runner Version Freshness
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    name: runner-version-freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Fail before the disabled-update cutoff
+        run: pnpm check-runner-version -- --fail-after-days 21

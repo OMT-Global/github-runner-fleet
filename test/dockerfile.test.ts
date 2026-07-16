@@ -20,6 +20,9 @@ describe("Dockerfile packaging", () => {
     );
 
     expect(dockerfile).toContain("FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm");
+    expect(dockerfile).not.toContain("ARG RUNNER_VERSION");
+    expect(dockerfile).toContain("COPY .runner-version /.runner-version");
+    expect(dockerfile).toContain('runner_version="$(cat /.runner-version)"');
     expect(dockerfile).toContain("ARG NODE_VERSION=18.20.8");
     expect(dockerfile).toContain("ARG TERRAFORM_VERSION=1.6.6");
     expect(dockerfile).toContain("RUNNER_TEMP=/tmp/github-runner-temp");
@@ -45,7 +48,20 @@ describe("Dockerfile packaging", () => {
 
     expect(smoke).toContain("-v /var/run/docker.sock:/var/run/docker.sock");
     expect(smoke).toContain("server_api={{.Server.APIVersion}}");
+    expect(smoke).toContain('printf "docker-api-smoke\\n" > "${build_dir}/marker"');
+    expect(smoke).toContain("COPY marker /marker");
     expect(smoke).toContain("docker build --tag github-runner-fleet-api-smoke:local");
+  });
+
+  test("builds images only with the canonical runner version", () => {
+    const buildScript = fs.readFileSync(
+      path.resolve("scripts/build-image.sh"),
+      "utf8"
+    );
+
+    expect(buildScript).toContain('${ROOT_DIR}/.runner-version');
+    expect(buildScript).toContain("conflicts with canonical");
+    expect(buildScript).not.toContain('--build-arg "RUNNER_VERSION=');
   });
 
   test("adds a Windows Server Core runner image with PowerShell entrypoint", () => {
@@ -55,7 +71,11 @@ describe("Dockerfile packaging", () => {
     );
 
     expect(dockerfile).toContain("mcr.microsoft.com/windows/servercore:ltsc2022");
-    expect(dockerfile).toContain("ARG RUNNER_VERSION=2.334.0");
+    expect(dockerfile).not.toContain("ARG RUNNER_VERSION");
+    expect(dockerfile).toContain("COPY .runner-version C:/.runner-version");
+    expect(dockerfile).toContain(
+      "$runnerVersion = (Get-Content C:\\.runner-version -Raw).Trim()"
+    );
     expect(dockerfile).toContain("choco install -y git nodejs-lts powershell-core");
     expect(dockerfile).toContain("actions-runner-win-x64-");
     expect(dockerfile).toContain("COPY docker/runner-entrypoint.ps1 C:/runner-entrypoint.ps1");

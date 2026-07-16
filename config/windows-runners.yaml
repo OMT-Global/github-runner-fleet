@@ -1,5 +1,7 @@
 version: 1
 plane: windows-docker
+# Experimental template only: this image is not published or supported by the
+# github-runner-fleet release workflow. Supply a separately verified image.
 pools:
   - name: windows-private
     group: windows-private

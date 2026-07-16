@@ -43,7 +43,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-: "${RUNNER_VERSION:=2.334.0}"
+CANONICAL_RUNNER_VERSION="$(tr -d '[:space:]' < "${ROOT_DIR}/.runner-version")"
+if [[ -z "${CANONICAL_RUNNER_VERSION}" ]]; then
+  echo ".runner-version must not be empty" >&2
+  exit 1
+fi
+if [[ -n "${RUNNER_VERSION:-}" && "${RUNNER_VERSION#v}" != "${CANONICAL_RUNNER_VERSION}" ]]; then
+  echo "RUNNER_VERSION=${RUNNER_VERSION} conflicts with canonical ${CANONICAL_RUNNER_VERSION}" >&2
+  exit 1
+fi
+RUNNER_VERSION="${CANONICAL_RUNNER_VERSION}"
 : "${NODE_VERSION:=18.20.8}"
 : "${TERRAFORM_VERSION:=1.6.6}"
 
@@ -62,7 +71,6 @@ cd "${ROOT_DIR}"
 
 docker buildx build \
   --platform "${PLATFORM}" \
-  --build-arg "RUNNER_VERSION=${RUNNER_VERSION}" \
   --build-arg "NODE_VERSION=${NODE_VERSION}" \
   --build-arg "TERRAFORM_VERSION=${TERRAFORM_VERSION}" \
   -f docker/Dockerfile \

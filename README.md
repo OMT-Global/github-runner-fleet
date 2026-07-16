@@ -37,7 +37,7 @@ The roadmap doc keeps the operator view short; the GitHub issues are the executi
 ## Why This Exists
 
 - Keep Synology runner capacity locked to shell-safe workloads instead of gradually drifting into privileged Docker-host territory.
-- Give private repos dedicated Linux and Windows Docker execution planes for `container:` jobs, service containers, and platform-native container workflows.
+- Give private repos a release-backed Linux Docker plane, plus an explicitly experimental Windows template for lab validation.
 - Give the org a second execution plane for macOS-native jobs through pooled Lume VMs without baking long-lived GitHub credentials into the base image.
 - Make runner policy explicit in config and docs so downstream repos can tell, up front, which jobs belong on this fleet and which jobs should stay on GitHub-hosted runners.
 
@@ -47,7 +47,7 @@ The roadmap doc keeps the operator view short; the GitHub issues are the executi
 | --- | --- | --- | --- |
 | Synology Linux pools | Ephemeral containers built from a multi-arch runner image | shell jobs, JS actions, Python `3.12`, Terraform, docs and validation work | Docker socket jobs, `container:` jobs, service containers, privileged workloads |
 | Linux Docker pool | Ephemeral runner containers on a dedicated Linux Docker host | `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native jobs, turning Synology into a Docker host |
-| Windows Docker pool | Ephemeral Windows runner containers on a dedicated Windows Docker host | Windows container workflows, PowerShell automation, Windows x64 jobs that need self-hosted capacity | untrusted public fork PRs, Linux container jobs, macOS-native jobs |
+| Windows Docker template (experimental) | Unreleased example configuration for a separately managed Windows Docker host | configuration rendering and controlled lab evaluation | production workloads, release-backed installs, or any assumption that the example image is published by this project |
 | Lume macOS pool | Ephemeral VM clones from a sealed macOS base image | macOS-native build and test lanes that need a real macOS host | long-lived snowflake VMs, secrets baked into the base image, ad hoc manual drift |
 
 ## Topology
@@ -174,7 +174,7 @@ If you set `resources.cpus` or `resources.pidsLimit`, `validate-config` and `ren
 7. Build the runner image:
 
 ```bash
-./scripts/build-image.sh ghcr.io/your-org/github-runner-fleet:0.1.9 --push
+./scripts/build-image.sh ghcr.io/your-org/github-runner-fleet:0.2.2 --push
 ```
 
 When `--push` is used without an explicit `--platform`, the helper now defaults to `linux/amd64,linux/arm64` so the same tag works across Intel and ARM Synology models. A single-arch tag combined with the wrong `platform` or `architecture` setting will fail at startup with `Exec format error`.
@@ -245,25 +245,22 @@ Recommended workflow labels:
 - Docker-capable private repos: `runs-on: [self-hosted, linux, docker-capable, private]`
 - Legacy private Synology-labeled shell jobs can also land on Linux Docker runners because those runners advertise `synology` plus `shell-only`.
 
-## Windows Docker Pool
+## Windows Docker Template (Experimental)
 
-This repo also carries a Windows control plane for Docker-capable private workloads under [config/windows-runners.yaml](config/windows-runners.yaml). It stages ephemeral Windows runner containers on a dedicated Windows Server or Windows Docker host reachable over OpenSSH.
+This repo carries an experimental Windows control-plane template under [config/windows-runners.yaml](config/windows-runners.yaml). The project does not currently build, publish, sign, or smoke-test a Windows image, and the example `ghcr.io/example/...-windows` reference is intentionally not part of the production release contract. Operators evaluating this template must supply and validate their own Windows image, Docker host, OpenSSH access, signing policy, and runtime proof.
 
-Useful Windows Docker commands:
+Template validation commands:
 
 ```bash
 pnpm validate-windows-config -- --config config/windows-runners.yaml --env .env
 pnpm validate-windows-github -- --config config/windows-runners.yaml --env .env
 pnpm render-windows-compose -- --config config/windows-runners.yaml --env .env --output docker-compose.windows.yml
 pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env .env
-pnpm install-windows-project -- --config config/windows-runners.yaml --env .env
-pnpm drain-pool -- --pool windows-private --plane windows-docker --timeout 15m --windows-config config/windows-runners.yaml --env .env
-pnpm teardown-windows-project -- --config config/windows-runners.yaml --env .env
 ```
 
-The installer path uses `ssh` and `scp` to stage `compose.yaml`, a project-local `.env`, and a generated PowerShell deployment script onto `WINDOWS_DOCKER_HOST`, then runs `docker compose up -d` or `docker compose down` there. Runner containers mount the Windows Docker named pipe and register as ephemeral organization runners.
+Install, drain, and teardown commands remain available for controlled development, but they do not establish production support. A future production contract must add a project-owned Windows image, immutable signing and attestation, native runtime smoke proof, and release-version parity before this plane can be advertised for workloads.
 
-Recommended workflow labels:
+Experimental workflow labels:
 
 - Docker-capable Windows private repos: `runs-on: [self-hosted, windows, docker-capable, private]`
 
@@ -404,7 +401,7 @@ bash scripts/lume/install-launch-agent.sh
 sudo bash scripts/lume/install-system-launch-daemons.sh --disable-user-lume-agent
 ```
 
-Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. If you want the macOS/base-image pipeline to stay pinned to a specific GitHub Actions runner build, set `pool.runnerVersion` in `config/lume-runners.yaml`; otherwise it falls back to `RUNNER_VERSION` from the env file.
+Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. The default runner build comes from `.runner-version`; an explicit `RUNNER_VERSION` is intended only for controlled compatibility testing.
 
 The launchd installers publish a source-independent controller runtime under `~/Library/Application Support/github-runner-fleet/controller/current` and point the Lume pool job at that path. Runtime `.env` remains beside that controller at `~/Library/Application Support/github-runner-fleet/controller/.env`, is mode `0600`, and is preserved when the source checkout moves or the installer is rerun. Override the runtime root with `GITHUB_RUNNER_FLEET_RUNTIME_ROOT` if this Mac needs a different stable location.
 

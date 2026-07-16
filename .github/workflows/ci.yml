@@ -195,15 +195,8 @@ jobs:
           pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env /tmp/linux-docker.env
 
   windows_contract_trusted:
-    name: windows docker contract
-    if: >-
-      vars.WINDOWS_DOCKER_CONTRACT_ENABLED == 'true' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on:
-      - self-hosted
-      - windows
-      - docker-capable
-      - private
+    name: windows template contract
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -217,10 +210,11 @@ jobs:
       - name: Render Windows Docker runner manifests
         shell: pwsh
         run: |
-          Copy-Item .env.example $env:TEMP\windows-docker.env
-          pnpm validate-windows-config -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
-          pnpm render-windows-compose -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
-          pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env $env:TEMP\windows-docker.env
+          $windowsEnv = Join-Path $env:RUNNER_TEMP "windows-docker.env"
+          Copy-Item .env.example $windowsEnv
+          pnpm validate-windows-config -- --config config/windows-runners.yaml --env $windowsEnv
+          pnpm render-windows-compose -- --config config/windows-runners.yaml --env $windowsEnv
+          pnpm render-windows-project-manifest -- --config config/windows-runners.yaml --env $windowsEnv
       - name: Validate Windows entrypoint syntax
         shell: pwsh
         run: |

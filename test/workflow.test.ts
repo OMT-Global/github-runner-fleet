@@ -397,6 +397,29 @@ describe("CI workflow", () => {
     ]);
   });
 
+  test("runs runner-version freshness daily on a GitHub-hosted runner", () => {
+    const workflow = YAML.parse(
+      fs.readFileSync(
+        path.resolve(".github/workflows/runner-version-freshness.yml"),
+        "utf8"
+      )
+    ) as {
+      on: Record<string, unknown>;
+      jobs: Record<string, { "runs-on": string; steps: Array<Record<string, unknown>> }>;
+    };
+
+    expect(workflow.on).toHaveProperty("schedule");
+    expect(workflow.on).toHaveProperty("workflow_dispatch");
+    expect(workflow.jobs.freshness["runs-on"]).toBe("ubuntu-latest");
+    expect(
+      workflow.jobs.freshness.steps.some(
+        (step) =>
+          step.name === "Fail before the disabled-update cutoff" &&
+          step.run === "pnpm check-runner-version -- --fail-after-days 21"
+      )
+    ).toBe(true);
+  });
+
   test("restricts Claude comment triggers to trusted repository actors", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/claude.yml"), "utf8")
@@ -459,15 +482,8 @@ describe("CI workflow", () => {
       (step) => step.name === "Validate Windows entrypoint syntax"
     );
 
-    expect(windowsJob.if).toContain(
-      "vars.WINDOWS_DOCKER_CONTRACT_ENABLED == 'true'"
-    );
-    expect(windowsJob["runs-on"]).toEqual([
-      "self-hosted",
-      "windows",
-      "docker-capable",
-      "private"
-    ]);
+    expect(windowsJob.if).toBeUndefined();
+    expect(windowsJob["runs-on"]).toBe("ubuntu-latest");
     expect(String(renderStep?.run)).toContain("pnpm validate-windows-config");
     expect(String(renderStep?.run)).toContain("pnpm render-windows-compose");
     expect(String(renderStep?.run)).toContain(
