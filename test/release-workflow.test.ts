@@ -120,15 +120,22 @@ describe("release workflow", () => {
           step.run.includes("cosign sign")
       )
     ).toBe(true);
-    expect(
-      steps.some(
-        (step) =>
-          step.name === "Sign per-platform image digests" &&
-          typeof step.run === "string" &&
-          step.run.includes(".manifests[].digest") &&
-          step.run.includes("cosign sign")
-      )
-    ).toBe(true);
+    const perPlatformSignIndex = steps.findIndex(
+      (step) => step.name === "Sign per-platform image digests"
+    );
+    const perPlatformSignStep = steps[perPlatformSignIndex];
+    expect(perPlatformSignIndex).toBeGreaterThan(-1);
+    expect(String(perPlatformSignStep?.run)).toContain(
+      "steps.release_state.outputs.working_ref"
+    );
+    expect(String(perPlatformSignStep?.run)).toContain(
+      "steps.image_digest.outputs.digest"
+    );
+    expect(String(perPlatformSignStep?.run)).not.toContain(
+      "steps.release_meta.outputs.image_ref"
+    );
+    expect(String(perPlatformSignStep?.run)).toContain(".manifests[].digest");
+    expect(String(perPlatformSignStep?.run)).toContain("cosign sign");
     expect(
       steps.some(
         (step) =>
@@ -189,6 +196,7 @@ describe("release workflow", () => {
     expect(String(steps[verifyIndex]?.run)).toContain(
       "timeout 5m cosign verify-attestation"
     );
+    expect(perPlatformSignIndex).toBeLessThan(promoteIndex);
     expect(promoteIndex).toBeGreaterThan(verifyIndex);
     expect(String(steps[promoteIndex]?.run)).toContain(
       "docker buildx imagetools create"
