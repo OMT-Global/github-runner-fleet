@@ -140,7 +140,8 @@ verify_docker_cli() {
       set -Eeuo pipefail
       docker version --format "client_version={{.Client.Version}} client_api={{.Client.APIVersion}} server_version={{.Server.Version}} server_api={{.Server.APIVersion}}"
       build_dir="$(mktemp -d)"
-      printf "FROM scratch\n" > "${build_dir}/Dockerfile"
+      printf "docker-api-smoke\n" > "${build_dir}/marker"
+      printf "FROM scratch\nCOPY marker /marker\n" > "${build_dir}/Dockerfile"
       docker build --tag github-runner-fleet-api-smoke:local "${build_dir}"
       docker image rm github-runner-fleet-api-smoke:local >/dev/null
       rm -rf "${build_dir}"

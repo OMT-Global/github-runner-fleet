@@ -48,6 +48,8 @@ describe("Dockerfile packaging", () => {
 
     expect(smoke).toContain("-v /var/run/docker.sock:/var/run/docker.sock");
     expect(smoke).toContain("server_api={{.Server.APIVersion}}");
+    expect(smoke).toContain('printf "docker-api-smoke\\n" > "${build_dir}/marker"');
+    expect(smoke).toContain("COPY marker /marker");
     expect(smoke).toContain("docker build --tag github-runner-fleet-api-smoke:local");
   });
 
