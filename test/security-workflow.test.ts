@@ -73,6 +73,16 @@ describe("security and reusable workflows", () => {
     for (const job of Object.values(rgSecurity.jobs)) {
       expect(job["runs-on"]).toBe("ubuntu-24.04");
     }
+    const rgSecuritySteps = rgSecurity.jobs.security.steps as Array<{ uses?: string }>;
+    const codeqlActionVersions = rgSecuritySteps
+      .map((step) => step.uses)
+      .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
+      .map((uses) => uses.split("@")[1]);
+    expect(codeqlActionVersions).toEqual([
+      "7188fc363630916deb702c7fdcf4e481b751f97a",
+      "7188fc363630916deb702c7fdcf4e481b751f97a",
+      "7188fc363630916deb702c7fdcf4e481b751f97a"
+    ]);
 
     const rgRelease = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/rg-release.yml"), "utf8")
