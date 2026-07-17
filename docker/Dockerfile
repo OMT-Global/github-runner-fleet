@@ -18,18 +18,22 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       bash \
+      build-essential \
       ca-certificates \
       curl \
       gettext-base \
       git \
       gosu \
       jq \
+      libsqlite3-dev \
+      pkg-config \
       procps \
       tar \
       tini \
       unzip \
       xz-utils \
       zstd \
+      golang-go \
     && rm -rf /var/lib/apt/lists/*
 
 RUN install -m 0755 -d /etc/apt/keyrings \

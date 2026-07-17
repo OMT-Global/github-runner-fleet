@@ -148,6 +148,43 @@ verify_docker_cli() {
     '
 }
 
+verify_cgo_sqlite_build() {
+  log "verifying the runner user can build a CGO SQLite workload"
+
+  docker_cmd run --rm \
+    --user runner \
+    --entrypoint /bin/bash \
+    "${IMAGE_REF}" \
+    -lc '
+      set -Eeuo pipefail
+      test "$(id -un)" = runner
+      command -v go
+      command -v gcc
+      command -v pkg-config
+      pkg-config --exists sqlite3
+      test -f /usr/include/sqlite3.h
+      work_dir="$(mktemp -d)"
+      trap "rm -rf \"${work_dir}\"" EXIT
+      cat > "${work_dir}/main.go" <<"EOF"
+package main
+
+/*
+#cgo pkg-config: sqlite3
+#include <sqlite3.h>
+*/
+import "C"
+
+func main() {
+	if C.sqlite3_libversion_number() == 0 {
+		panic("sqlite unavailable")
+	}
+}
+EOF
+      cd "${work_dir}"
+      CGO_ENABLED=1 go build -o cgo-sqlite-smoke main.go
+      ./cgo-sqlite-smoke
+    '
+}
 run_smoke_case() {
   local mode="$1"
   local state_dir="${TEMP_DIR}/state-${mode}"
@@ -214,6 +251,7 @@ run_smoke_case runner
 run_smoke_case root
 verify_python_toolcache
 verify_docker_cli
+verify_cgo_sqlite_build
 
 log "smoke test passed"
 log "image=${IMAGE_REF}"

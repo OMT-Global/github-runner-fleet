@@ -43,6 +43,16 @@ describe("Dockerfile packaging", () => {
     );
   });
 
+  test("smoke-tests a non-root CGO SQLite build", () => {
+    const smoke = fs.readFileSync(path.resolve("scripts/smoke-test.sh"), "utf8");
+
+    expect(smoke).toContain("verify_cgo_sqlite_build");
+    expect(smoke).toContain("--user runner");
+    expect(smoke).toContain("CGO_ENABLED=1 go build");
+    expect(smoke).toContain("pkg-config --exists sqlite3");
+    expect(smoke).toContain("#cgo pkg-config: sqlite3");
+  });
+
   test("keeps the release smoke test connected to a real Docker daemon", () => {
     const smoke = fs.readFileSync(path.resolve("scripts/smoke-test.sh"), "utf8");
 
