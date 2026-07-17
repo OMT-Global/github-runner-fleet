@@ -84,6 +84,13 @@ describe("security and reusable workflows", () => {
       "7188fc363630916deb702c7fdcf4e481b751f97a"
     ]);
 
+    const codeqlSteps = rgSecurity.jobs.security.steps.filter((step: { uses?: string }) =>
+      step.uses?.startsWith("github/codeql-action/")
+    );
+    const codeqlVersions = codeqlSteps.map((step: { uses: string }) => step.uses.split("@")[1]);
+    expect(codeqlVersions).toHaveLength(3);
+    expect(new Set(codeqlVersions)).toEqual(new Set(["7188fc363630916deb702c7fdcf4e481b751f97a"]));
+
     const rgRelease = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/rg-release.yml"), "utf8")
     ) as { jobs: Record<string, Record<string, unknown>> };
