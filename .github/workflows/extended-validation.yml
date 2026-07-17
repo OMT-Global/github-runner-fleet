@@ -47,7 +47,7 @@ jobs:
           ref: 35eb9a907bb53f9bcf771a1435b72f17a7c7ad0c
           path: .bootstrap-control-plane
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24.14.1'
           cache: npm
