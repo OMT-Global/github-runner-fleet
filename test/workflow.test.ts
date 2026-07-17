@@ -149,7 +149,7 @@ describe("CI workflow", () => {
       Record<string, unknown>
     >;
     const forkSetupNodeStep = forkSteps.find(
-      (step) => step.uses === "actions/setup-node@v6"
+      (step) => step.uses === "actions/setup-node@v7"
     );
 
     expect(trustedJob["runs-on"]).toEqual(shellSafePublicRunner);
