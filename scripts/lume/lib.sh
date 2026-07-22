@@ -106,11 +106,18 @@ wait_for_ssh() {
   local ssh_exit
 
   for attempt in $(seq 1 60); do
-    # Use 'if' to suppress set -e so a failed SSH attempt does not abort the loop.
+    # Lume can return zero while reporting that the guest has no IP address yet.
+    # A probe of `true` is only ready when it is both successful and silent.
     if ssh_output="$(lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout 10 "true" 2>&1)"; then
+      ssh_exit=0
+    else
+      ssh_exit=$?
+    fi
+
+    if [[ "${ssh_exit}" -eq 0 ]] && [[ -z "${ssh_output}" ]]; then
       return 0
     fi
-    ssh_exit=$?
+
     log "wait_for_ssh attempt ${attempt}/60: exit=${ssh_exit} output=[${ssh_output}]"
     sleep 5
   done
