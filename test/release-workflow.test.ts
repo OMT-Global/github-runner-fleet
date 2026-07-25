@@ -206,7 +206,7 @@ describe("release workflow", () => {
         (step) =>
           step.name === "Preserve verification diagnostics" &&
           step.if === "${{ failure() }}" &&
-          step.uses === "actions/upload-artifact@v6"
+          step.uses === "actions/upload-artifact@v7"
       )
     ).toBe(true);
     expect(
