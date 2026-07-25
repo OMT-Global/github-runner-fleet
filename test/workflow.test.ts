@@ -332,6 +332,9 @@ describe("CI workflow", () => {
       "INFO docs-only change; behavior checks are intentionally skipped"
     );
     expect(gateScript).toContain(
+      "INFO no changed files; behavior checks are intentionally skipped"
+    );
+    expect(gateScript).not.toContain(
       "FAIL change classification produced no matching scope"
     );
     expect(gateScript).toContain(
