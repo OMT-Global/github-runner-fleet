@@ -34,7 +34,7 @@ describe("release contract", () => {
     expect(recovery).toContain("does not rebuild, replace, re-sign, or re-attest");
     expect(recovery).toContain("supersede the candidate with a new version");
     expect(recovery).toContain("bounded to five minutes");
-    expect(recovery).toContain("Version `0.2.2` supersedes it");
+    expect(recovery).toContain("Version `0.2.3` supersedes these candidates");
   });
 
   test("keeps the unreleased Windows plane explicitly experimental", () => {
