@@ -193,6 +193,45 @@ describe("audit log", () => {
     }
   });
 
+  test("writes after fresh lock contention lasts longer than 5s but releases before 30s", () => {
+    const directory = createTempDir();
+    const filePath = path.join(directory, "audit.jsonl");
+    const lockPath = `${filePath}.lock`;
+    const BASE = 1_000_000;
+    fs.mkdirSync(lockPath);
+    fs.utimesSync(lockPath, new Date(BASE), new Date(BASE));
+    const nowSpy = vi.spyOn(Date, "now")
+      .mockReturnValueOnce(BASE)
+      .mockReturnValue(BASE + 6_000);
+    const waitSpy = vi.spyOn(Atomics, "wait").mockImplementation(() => {
+      fs.rmSync(lockPath, { recursive: true, force: true });
+      return "ok";
+    });
+
+    try {
+      const record = writeAuditRecord(
+        {
+          event: "runner_token_rotated",
+          runner_name: "synology-private-runner-04",
+          pool: "synology-private",
+          plane: "synology",
+          org: "omt-global"
+        },
+        { filePath }
+      );
+
+      expect(record.runner_name).toBe("synology-private-runner-04");
+      expect(waitSpy).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(lockPath)).toBe(false);
+      expect(readJsonLines(filePath)).toEqual([
+        expect.objectContaining({ runner_name: "synology-private-runner-04" })
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+      waitSpy.mockRestore();
+    }
+  });
+
   test("times out if the audit lock is held fresh beyond the 30s deadline", () => {
     const directory = createTempDir();
     const filePath = path.join(directory, "audit.jsonl");
