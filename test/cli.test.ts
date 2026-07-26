@@ -34,6 +34,7 @@ const cleanEnv: Record<string, string | undefined> = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
   for (const tempPath of tempPaths.splice(0)) {
     fs.rmSync(tempPath, { recursive: true, force: true });
   }
@@ -1629,6 +1630,8 @@ describe("cli integration", () => {
 
   test("renders runner release commands with GitHub responses mocked at the CLI boundary", async () => {
     const fixture = createCliFixture();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-11T17:45:55Z"));
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
