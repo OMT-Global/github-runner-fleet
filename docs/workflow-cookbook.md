@@ -38,7 +38,7 @@ Downstream repos can consume the canonical governance lanes without copying YAML
 ```yaml
 jobs:
   ci:
-    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v0.2.2
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-ci.yml@v0.2.3
     with:
       runner-class: hosted
 
@@ -48,7 +48,7 @@ jobs:
       actions: read
       pull-requests: read
       security-events: write
-    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v0.2.2
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-security.yml@v0.2.3
     # Set false only when the caller repository does not provide Dependency Graph.
     with:
       enable-dependency-review: true
@@ -56,7 +56,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v0.2.2
+    uses: OMT-Global/github-runner-fleet/.github/workflows/rg-release.yml@v0.2.3
     permissions:
       contents: read
       packages: write
@@ -69,7 +69,7 @@ jobs:
 `rg-security` and `rg-release` always use GitHub-hosted runners. `rg-ci` defaults
 to hosted execution so fork pull requests do not reach self-hosted capacity; set
 `runner-class: shell-safe-public` only in a trusted caller job. Reference an exact
-published release tag. The `v0.2.2` contract becomes consumable after its verified
+published release tag. The `v0.2.3` contract becomes consumable after its verified
 release is published; do not point consumers at a branch or a moving compatibility
 tag.
 

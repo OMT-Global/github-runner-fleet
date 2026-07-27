@@ -54,7 +54,7 @@ describe("reusable workflow consumer contract", () => {
     const cookbook = read("docs/workflow-cookbook.md");
     expect(cookbook).not.toContain("@v1");
     for (const file of reusableFiles) {
-      expect(cookbook).toContain(`/.github/workflows/${file}@v0.2.2`);
+      expect(cookbook).toContain(`/.github/workflows/${file}@v0.2.3`);
     }
   });
 });

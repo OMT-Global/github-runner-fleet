@@ -158,6 +158,117 @@ describe("audit log", () => {
       Array.from({ length: 8 }, (_value, index) => expect.objectContaining({ runner_name: `process-${index}` }))
     ));
   });
+
+  test("recovers the audit write when a stale lock older than 30s is present", () => {
+    const directory = createTempDir();
+    const filePath = path.join(directory, "audit.jsonl");
+    const lockPath = `${filePath}.lock`;
+    fs.mkdirSync(lockPath);
+    const realStatSync = fs.statSync.bind(fs);
+    const statSpy = vi.spyOn(fs, "statSync").mockImplementation(((file: fs.PathLike, ...rest: unknown[]) => {
+      if (String(file) === lockPath) {
+        return { mtimeMs: 0 } as fs.Stats;
+      }
+      return (realStatSync as (f: fs.PathLike, ...args: unknown[]) => fs.Stats)(file, ...(rest as [fs.StatOptions]));
+    }) as unknown as typeof fs.statSync);
+
+    try {
+      const record = writeAuditRecord(
+        {
+          event: "runner_token_rotated",
+          runner_name: "synology-private-runner-03",
+          pool: "synology-private",
+          plane: "synology",
+          org: "omt-global"
+        },
+        { filePath }
+      );
+      expect(record.runner_name).toBe("synology-private-runner-03");
+      expect(fs.existsSync(lockPath)).toBe(false);
+      expect(readJsonLines(filePath)).toEqual([
+        expect.objectContaining({ runner_name: "synology-private-runner-03" })
+      ]);
+    } finally {
+      statSpy.mockRestore();
+    }
+  });
+
+  test("writes after fresh lock contention lasts longer than 5s but releases before 30s", () => {
+    const directory = createTempDir();
+    const filePath = path.join(directory, "audit.jsonl");
+    const lockPath = `${filePath}.lock`;
+    const BASE = 1_000_000;
+    fs.mkdirSync(lockPath);
+    fs.utimesSync(lockPath, new Date(BASE), new Date(BASE));
+    const nowSpy = vi.spyOn(Date, "now")
+      .mockReturnValueOnce(BASE)
+      .mockReturnValue(BASE + 6_000);
+    const waitSpy = vi.spyOn(Atomics, "wait").mockImplementation(() => {
+      fs.rmSync(lockPath, { recursive: true, force: true });
+      return "ok";
+    });
+
+    try {
+      const record = writeAuditRecord(
+        {
+          event: "runner_token_rotated",
+          runner_name: "synology-private-runner-04",
+          pool: "synology-private",
+          plane: "synology",
+          org: "omt-global"
+        },
+        { filePath }
+      );
+
+      expect(record.runner_name).toBe("synology-private-runner-04");
+      expect(waitSpy).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(lockPath)).toBe(false);
+      expect(readJsonLines(filePath)).toEqual([
+        expect.objectContaining({ runner_name: "synology-private-runner-04" })
+      ]);
+    } finally {
+      nowSpy.mockRestore();
+      waitSpy.mockRestore();
+    }
+  });
+
+  test("times out if the audit lock is held fresh beyond the 30s deadline", () => {
+    const directory = createTempDir();
+    const filePath = path.join(directory, "audit.jsonl");
+    const lockPath = `${filePath}.lock`;
+    fs.mkdirSync(lockPath);
+    const BASE = 1_000_000;
+    let calls = 0;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+      calls += 1;
+      return calls === 1 ? BASE : BASE + 45_000;
+    });
+    const realStatSync = fs.statSync.bind(fs);
+    const statSpy = vi.spyOn(fs, "statSync").mockImplementation(((file: fs.PathLike, ...rest: unknown[]) => {
+      if (String(file) === lockPath) {
+        return { mtimeMs: BASE + 45_000 } as fs.Stats;
+      }
+      return (realStatSync as (f: fs.PathLike, ...args: unknown[]) => fs.Stats)(file, ...(rest as [fs.StatOptions]));
+    }) as unknown as typeof fs.statSync);
+
+    try {
+      expect(() =>
+        writeAuditRecord(
+          {
+            event: "runner_token_rotated",
+            runner_name: "synology-private-runner-04",
+            pool: "synology-private",
+            plane: "synology",
+            org: "omt-global"
+          },
+          { filePath }
+        )
+      ).toThrow(/timed out acquiring audit rotation lock/);
+    } finally {
+      nowSpy.mockRestore();
+      statSpy.mockRestore();
+    }
+  });
 });
 
 function createTempDir(): string {

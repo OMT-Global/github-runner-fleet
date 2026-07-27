@@ -197,7 +197,7 @@ function appendLineSync(filePath: string, line: string): void {
 function withAuditLock<T>(filePath: string, callback: () => T): T {
   const lockPath = `${filePath}.lock`;
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + 30_000;
   while (true) {
     try {
       fs.mkdirSync(lockPath);

@@ -45,7 +45,7 @@ describe("security and reusable workflows", () => {
     });
     expect(workflow.jobs.scorecard["runs-on"]).toBe("ubuntu-latest");
     expect(String(JSON.stringify(workflow))).toContain(
-      "ossf/scorecard-action@v2.4.3"
+      "ossf/scorecard-action@v2.4.4"
     );
     expect(String(JSON.stringify(workflow))).toContain("publish_results");
   });
