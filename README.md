@@ -153,13 +153,21 @@ pnpm install
 pnpm validate-config -- --config config/pools.yaml --env .env
 ```
 
-5. Validate that the configured GitHub runner groups already exist in the target organization:
+5. Validate that each configured GitHub runner group exists and that its selected-repository policy exactly matches the config:
 
 ```bash
 pnpm validate-github -- --config config/pools.yaml --env .env
 ```
 
-This catches mismatched or missing `runnerGroup` values before Synology starts containers that would otherwise enter a restart loop.
+This catches missing groups, visibility/public-access drift, missing assignments, and unexpected repository access before Synology starts containers that would otherwise enter a restart loop.
+
+To add missing declared repository assignments and verify them with a fresh API read:
+
+```bash
+pnpm reconcile-github-access -- --config config/pools.yaml --env .env --apply
+```
+
+The reconciliation is intentionally additive only. It fails closed on group-policy drift, repository redirects, and unexpected access; it never removes repositories or changes runner-group visibility/public-repository policy.
 
 6. Render the compose file:
 
@@ -313,7 +321,7 @@ To keep the repository release and GHCR image tag aligned, merge the version bum
 - `repositoryAccess: all` is the org-wide mode for a runner group.
 - `repositoryAccess: selected` requires `allowedRepositories` and documents the intended selected-repo set for that pool.
 - Public repos must not receive long-lived secrets from this runner class.
-- GitHub enforces repo access on the runner group side; this repo carries that policy into validation, metadata, and rendered compose output.
+- GitHub enforces repo access on the runner group side; `validate-github` compares the complete live assignment with config, while `reconcile-github-access --apply` repairs only missing declared repositories and verifies the resulting state.
 - The image keeps the official runner bundle under `/actions-runner` as a read-only source and copies it into a writable per-runner home under `RUNNER_STATE_DIR` before startup.
 - The runner work tree is container-local at `RUNNER_WORK_DIR=/tmp/github-runner-work` so Actions temp extraction does not inherit Synology bind-mount ownership restrictions.
 - The image exposes a dedicated container-local Actions temp directory at `RUNNER_TEMP=/tmp/github-runner-temp` and a hosted tool cache at `RUNNER_TOOL_CACHE=/opt/hostedtoolcache` so shell-safe tool bootstrap actions do not depend on Synology bind-mount ownership semantics.
@@ -440,6 +448,7 @@ pnpm validate-linux-docker-config -- --config config/linux-docker-runners.yaml -
 pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env
 pnpm validate-config -- --config config/pools.yaml --env .env
 pnpm validate-github -- --config config/pools.yaml --env .env
+pnpm reconcile-github-access -- --config config/pools.yaml --env .env --apply
 pnpm validate-image -- --config config/pools.yaml --env .env
 pnpm drain-pool -- --pool synology-private --plane synology --timeout 15m --format json --config config/pools.yaml --env .env
 pnpm render-linux-docker-compose -- --config config/linux-docker-runners.yaml --env .env --output docker-compose.linux-docker.yml
@@ -498,7 +507,8 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - `pnpm validate-linux-docker-github -- --config config/linux-docker-runners.yaml --env .env` for Docker-capable Linux runner-group verification
 - `pnpm render-linux-docker-project-manifest -- --config config/linux-docker-runners.yaml --env .env` for the remote Linux Docker install plan before you push it
 - `pnpm validate-config -- --config config/pools.yaml --env .env` for schema, resource, and policy mismatches
-- `pnpm validate-github -- --config config/pools.yaml --env .env` for missing runner groups or GitHub auth failures
+- `pnpm validate-github -- --config config/pools.yaml --env .env` for missing groups, policy drift, or repository-assignment drift
+- `pnpm reconcile-github-access -- --config config/pools.yaml --env .env --apply` for additive-only repair of missing declared repository assignments
 - `pnpm prune-stale-runners -- --format json --env .env` for dry-run stale offline runner cleanup across configured pool groups
 - `pnpm validate-image -- --config config/pools.yaml --env .env` for GHCR tag drift before deploy
 - `pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env` for macOS pool config validation
@@ -513,7 +523,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - Validate and install the Linux Docker pool on the dedicated Docker host
 - Verify both runner groups appear online in GitHub
 - Verify the Linux Docker runner group appears online with the `docker-capable` label contract
-- Verify the private runner group is set to the repo access policy you intend, such as "All repositories" for an org-wide private pool
+- Verify selected-repository assignments and public-access policy exactly match `config/pools.yaml`
 - Verify the generated compose file does not pin `platform:` unless you intentionally forced `architecture`
 - Run a private-repo shell workflow with secrets
 - Run a private-repo `container:` or `services:` workflow on the Linux Docker plane

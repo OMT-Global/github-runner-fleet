@@ -95,13 +95,15 @@ describe("github runner API helpers", () => {
               id: 1,
               name: "Default",
               visibility: "all",
-              default: true
+              default: true,
+              allows_public_repositories: false
             },
             {
               id: 2,
               name: "synology-private",
               visibility: "all",
-              default: false
+              default: false,
+              allows_public_repositories: false
             }
           ]
         })
@@ -119,13 +121,15 @@ describe("github runner API helpers", () => {
         id: 1,
         name: "Default",
         visibility: "all",
-        isDefault: true
+        isDefault: true,
+        allowsPublicRepositories: false
       },
       {
         id: 2,
         name: "synology-private",
         visibility: "all",
-        isDefault: false
+        isDefault: false,
+        allowsPublicRepositories: false
       }
     ]);
 
