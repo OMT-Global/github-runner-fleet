@@ -20,6 +20,7 @@ export interface GitHubRunnerGroup {
   name: string;
   visibility?: string;
   isDefault?: boolean;
+  allowsPublicRepositories?: boolean;
 }
 
 export interface GitHubRunner {
@@ -33,6 +34,12 @@ export interface GitHubRunner {
 
 export interface GitHubRepository {
   fullName: string;
+}
+
+export interface GitHubRunnerGroupRepository {
+  id: number;
+  fullName: string;
+  private: boolean;
 }
 
 export interface GitHubWorkflowRun {
@@ -497,6 +504,7 @@ export async function fetchOrganizationRunnerGroups(
         name?: string;
         visibility?: string;
         default?: boolean;
+        allows_public_repositories?: boolean;
       }>;
     };
 
@@ -518,7 +526,13 @@ export async function fetchOrganizationRunnerGroups(
           id: group.id,
           name: group.name,
           visibility: group.visibility,
-          isDefault: group.default
+          isDefault: group.default,
+          ...(typeof group.allows_public_repositories === "boolean"
+            ? {
+                allowsPublicRepositories:
+                  group.allows_public_repositories
+              }
+            : {})
         };
       })
     );
@@ -674,6 +688,139 @@ export async function fetchOrganizationRunnerGroupRunners(
       return runners;
     }
   }
+}
+
+export async function fetchOrganizationRunnerGroupRepositories(
+  apiUrl: string,
+  organization: string,
+  runnerGroupId: number,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
+): Promise<GitHubRunnerGroupRepository[]> {
+  const repositories: GitHubRunnerGroupRepository[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const response = await githubRequest(
+      `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups/${runnerGroupId}/repositories?per_page=100&page=${page}`,
+      {
+        method: "GET",
+        headers: buildGitHubApiHeaders(token)
+      },
+      fetchImpl,
+      policy
+    );
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `GitHub runner group repository lookup failed for ${organization}/${runnerGroupId} with ${response.status}: ${body}`
+      );
+    }
+
+    const payload = JSON.parse(body) as {
+      repositories?: Array<{
+        id?: number;
+        full_name?: string;
+        private?: boolean;
+      }>;
+    };
+
+    if (!Array.isArray(payload.repositories)) {
+      throw new Error(
+        `GitHub runner group repository response for ${organization}/${runnerGroupId} did not include repositories`
+      );
+    }
+
+    repositories.push(
+      ...payload.repositories.map((repository) => {
+        if (
+          typeof repository.id !== "number" ||
+          !repository.full_name ||
+          typeof repository.private !== "boolean"
+        ) {
+          throw new Error(
+            `GitHub runner group repository response for ${organization}/${runnerGroupId} included an invalid repository entry`
+          );
+        }
+        return {
+          id: repository.id,
+          fullName: repository.full_name,
+          private: repository.private
+        };
+      })
+    );
+
+    if (payload.repositories.length < 100) {
+      return repositories;
+    }
+  }
+}
+
+export async function addRepositoryToRunnerGroup(
+  apiUrl: string,
+  organization: string,
+  runnerGroupId: number,
+  repository: string,
+  token: string,
+  fetchImpl: FetchLike = fetch as FetchLike,
+  policy: GitHubRequestPolicy = {}
+): Promise<GitHubRunnerGroupRepository> {
+  const repositoryResponse = await githubRequest(
+    `${trimApiUrl(apiUrl)}/repos/${repository}`,
+    {
+      method: "GET",
+      headers: buildGitHubApiHeaders(token)
+    },
+    fetchImpl,
+    policy
+  );
+  const repositoryBody = await repositoryResponse.text();
+  if (!repositoryResponse.ok) {
+    throw new Error(
+      `GitHub repository lookup failed for ${repository} with ${repositoryResponse.status}: ${repositoryBody}`
+    );
+  }
+
+  const payload = JSON.parse(repositoryBody) as {
+    id?: number;
+    full_name?: string;
+    private?: boolean;
+  };
+  if (
+    typeof payload.id !== "number" ||
+    !payload.full_name ||
+    typeof payload.private !== "boolean"
+  ) {
+    throw new Error(`GitHub repository response for ${repository} was invalid`);
+  }
+  if (payload.full_name.toLowerCase() !== repository.toLowerCase()) {
+    throw new Error(
+      `configured repository ${repository} resolves to ${payload.full_name}; update the runner-group configuration to the canonical repository name`
+    );
+  }
+
+  const addResponse = await githubRequest(
+    `${trimApiUrl(apiUrl)}/orgs/${organization}/actions/runner-groups/${runnerGroupId}/repositories/${payload.id}`,
+    {
+      method: "PUT",
+      headers: buildGitHubApiHeaders(token)
+    },
+    fetchImpl,
+    policy
+  );
+  const addBody = await addResponse.text();
+  if (!addResponse.ok) {
+    throw new Error(
+      `GitHub runner group repository add failed for ${organization}/${runnerGroupId}/${payload.full_name} with ${addResponse.status}: ${addBody}`
+    );
+  }
+
+  return {
+    id: payload.id,
+    fullName: payload.full_name,
+    private: payload.private
+  };
 }
 
 export async function deleteOrganizationRunner(

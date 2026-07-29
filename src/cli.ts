@@ -90,6 +90,11 @@ import {
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
 import {
+  inspectRunnerGroupAccess,
+  reconcileRunnerGroupAccess,
+  type RunnerGroupAccessExpectation
+} from "./lib/runner-group-access.js";
+import {
   decideLinuxReconcile,
   emptyLinuxReconcileState,
   parseLinuxReconcileState,
@@ -167,6 +172,9 @@ export async function main(
       break;
     case "validate-github":
       await validateGitHub(args);
+      break;
+    case "reconcile-github-access":
+      await reconcileGitHubAccess(args);
       break;
     case "validate-image":
       await validateImage(args);
@@ -1267,26 +1275,61 @@ async function validateGitHub(args: string[]): Promise<void> {
   const config = loadConfig(configPath!, env);
   emitWarnings(config);
 
-  const matches = await verifyRunnerGroups(
+  const pools = await inspectRunnerGroupAccess(
     env.githubApiUrl,
     await resolveGitHubAccessToken(env),
-    config.pools.map((pool) => ({
-      poolKey: pool.key,
-      organization: pool.organization,
-      runnerGroup: pool.runnerGroup
-    }))
+    runnerGroupAccessExpectations(config)
   );
+  const ok = pools.every((pool) => pool.ok);
 
   process.stdout.write(
     `${JSON.stringify(
       {
-        ok: true,
-        pools: matches
+        ok,
+        pools
       },
       null,
       2
     )}\n`
   );
+  if (!ok) {
+    process.exitCode = 1;
+  }
+}
+
+async function reconcileGitHubAccess(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false,
+    requireGitHubAuth: true
+  });
+  const configPath = getOption(args, "--config", "config/pools.yaml");
+  const config = loadConfig(configPath!, env);
+  emitWarnings(config);
+  const report = await reconcileRunnerGroupAccess(
+    env.githubApiUrl,
+    await resolveGitHubAccessToken(env),
+    runnerGroupAccessExpectations(config),
+    args.includes("--apply")
+  );
+
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
+}
+
+function runnerGroupAccessExpectations(
+  config: ResolvedConfig
+): RunnerGroupAccessExpectation[] {
+  return config.pools.map((pool) => ({
+    poolKey: pool.key,
+    organization: pool.organization,
+    runnerGroup: pool.runnerGroup,
+    repositoryAccess: pool.repositoryAccess,
+    allowedRepositories: pool.allowedRepositories,
+    allowsPublicRepositories: pool.visibility === "public"
+  }));
 }
 
 async function validateLinuxDockerConfig(args: string[]): Promise<void> {
@@ -3305,6 +3348,7 @@ function printUsage(): void {
   pnpm validate-windows-config [--config config/windows-runners.yaml] [--env .env]
   pnpm validate-windows-github [--config config/windows-runners.yaml] [--env .env]
   pnpm validate-github [--config config/pools.yaml] [--env .env]
+  pnpm reconcile-github-access [--config config/pools.yaml] [--env .env] [--apply]
   pnpm validate-image [--config config/pools.yaml] [--env .env]
   pnpm render-linux-docker-compose [--config config/linux-docker-runners.yaml] [--env .env] [--output docker-compose.linux-docker.yml]
   pnpm render-linux-docker-project-manifest [--config config/linux-docker-runners.yaml] [--env .env]

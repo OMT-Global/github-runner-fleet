@@ -7,7 +7,31 @@ pools:
     visibility: private
     organization: omt-global
     runnerGroup: synology-private
-    repositoryAccess: all
+    repositoryAccess: selected
+    allowedRepositories:
+      - omt-global/acme-aws
+      - omt-global/anthroforge
+      - omt-global/auth-gateway
+      - omt-global/axiom-control-plane
+      - omt-global/button-king
+      - omt-global/cloudcurator
+      - omt-global/commonground
+      - omt-global/dockyard
+      - omt-global/glacier-utilities
+      - omt-global/homenet
+      - omt-global/italico-design-system
+      - omt-global/lattice
+      - omt-global/mac-cksum
+      - omt-global/mypersonalbanker
+      - omt-global/omt-corner-cave
+      - omt-global/omt-global-structure
+      - omt-global/omtcornercave.org
+      - omt-global/openclaw-control-plane
+      - omt-global/openclaw-ouro
+      - omt-global/pocket-parade
+      - omt-global/post-no-bills
+      - omt-global/tali-design-system
+      - omt-global/Why-fi
     labels:
       - synology
       - shell-only
@@ -35,13 +59,21 @@ pools:
     runnerGroup: synology-public
     repositoryAccess: selected
     allowedRepositories:
+      - omt-global/.github
+      - omt-global/acmeos.org
       - omt-global/apw-cli
-      - omt-global/axiom
+      - omt-global/axiomlang
       - omt-global/bootstrap
+      - omt-global/Flapline
+      - omt-global/flow
       - omt-global/gh-attest
       - omt-global/github-runner-fleet
       - omt-global/home-tv-channel-list
-      - omt-global/Screensaver
+      - omt-global/icloud-cli
+      - omt-global/jmcte.me
+      - omt-global/machete
+      - omt-global/mailplus-intelligence
+      - omt-global/omt-assist.org
     labels:
       - synology
       - shell-only
