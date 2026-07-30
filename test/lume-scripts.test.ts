@@ -275,10 +275,11 @@ function runWaitForSshProbe(output: string): { status: number | null; stderr: st
         "wait_for_ssh",
       ].join("\n"),
       "bash",
-      path.resolve("scripts/lume/lib.sh"),
+      "scripts/lume/lib.sh",
     ],
     {
       encoding: "utf8",
+      cwd: process.cwd(),
       env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
     },
   );
