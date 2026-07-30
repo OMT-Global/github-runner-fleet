@@ -279,7 +279,6 @@ function runWaitForSshProbe(output: string): { status: number | null; stderr: st
     ],
     {
       encoding: "utf8",
-      cwd: process.cwd(),
       env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
     },
   );
