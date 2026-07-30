@@ -259,7 +259,7 @@ function runWaitForSshProbe(output: string): { status: number | null; stderr: st
     [
       "-c",
       [
-        'probe_output="$1"',
+        'IFS= read -r probe_output',
         'source "scripts/lume/lib.sh"',
         'log() { printf "%s\\n" "$*" >&2; }',
         'lume() { printf "%s\\n" "$probe_output"; return 0; }',
@@ -271,10 +271,10 @@ function runWaitForSshProbe(output: string): { status: number | null; stderr: st
         "wait_for_ssh",
       ].join("\n"),
       "bash",
-      output,
     ],
     {
       encoding: "utf8",
+      input: `${output}\n`,
     },
   );
 
