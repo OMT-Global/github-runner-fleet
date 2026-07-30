@@ -254,35 +254,29 @@ function writeExecutable(filePath: string, contents: string): void {
 }
 
 function runWaitForSshProbe(output: string): { status: number | null; stderr: string } {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lume-ssh-probe-"));
-  writeExecutable(
-    path.join(directory, "lume"),
-    ["#!/bin/bash", `printf '%s\\n' ${JSON.stringify(output)}`, "exit 0"].join("\n"),
-  );
-  writeExecutable(path.join(directory, "seq"), ["#!/bin/bash", "printf '1\\n'"].join("\n"));
-  writeExecutable(path.join(directory, "sleep"), ["#!/bin/bash", "exit 0"].join("\n"));
-
   const result = spawnSync(
     "bash",
     [
       "-c",
       [
-        'source "$1"',
+        'probe_output="$1"',
+        'source "scripts/lume/lib.sh"',
         'log() { printf "%s\\n" "$*" >&2; }',
+        'lume() { printf "%s\\n" "$probe_output"; return 0; }',
+        'seq() { printf "1\\n"; }',
+        'sleep() { :; }',
         'LUME_VM_NAME=macos-runner-slot-01',
         'GUEST_USER=lume',
         'GUEST_PASSWORD=test-password',
         "wait_for_ssh",
       ].join("\n"),
       "bash",
-      "scripts/lume/lib.sh",
+      output,
     ],
     {
       encoding: "utf8",
-      env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
     },
   );
 
-  fs.rmSync(directory, { force: true, recursive: true });
   return { status: result.status, stderr: result.stderr };
 }
