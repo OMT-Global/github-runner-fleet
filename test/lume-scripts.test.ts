@@ -41,6 +41,7 @@ describe("Lume pool scripts", () => {
     expect(reconcile).toContain('spawn_detached');
     expect(reconcile).toContain('"${SCRIPT_DIR}/run-slot.sh" --slot "${slot}"');
     expect(read("scripts/lume/lib.sh")).toContain("default_guest_runner_path");
+    expect(read("scripts/lume/lib.sh")).toContain('[[ -z "${ssh_output}" ]]');
     expect(read("scripts/lume/lib.sh")).toContain('local runner_version="${RUNNER_VERSION}"');
     expect(read("scripts/lume/lib.sh")).toContain("RUNNER_PATH=${runner_path}");
     expect(read("scripts/lume/lib.sh")).toContain("RUNNER_VERSION=${runner_version}");
@@ -121,6 +122,14 @@ describe("Lume pool scripts", () => {
     expect(bootstrap).toContain('cleanup_runner_registration');
     expect(helper).toContain("github_runner_endpoint_base");
     expect(helper).toContain("request_runner_token");
+  });
+
+  test("does not treat Lume SSH error output as readiness when it exits zero", () => {
+    const result = runWaitForSshProbe("Error: VM 'macos-runner-slot-01' has no IP address. Wait for it to boot completely.");
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("wait_for_ssh attempt 1/60: exit=0");
+    expect(result.stderr).toContain("has no IP address");
   });
 
   test("provisions pinned Sparkle tools in the Lume base VM", () => {
@@ -242,4 +251,32 @@ function runRuntimeInstaller(options: {
 
 function writeExecutable(filePath: string, contents: string): void {
   fs.writeFileSync(filePath, `${contents}\n`, { encoding: "utf8", mode: 0o755 });
+}
+
+function runWaitForSshProbe(output: string): { status: number | null; stderr: string } {
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        'IFS= read -r probe_output',
+        'source "scripts/lume/lib.sh"',
+        'log() { printf "%s\\n" "$*" >&2; }',
+        'lume() { printf "%s\\n" "$probe_output"; return 0; }',
+        'seq() { printf "1\\n"; }',
+        'sleep() { :; }',
+        'LUME_VM_NAME=macos-runner-slot-01',
+        'GUEST_USER=lume',
+        'GUEST_PASSWORD=test-password',
+        "wait_for_ssh",
+      ].join("\n"),
+      "bash",
+    ],
+    {
+      encoding: "utf8",
+      input: `${output}\n`,
+    },
+  );
+
+  return { status: result.status, stderr: result.stderr };
 }
