@@ -25,10 +25,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - uses: github/codeql-action/init@v4.37.3
         with:
           languages: javascript-typescript,python
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@v4.37.3
 
   dependency_review:
     name: dependency-review
@@ -74,7 +74,7 @@ jobs:
       - name: Require OSV SARIF output
         if: always()
         run: test -s osv-results.sarif
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v4.37.3
         if: always()
         with:
           sarif_file: osv-results.sarif
