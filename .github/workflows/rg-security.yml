@@ -42,7 +42,7 @@ jobs:
       - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
         with:
           languages: ${{ inputs.codeql-languages }}
-      - uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+      - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         if: inputs.enable-dependency-review && github.event_name == 'pull_request'
         with:
@@ -55,7 +55,7 @@ jobs:
             --lockfile=${{ inputs.lockfile }}
             --format=sarif
             --output=osv-results.sarif
-      - uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+      - uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
         if: always() && hashFiles('osv-results.sarif') != ''
         with:
           sarif_file: osv-results.sarif
