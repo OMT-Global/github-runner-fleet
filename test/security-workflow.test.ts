@@ -79,9 +79,9 @@ describe("security and reusable workflows", () => {
       .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
       .map((uses) => uses.split("@")[1]);
     expect(codeqlActionVersions).toEqual([
-      "5595ccaf912efad79be6eef63a5619ff05969be3",
-      "5595ccaf912efad79be6eef63a5619ff05969be3",
-      "5595ccaf912efad79be6eef63a5619ff05969be3"
+      "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+      "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+      "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd"
     ]);
 
     const codeqlSteps = rgSecurity.jobs.security.steps.filter((step: { uses?: string }) =>
@@ -89,7 +89,7 @@ describe("security and reusable workflows", () => {
     );
     const codeqlVersions = codeqlSteps.map((step: { uses: string }) => step.uses.split("@")[1]);
     expect(codeqlVersions).toHaveLength(3);
-    expect(new Set(codeqlVersions)).toEqual(new Set(["5595ccaf912efad79be6eef63a5619ff05969be3"]));
+    expect(new Set(codeqlVersions)).toEqual(new Set(["ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd"]));
 
     const rgRelease = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/rg-release.yml"), "utf8")
