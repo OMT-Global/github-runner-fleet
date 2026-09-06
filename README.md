@@ -289,15 +289,17 @@ The release workflow:
 - enforces that `package.json` version matches `config/pools.yaml` image tag
 - validates `config/pools.yaml`
 - runs the local `pnpm smoke-test` contract on `linux/amd64`
-- publishes the configured tag from `config/pools.yaml`
-- verifies the pushed tag with `docker buildx imagetools inspect`
+- requires confirmed absence of the final image, Git tag, and GitHub Release before a new publication
+- pushes a unique `candidate-<version>-<commit>-<run-id>-<attempt>` reference
+- resolves the candidate's immutable digest with `docker buildx imagetools inspect`
 - confirms both `linux/amd64` and `linux/arm64` are present
 - signs the pushed digest with keyless cosign and attaches SPDX SBOM plus SLSA provenance attestations
-- verifies the signature and attestations before release creation
+- retries transient signing/attestation failures with bounded attempts and preserves failure diagnostics
+- verifies signatures, attestations, and both platform runtimes against the immutable candidate digest before promotion
+- rechecks final-tag absence and promotes the verified digest to the configured version tag
 - retries `pnpm validate-image` until the GitHub Packages API sees the new tag
-- runs post-publish toolchain checks for both `linux/amd64` and `linux/arm64`
-- automatically creates the matching GitHub release tag `v<version>` after successful publishes from `main`
-- can still be dispatched manually from `main`; set `publish_project_release=true` to create the matching GitHub Release during a manual run
+- creates the matching source Git tag `v<version>` and GitHub Release after successful validation
+- runs only on explicit dispatch from `refs/heads/main`; `publish_project_release=true` is the default
 
 Only point [config/pools.yaml](config/pools.yaml) at a tag that this workflow has already published and verified.
 
@@ -310,7 +312,7 @@ cosign verify \
   ghcr.io/omt-global/github-runner-fleet:<tag>
 ```
 
-To keep the repository release and GHCR image tag aligned, merge the version bump to `main`. The release workflow first checks whether the matching repo release already exists; if it does, the automatic run fails before publishing an image so an existing GHCR version tag is not replaced. For a new version, the workflow publishes and verifies the image, then creates the matching repo tag and GitHub Release.
+To keep the repository release and GHCR image tag aligned, merge the version bump to `main`, then dispatch `Release Image`. Routine main pushes do not publish. Completed releases can be verified again without mutation. Recovery can create missing release metadata only when verified provenance binds the existing image to the exact dispatch commit and any existing Git tag matches that SHA. Follow the [release recovery procedure](docs/release-recovery.md) to complete a same-source retry or supersede an older candidate with a new version.
 
 ## Runtime Contract
 

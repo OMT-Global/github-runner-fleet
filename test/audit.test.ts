@@ -146,10 +146,9 @@ describe("audit log", () => {
     const directory = createTempDir();
     const filePath = path.join(directory, "audit.jsonl");
     fs.writeFileSync(filePath, `${JSON.stringify({ old: "x".repeat(8_800) })}\n`, "utf8");
-    await Promise.all(Array.from({ length: 8 }, (_value, index) =>
-      spawnAuditWriter(filePath, index)
-    ));
+    await runAuditWriters(filePath, 8);
 
+    expect(fs.existsSync(`${filePath}.1`)).toBe(true);
     const records = [filePath, `${filePath}.1`]
       .filter((entry) => fs.existsSync(entry))
       .flatMap((entry) => readJsonLines(entry));
@@ -277,24 +276,50 @@ function createTempDir(): string {
   return directory;
 }
 
-function spawnAuditWriter(filePath: string, index: number): Promise<void> {
-  return new Promise((resolve, reject) => {
+async function runAuditWriters(filePath: string, count: number): Promise<void> {
+  const writers = Array.from({ length: count }, (_value, index) => {
     const child = spawn(process.execPath, [
-      "--import", "tsx", "src/cli.ts", "audit-log",
-      "--file", filePath, "--max-size-bytes", "10000"
-    ], { cwd: path.resolve("."), stdio: ["pipe", "ignore", "pipe"] });
+      "--import", "tsx", "test/fixtures/audit-writer.ts", filePath, String(index)
+    ], { cwd: path.resolve("."), stdio: ["ignore", "ignore", "pipe", "ipc"] });
     let error = "";
-    child.stderr.on("data", (chunk) => { error += String(chunk); });
-    child.on("error", reject);
-    child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`audit writer exited ${code}: ${error}`)));
-    child.stdin.end(JSON.stringify({
-      event: "runner_job_start",
-      runner_name: `process-${index}`,
-      pool: "synology-private",
-      plane: "synology",
-      org: "omt-global"
-    }));
+    child.stderr!.on("data", (chunk) => { error += String(chunk); });
+    child.on("error", (cause) => { error += cause.message; });
+    const ready = new Promise<void>((resolve, reject) => {
+      child.once("message", (message) => {
+        if (message === "ready") resolve();
+        else reject(new Error(`unexpected audit writer message: ${String(message)}`));
+      });
+      child.once("close", () => reject(new Error(`audit writer ${index} closed before ready: ${error}`)));
+    });
+    const closed = new Promise<number | null>((resolve) => child.once("close", resolve));
+    return { child, ready, closed, failure: () => new Error(`audit writer ${index} failed: ${error}`) };
   });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        // Finish imports in every process before releasing the concurrent writes.
+        await Promise.all(writers.map((writer) => writer.ready));
+        await Promise.all(writers.map(({ child }) => new Promise<void>((resolve, reject) => {
+          child.send("write", (error) => error ? reject(error) : resolve());
+        })));
+        await Promise.all(writers.map(async (writer) => {
+          if (await writer.closed !== 0) throw writer.failure();
+        }));
+      })(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("audit writers did not finish within 25000ms")), 25_000);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+    for (const { child } of writers) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
+    // Reap failed or timed-out writers before afterEach removes their directory.
+    await Promise.all(writers.map((writer) => writer.closed));
+  }
 }
 
 function readJsonLines(filePath: string): unknown[] {
