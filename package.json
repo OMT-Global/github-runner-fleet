@@ -10,7 +10,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-build-metadata.mjs",
     "audit-log": "tsx src/cli.ts audit-log",
     "check-runner-version": "tsx src/cli.ts check-runner-version",
     "config-diff": "tsx src/cli.ts config-diff",

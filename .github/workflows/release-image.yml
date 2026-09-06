@@ -30,6 +30,7 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SYNOLOGY_RUNNER_BASE_DIR: /volume1/docker/github-runner-fleet
       COMPOSE_PROJECT_NAME: github-runner-fleet
+      RELEASE_LOG_DIR: /tmp/runner-release
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -121,7 +122,7 @@ jobs:
 
       - name: guard main branch before any publish
         run: |
-          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
             echo "release-image may only publish from main" >&2
             exit 1
           fi
@@ -130,38 +131,7 @@ jobs:
         id: release_state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          final_ref="${{ steps.release_meta.outputs.image_ref }}"
-          staging_ref="${{ steps.release_meta.outputs.image_repo }}:candidate-${{ steps.release_meta.outputs.image_tag }}-${GITHUB_SHA}"
-          final_digest=""
-          release_exists=false
-
-          if final_digest="$(docker buildx imagetools inspect "${final_ref}" --format '{{.Manifest.Digest}}' 2>/tmp/final-image-inspect.log)"; then
-            test -n "${final_digest}"
-            publish_required=false
-            working_ref="${final_ref}"
-            echo "found existing immutable candidate ${final_ref}@${final_digest}; verification-only recovery mode"
-          else
-            publish_required=true
-            working_ref="${staging_ref}"
-            echo "final tag is absent; build will publish unique staging reference ${staging_ref}"
-          fi
-
-          if gh release view "${{ steps.release_meta.outputs.release_tag }}" >/tmp/github-release.txt 2>/tmp/github-release-error.log; then
-            release_exists=true
-          fi
-          if [[ "${release_exists}" == "true" && -z "${final_digest}" ]]; then
-            echo "GitHub Release exists but ${final_ref} is missing; refusing registry mutation" >&2
-            exit 1
-          fi
-
-          {
-            echo "publish_required=${publish_required}"
-            echo "working_ref=${working_ref}"
-            echo "final_digest=${final_digest}"
-            echo "release_exists=${release_exists}"
-          } >> "${GITHUB_OUTPUT}"
+        run: bash scripts/release/preflight.sh "${{ steps.release_meta.outputs.image_ref }}" "${{ steps.release_meta.outputs.release_tag }}"
 
       - name: Build and push unique staging reference
         if: ${{ steps.release_state.outputs.publish_required == 'true' }}
@@ -190,23 +160,24 @@ jobs:
 
       - name: Sign image digest
         if: ${{ steps.release_state.outputs.publish_required == 'true' }}
-        run: cosign sign --yes "${{ steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest }}"
+        run: bash scripts/release/retry.sh cosign-sign-index cosign sign --yes "${{ steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest }}"
 
       - name: Sign per-platform image digests
         if: ${{ steps.release_state.outputs.publish_required == 'true' }}
         run: |
+          set -euo pipefail
           image_repo="${{ steps.release_meta.outputs.image_repo }}"
           subject="${{ steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest }}"
           docker buildx imagetools inspect "${subject}" --raw \
             | jq -r '.manifests[].digest' \
             | while IFS= read -r digest; do
-                cosign sign --yes "${image_repo}@${digest}"
+                bash scripts/release/retry.sh "cosign-sign-${digest#sha256:}" cosign sign --yes "${image_repo}@${digest}"
               done
 
       - name: Attach SBOM attestation
         if: ${{ steps.release_state.outputs.publish_required == 'true' }}
         run: |
-          cosign attest --yes \
+          bash scripts/release/retry.sh cosign-sbom-attest cosign attest --yes \
             --predicate /tmp/github-runner-fleet.spdx.json \
             --type spdxjson \
             "${{ steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest }}"
@@ -226,34 +197,33 @@ jobs:
           timeout 5m cosign verify \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${subject}" 2>&1 | tee /tmp/cosign-signature-verify.log
+            "${subject}" 2>&1 | tee "${RELEASE_LOG_DIR}/cosign-signature-verify.log"
           timeout 5m cosign verify-attestation \
             --type spdxjson \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${subject}" 2>&1 | tee /tmp/cosign-sbom-verify.log
+            "${subject}" 2>&1 | tee "${RELEASE_LOG_DIR}/cosign-sbom-verify.log"
           timeout 5m cosign verify-attestation \
             --type slsaprovenance \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${subject}" 2>&1 | tee /tmp/cosign-provenance-verify.log
+            "${subject}" 2>&1 | tee "${RELEASE_LOG_DIR}/cosign-provenance-verify.log"
 
-      - name: Preserve verification diagnostics
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-verification-diagnostics-${{ github.run_attempt }}
-          path: |
-            /tmp/cosign-*-verify.log
-            /tmp/final-image-inspect.log
-            /tmp/github-release*.log
-            /tmp/imagetools.txt
-          if-no-files-found: warn
+      - name: Validate immutable image runtimes before promotion
+        run: |
+          set -euo pipefail
+          bash scripts/release/validate-runtime.sh \
+            "${{ steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest }}" \
+            2>&1 | tee "${RELEASE_LOG_DIR}/runtime-validation.log"
 
       - name: Promote verified digest to final tag
         if: ${{ steps.release_state.outputs.publish_required == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REQUIRE_ABSENT: "true"
         run: |
           set -euo pipefail
+          bash scripts/release/preflight.sh "${{ steps.release_meta.outputs.image_ref }}" "${{ steps.release_meta.outputs.release_tag }}"
           subject="${{ steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest }}"
           docker buildx imagetools create \
             --tag "${{ steps.release_meta.outputs.image_ref }}" \
@@ -274,24 +244,41 @@ jobs:
             sleep 10
           done
 
-      - run: |
-          docker run --rm --platform linux/amd64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
-            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "$(cat /.runner-version)" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
-
-      - run: |
-          docker run --rm --platform linux/arm64 --entrypoint /bin/sh "${{ steps.release_meta.outputs.image_ref }}" -lc \
-            'test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "$(cat /.runner-version)" && command -v pgrep && pgrep --version | head -n 1 && docker --version && node --version && python3 --version && terraform version | head -n 1'
-
       - if: ${{ inputs.publish_project_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "${{ steps.release_meta.outputs.release_tag }}" >/dev/null 2>&1; then
+          set -euo pipefail
+          if [[ "${{ steps.release_state.outputs.release_exists }}" == "true" ]]; then
             echo "release ${{ steps.release_meta.outputs.release_tag }} already exists; verification completed without mutation"
             exit 0
           fi
+          if [[ "${{ steps.release_state.outputs.publish_required }}" != "true" && "${{ steps.release_state.outputs.source_verified }}" != "true" ]]; then
+            echo "refusing to create a GitHub Release for an existing image at this dispatch SHA" >&2
+            exit 1
+          fi
+
+          if [[ "${{ steps.release_state.outputs.tag_exists }}" == "true" ]]; then
+            tag_identity="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${{ steps.release_meta.outputs.release_tag }}" --jq '.object | "\(.type) \(.sha)"')"
+            test "${tag_identity}" = "commit ${GITHUB_SHA}"
+          else
+            # Create atomically; never silently reuse an unrelated source tag.
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" --method POST \
+              -f "ref=refs/tags/${{ steps.release_meta.outputs.release_tag }}" \
+              -f "sha=${GITHUB_SHA}" >/dev/null
+          fi
 
           gh release create "${{ steps.release_meta.outputs.release_tag }}" \
-            --target "${GITHUB_SHA}" \
+            --verify-tag \
             --title "${{ steps.release_meta.outputs.release_tag }}" \
             --generate-notes
+
+      - name: Preserve verification diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-verification-diagnostics-${{ github.run_attempt }}
+          path: |
+            ${{ env.RELEASE_LOG_DIR }}/*.log
+            /tmp/imagetools.txt
+          if-no-files-found: warn

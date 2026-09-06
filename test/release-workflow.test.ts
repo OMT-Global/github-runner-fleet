@@ -77,14 +77,6 @@ describe("release workflow", () => {
       )
     ).toBe(true);
     expect(
-      steps.filter(
-        (step) =>
-          typeof step.run === "string" &&
-          step.run.includes("Runner.Listener --version") &&
-          step.run.includes("cat /.runner-version")
-      )
-    ).toHaveLength(2);
-    expect(
       steps.some(
         (step) =>
           step.name === "Emit SLSA provenance" &&
@@ -165,8 +157,8 @@ describe("release workflow", () => {
         (step) =>
           step.name === "guard main branch before any publish" &&
           typeof step.run === "string" &&
-          step.run.includes('GITHUB_REF_NAME') &&
-          step.run.includes("main") &&
+          step.run.includes('${GITHUB_REF}') &&
+          step.run.includes("refs/heads/main") &&
           step.run.includes("release-image may only publish from main")
       )
     ).toBe(true);
@@ -174,9 +166,7 @@ describe("release workflow", () => {
       (step) =>
         step.name === "Preflight immutable release state" &&
         typeof step.run === "string" &&
-        step.run.includes("candidate-") &&
-        step.run.includes("verification-only recovery mode") &&
-        step.run.includes("refusing registry mutation")
+        step.run.includes("bash scripts/release/preflight.sh")
     );
     const imagePublishIndex = steps.findIndex(
       (step) =>
@@ -192,15 +182,30 @@ describe("release workflow", () => {
     const promoteIndex = steps.findIndex(
       (step) => step.name === "Promote verified digest to final tag"
     );
+    const runtimeIndex = steps.findIndex(
+      (step) => step.name === "Validate immutable image runtimes before promotion"
+    );
     expect(String(steps[verifyIndex]?.run)).toContain("timeout 5m cosign verify");
     expect(String(steps[verifyIndex]?.run)).toContain(
       "timeout 5m cosign verify-attestation"
     );
     expect(perPlatformSignIndex).toBeLessThan(promoteIndex);
-    expect(promoteIndex).toBeGreaterThan(verifyIndex);
+    expect(runtimeIndex).toBeGreaterThan(verifyIndex);
+    expect(promoteIndex).toBeGreaterThan(runtimeIndex);
+    expect(String(steps[runtimeIndex]?.run)).toContain(
+      'steps.release_state.outputs.working_ref }}@${{ steps.image_digest.outputs.digest'
+    );
+    expect(String(steps[runtimeIndex]?.run)).toContain(
+      "bash scripts/release/validate-runtime.sh"
+    );
+    expect(String(steps[runtimeIndex]?.run)).not.toContain("outputs.image_ref");
     expect(String(steps[promoteIndex]?.run)).toContain(
       "docker buildx imagetools create"
     );
+    expect(steps[promoteIndex]?.env).toMatchObject({
+      RELEASE_REQUIRE_ABSENT: "true"
+    });
+    expect(String(steps[promoteIndex]?.run)).toContain("bash scripts/release/preflight.sh");
     expect(
       steps.some(
         (step) =>
@@ -209,21 +214,20 @@ describe("release workflow", () => {
           step.uses === "actions/upload-artifact@v7"
       )
     ).toBe(true);
-    expect(
-      steps.filter(
-        (step) =>
-          typeof step.run === "string" &&
-          step.run.includes("command -v pgrep") &&
-          step.run.includes("docker --version") &&
-          step.run.includes("terraform version")
-      )
-    ).toHaveLength(2);
+    expect(steps.findIndex((step) => step.name === "Preserve verification diagnostics"))
+      .toBeGreaterThan(promoteIndex);
+    for (const name of ["Sign image digest", "Sign per-platform image digests", "Attach SBOM attestation"]) {
+      expect(String(steps.find((step) => step.name === name)?.run))
+        .toContain("bash scripts/release/retry.sh");
+    }
     expect(
       steps.some(
         (step) =>
           step.if === "${{ inputs.publish_project_release }}" &&
           typeof step.run === "string" &&
           step.run.includes("gh release create") &&
+          step.run.includes('--verify-tag') &&
+          step.run.includes('"sha=${GITHUB_SHA}"') &&
           step.run.includes("--generate-notes") &&
           step.run.includes("verification completed without mutation")
       )
