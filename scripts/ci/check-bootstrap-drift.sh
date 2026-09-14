@@ -11,11 +11,17 @@ repo_file="$(mktemp)"
 protection_file="$(mktemp)"
 trap 'rm -f "${plan_file}" "${expected_file}" "${repo_file}" "${protection_file}"; rm -rf "${home_dir}"' EXIT
 
-node "${bootstrap_cli}" plan \
-  --manifest "${repo_root}/project.bootstrap.yaml" \
-  --target "${repo_root}" \
-  --home-dir "${home_dir}" \
-  --json > "${plan_file}"
+# Managed-file drift is local; the aggregate CLI plan also queries GitHub.
+# Keep governance API reads in the explicit verification block below.
+node --input-type=module - "${bootstrap_root}" "${repo_root}" > "${plan_file}" <<'NODE'
+import { pathToFileURL } from "node:url";
+const [bootstrapRoot, repoRoot] = process.argv.slice(2);
+const { loadManifest } = await import(pathToFileURL(`${bootstrapRoot}/dist/manifest.js`));
+const { planRepo } = await import(pathToFileURL(`${bootstrapRoot}/dist/render.js`));
+const manifest = await loadManifest(`${repoRoot}/project.bootstrap.yaml`);
+const plan = await planRepo(manifest, repoRoot);
+console.log(JSON.stringify({ repo: plan.changes }));
+NODE
 
 node --input-type=module - "${plan_file}" <<'NODE'
 import fs from "node:fs";

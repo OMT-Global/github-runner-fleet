@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: OMT-Global/bootstrap
-          ref: 35eb9a907bb53f9bcf771a1435b72f17a7c7ad0c
+          ref: 99455ebc120bc91987ee2f7f9a7c097ae73021dc
           path: .bootstrap-control-plane
 
       - uses: actions/setup-node@v7

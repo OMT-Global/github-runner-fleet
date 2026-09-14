@@ -7,7 +7,7 @@ project:
   owner: OMT-Global
   defaultBranch: main
 repo:
-  class: tooling
+  class: infrastructure
   managedPaths:
     - project.bootstrap.yaml
     - CODEOWNERS
@@ -166,6 +166,9 @@ ci:
     - mutation-test
     - drift-detect
   nightlyCron: 0 7 * * *
+  codeqlLanguages:
+    - javascript-typescript
+    - python
   additionalWorkflows: []
   appPaths: []
   ciPaths: []
@@ -222,6 +225,7 @@ capabilities:
     enabled: false
   containers:
     enabled: false
+exceptions: []
 environments:
   dev:
     reviewers: []

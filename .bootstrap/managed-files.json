@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "owner": "bootstrap",
+  "templateVersion": "2026.03.28.2",
+  "regenerationCommand": "bootstrap apply repo --manifest ./project.bootstrap.yaml",
+  "managedFiles": {
+    ".devcontainer/devcontainer.json": {
+      "sha256": "a97b390a31517a18ccd192fe7463ee70de416f1611a29bd5531b71062d56323f",
+      "source": "bootstrap"
+    },
+    ".githooks/pre-commit": {
+      "sha256": "992bc9b04d62f84df70ba1e42d7159a1d976190eae41597810aaafaa30252a4d",
+      "source": "bootstrap"
+    },
+    "CODEOWNERS": {
+      "sha256": "4641bf5cdc74c76211d3897161296c15b2100055a0c6dd0490cf902c39905d26",
+      "source": "bootstrap"
+    },
+    "docs/bootstrap/claude-environment.md": {
+      "sha256": "7c87459a6ed76294ab692c6cc713685738bd9d7f2200c57caa91a9ef904d785f",
+      "source": "bootstrap"
+    },
+    "docs/bootstrap/codex-cloud-environment.md": {
+      "sha256": "90289e4e2b6b0c72df356e9bdeca6f00bb48eb20734eea301a154ad51c261d4d",
+      "source": "bootstrap"
+    },
+    "project.bootstrap.yaml": {
+      "sha256": "bc1dd9a6f2dd4820cde8837aa25d87d634bdc7221e09842648820329166eb0db",
+      "source": "bootstrap"
+    },
+    "scripts/claude-cloud/setup.sh": {
+      "sha256": "5e81d93c74983562e32b3ed1757be89661b25f4dae340a599ede390280c77d21",
+      "source": "bootstrap"
+    },
+    "scripts/claude/setup-devcontainer.sh": {
+      "sha256": "4ad6cbff01875e6d1cb58e32460d10ca941defa0e02482dd20de65f15ba55211",
+      "source": "bootstrap"
+    },
+    "scripts/codex-cloud/maintenance.sh": {
+      "sha256": "8a4f5e11b133539c46dd9d45e74d49b19e0fb092e3620f2af8552e07cf94dabc",
+      "source": "bootstrap"
+    },
+    "scripts/codex-cloud/setup.sh": {
+      "sha256": "debc23607cccb92ed096941adc7da777ff794ec8c97d4efa842e592b33c29d10",
+      "source": "bootstrap"
+    }
+  }
+}
