@@ -59,15 +59,15 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.5.0",
     "@vitest/coverage-v8": "4.1.4",
     "fast-check": "^4.9.0",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
   },
