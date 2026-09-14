@@ -126,14 +126,12 @@ describe("release workflow", () => {
     const perPlatformSignStep = steps[perPlatformSignIndex];
     expect(perPlatformSignIndex).toBeGreaterThan(-1);
     expect(String(perPlatformSignStep?.run)).toContain(
-      "steps.release_state.outputs.working_ref"
+      "steps.release_meta.outputs.image_repo"
     );
     expect(String(perPlatformSignStep?.run)).toContain(
       "steps.image_digest.outputs.digest"
     );
-    expect(String(perPlatformSignStep?.run)).not.toContain(
-      "steps.release_meta.outputs.image_ref"
-    );
+    expect(String(perPlatformSignStep?.run)).not.toContain("steps.release_meta.outputs.image_ref");
     expect(String(perPlatformSignStep?.run)).toContain(".manifests[].digest");
     expect(String(perPlatformSignStep?.run)).toContain("cosign sign");
     expect(
@@ -174,9 +172,7 @@ describe("release workflow", () => {
       (step) =>
         step.name === "Preflight immutable release state" &&
         typeof step.run === "string" &&
-        step.run.includes("candidate-") &&
-        step.run.includes("verification-only recovery mode") &&
-        step.run.includes("refusing registry mutation")
+        step.run.includes("node scripts/release-guard.mjs preflight")
     );
     const imagePublishIndex = steps.findIndex(
       (step) =>
@@ -198,6 +194,17 @@ describe("release workflow", () => {
     );
     expect(perPlatformSignIndex).toBeLessThan(promoteIndex);
     expect(promoteIndex).toBeGreaterThan(verifyIndex);
+    const runtimeIndices = steps.flatMap((step, index) => String(step.run).includes("Runner.Listener --version") ? [index] : []);
+    expect(runtimeIndices).toHaveLength(2);
+    for (const index of runtimeIndices) {
+      expect(index).toBeLessThan(promoteIndex);
+      expect(index).toBeGreaterThan(verifyIndex);
+      expect(String(steps[index].run)).toContain("image_repo }}@${{ steps.image_digest.outputs.digest");
+      expect(String(steps[index].run)).toContain("EXPECTED_RUNNER_VERSION");
+      expect(String(steps[index].run)).toContain("set -euo pipefail");
+    }
+    expect(String(steps[verifyIndex]?.run)).toContain("node scripts/release-guard.mjs source");
+    expect(String(steps[verifyIndex]?.run)).toContain("--type slsaprovenance1");
     expect(String(steps[promoteIndex]?.run)).toContain(
       "docker buildx imagetools create"
     );
