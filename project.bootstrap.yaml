@@ -8,6 +8,8 @@ project:
   defaultBranch: main
 repo:
   class: tooling
+  classMigration:
+    target: infrastructure
   managedPaths:
     - project.bootstrap.yaml
     - CODEOWNERS
@@ -153,6 +155,9 @@ github:
     hasWiki: false
     hasDiscussions: false
 ci:
+  codeqlLanguages:
+    - javascript-typescript
+    - python
   runnerPolicy: hybrid-safe
   nodeVersion: 24.14.1
   pythonVersion: "3.12"
