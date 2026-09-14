@@ -7,9 +7,7 @@ project:
   owner: OMT-Global
   defaultBranch: main
 repo:
-  class: tooling
-  classMigration:
-    target: infrastructure
+  class: infrastructure
   managedPaths:
     - project.bootstrap.yaml
     - CODEOWNERS
@@ -155,9 +153,6 @@ github:
     hasWiki: false
     hasDiscussions: false
 ci:
-  codeqlLanguages:
-    - javascript-typescript
-    - python
   runnerPolicy: hybrid-safe
   nodeVersion: 24.14.1
   pythonVersion: "3.12"
@@ -171,6 +166,9 @@ ci:
     - mutation-test
     - drift-detect
   nightlyCron: 0 7 * * *
+  codeqlLanguages:
+    - javascript-typescript
+    - python
   additionalWorkflows: []
   appPaths: []
   ciPaths: []
@@ -227,6 +225,7 @@ capabilities:
     enabled: false
   containers:
     enabled: false
+exceptions: []
 environments:
   dev:
     reviewers: []
