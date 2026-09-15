@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { loadLumeConfig, renderLumeShellExports } from "../src/lib/lume-config.js";
+import { loadLumeConfig, lumeRunnerGroupExpectations, renderLumeShellExports } from "../src/lib/lume-config.js";
 import type { DeploymentEnv } from "../src/lib/env.js";
 
 const tempPaths: string[] = [];
@@ -14,6 +14,38 @@ afterEach(() => {
 });
 
 describe("loadLumeConfig", () => {
+  test("slot group override survives repeated renders without affecting its companion", () => {
+    const directory = createTempDir();
+    const file = path.join(directory, "lume.yaml");
+    const source = `version: 1
+pool:
+  key: macos-private
+  runnerGroup: macos-private
+  slotRunnerGroups:
+    "2": macos-public-trusted
+  size: 2
+  telemetry:
+    enabled: true
+    endpoint: https://otel.example.com:4318
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+`;
+    fs.writeFileSync(file, source);
+    for (let turn = 0; turn < 2; turn++) {
+      const config = loadLumeConfig(file, deploymentEnv());
+      expect(renderLumeShellExports(config, 1)).toContain("export RUNNER_GROUP='macos-private'");
+      expect(renderLumeShellExports(config, 2)).toContain("export RUNNER_GROUP='macos-public-trusted'");
+      expect(renderLumeShellExports(config, 2)).toContain("runner.group=macos-public-trusted,");
+      expect(lumeRunnerGroupExpectations(config).map((entry) => entry.runnerGroup))
+        .toEqual(["macos-private", "macos-public-trusted"]);
+      expect(config.slots).toHaveLength(2);
+    }
+    fs.writeFileSync(file, source.replace('"2":', '"3":'));
+    expect(() => loadLumeConfig(file, deploymentEnv())).toThrow(/exceeds pool size/);
+    fs.writeFileSync(file, source.replace('"2":', '"0":'));
+    expect(() => loadLumeConfig(file, deploymentEnv())).toThrow();
+  });
+
   test("injects default macOS runner labels and derives slot manifests", () => {
     const directory = createTempDir();
     const configPath = path.join(directory, "lume-runners.yaml");

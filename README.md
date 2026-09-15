@@ -392,6 +392,18 @@ The Lume flow is:
 - run [scripts/lume/reconcile-pool.sh](scripts/lume/reconcile-pool.sh) on the host MacBook
 - let each slot clone boot, receive bootstrap assets over `lume ssh`, register one ephemeral runner in `macos-private`, run one job, and get destroyed
 
+Optional `pool.slotRunnerGroups` maps one-based slot numbers to runner-group names.
+For example, `slotRunnerGroups: {"2": macos-public-trusted}` retains the pool's
+`runnerGroup` default for slot 1 while each new slot-2 registration uses the
+override. Zero, non-integer, and out-of-pool slot keys are rejected. GitHub
+validation checks every configured target; telemetry reports the effective
+slot group. This changes registration targets only: provision repository access
+and immutable workflow restrictions separately before admitting workloads.
+Keep machine-specific overrides outside source control. Existing workers load
+configuration at startup; drain/restart only the affected idle worker using
+the normal operational procedure. This source change does not restart a host,
+allocate runners, or grant repository access.
+
 Useful Lume commands:
 
 ```bash

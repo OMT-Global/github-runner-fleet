@@ -13,7 +13,7 @@ import {
   verifyRunnerGroups
 } from "./github.js";
 import { log, type LogLevel } from "./logger.js";
-import { loadLumeConfig } from "./lume-config.js";
+import { loadLumeConfig, lumeRunnerGroupExpectations } from "./lume-config.js";
 import {
   defaultLumeProjectResultPath,
   loadLumeProjectResult
@@ -736,20 +736,14 @@ async function runLumeDoctor(input: {
     await verifyRunnerGroups(
       input.env.githubApiUrl,
       token,
-      [
-        {
-          poolKey: config.pool.key,
-          organization: config.pool.organization,
-          runnerGroup: config.pool.runnerGroup
-        }
-      ],
+      lumeRunnerGroupExpectations(config),
       input.fetchImpl
     );
     checks.push({
       id: "lume-runner-group",
       target: "lume",
       status: "pass",
-      summary: `verified Lume runner group ${config.pool.runnerGroup} in GitHub`
+      summary: `verified Lume runner group ${lumeRunnerGroupExpectations(config).map((entry) => entry.runnerGroup).join(", ")} in GitHub`
     });
   } catch (error) {
     checks.push({

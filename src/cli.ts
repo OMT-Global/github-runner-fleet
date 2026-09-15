@@ -51,6 +51,7 @@ import {
 import { renderWindowsDockerCompose } from "./lib/windows-compose.js";
 import {
   loadLumeConfig,
+  lumeRunnerGroupExpectations,
   renderLumeShellExports
 } from "./lib/lume-config.js";
 import {
@@ -2009,6 +2010,7 @@ async function validateLumeConfig(args: string[]): Promise<void> {
           key: config.pool.key,
           organization: config.pool.organization,
           runnerGroup: config.pool.runnerGroup,
+          slotRunnerGroups: config.pool.slotRunnerGroups,
           labels: config.pool.labels,
           size: config.pool.size,
           vmBaseName: config.pool.vmBaseName,
@@ -2039,13 +2041,7 @@ async function validateLumeGitHub(args: string[]): Promise<void> {
   const matches = await verifyRunnerGroups(
     env.githubApiUrl,
     await resolveGitHubAccessToken(env),
-    [
-      {
-        poolKey: config.pool.key,
-        organization: config.pool.organization,
-        runnerGroup: config.pool.runnerGroup
-      }
-    ]
+    lumeRunnerGroupExpectations(config)
   );
 
   process.stdout.write(
