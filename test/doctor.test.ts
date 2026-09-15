@@ -1316,6 +1316,45 @@ pools:
     );
   });
 
+  test.each([true, false])("names every Lume group when override exists=%s", async (overrideExists) => {
+    const directory = createTempDir();
+    const envPath = path.join(directory, ".env");
+    const lumePath = path.join(directory, "lume.yaml");
+    fs.writeFileSync(envPath, `GITHUB_PAT=secret
+LUME_RUNNER_BASE_DIR=${directory}/lume
+LUME_RUNNER_ENV_FILE=${directory}/runner.env
+LUME_GUEST_PASSWORD=secret
+`);
+    fs.writeFileSync(lumePath, `version: 1
+pool:
+  key: macos-private
+  organization: example
+  runnerGroup: macos-private
+  slotRunnerGroups:
+    "2": macos-isolated
+  size: 2
+  vmBaseName: macos-runner-base
+  vmSlotPrefix: macos-runner-slot
+`);
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.includes("/actions/runner-groups")) throw new Error(`unexpected URL: ${url}`);
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        runner_groups: [
+          { id: 1, name: "macos-private", default: false },
+          ...(overrideExists ? [{ id: 2, name: "macos-isolated", default: false }] : [])
+        ]
+      }) };
+    });
+    const report = await runDoctor({ mode: "lume", envPath, lumeConfigPath: lumePath, fetchImpl: fetchMock });
+    const check = findCheck(report, "lume-runner-group");
+    expect(check.status).toBe(overrideExists ? "pass" : "fail");
+    expect(check.summary).toBe(overrideExists
+      ? "verified Lume runner group macos-private, macos-isolated in GitHub"
+      : "failed Lume runner-group verification for macos-private, macos-isolated");
+    if (!overrideExists) expect(check.detail).toContain("macos-isolated");
+    expect(renderDoctorReport(report)).toContain(check.summary);
+  });
+
   test("warns with exact detail for missing Lume artifacts and unhealthy results", async () => {
     const directory = createTempDir();
     const envPath = path.join(directory, ".env");

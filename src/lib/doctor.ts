@@ -731,26 +731,28 @@ async function runLumeDoctor(input: {
     return checks;
   }
 
+  const runnerGroups = lumeRunnerGroupExpectations(config);
+  const groupNames = runnerGroups.map((entry) => entry.runnerGroup).join(", ");
   try {
     const token = await resolveGitHubAccessToken(input.env, input.fetchImpl);
     await verifyRunnerGroups(
       input.env.githubApiUrl,
       token,
-      lumeRunnerGroupExpectations(config),
+      runnerGroups,
       input.fetchImpl
     );
     checks.push({
       id: "lume-runner-group",
       target: "lume",
       status: "pass",
-      summary: `verified Lume runner group ${lumeRunnerGroupExpectations(config).map((entry) => entry.runnerGroup).join(", ")} in GitHub`
+      summary: `verified Lume runner group ${groupNames} in GitHub`
     });
   } catch (error) {
     checks.push({
       id: "lume-runner-group",
       target: "lume",
       status: "fail",
-      summary: `failed Lume runner-group verification for ${config.pool.runnerGroup}`,
+      summary: `failed Lume runner-group verification for ${groupNames}`,
       detail: formatError(error)
     });
   }
