@@ -14,6 +14,7 @@ export interface LumePoolConfig {
   key: string;
   organization: string;
   runnerGroup: string;
+  slotRunnerGroups?: Record<string, string>;
   labels: string[];
   size: number;
   vmBaseName: string;
@@ -66,6 +67,7 @@ const poolSchema = z.object({
   key: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   organization: z.string().min(1).default("omt-global"),
   runnerGroup: z.string().min(1).default("macos-private"),
+  slotRunnerGroups: z.record(z.string().regex(/^[1-9][0-9]*$/), z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)).optional(),
   labels: z.array(z.string().regex(/^[A-Za-z0-9._-]+$/)).default([]),
   size: z.number().int().min(1),
   vmBaseName: z.string().min(1),
@@ -105,6 +107,10 @@ export function loadLumeConfig(
 
   if (!path.isAbsolute(env.lumeRunnerEnvFile)) {
     throw new Error("LUME_RUNNER_ENV_FILE must resolve to an absolute path");
+  }
+
+  for (const index of Object.keys(result.pool.slotRunnerGroups ?? {})) {
+    if (Number(index) > result.pool.size) throw new Error(`runner group override slot ${index} exceeds pool size`);
   }
 
   const normalizedLabels = normalizeLabels(result.pool.labels);
@@ -149,6 +155,7 @@ export function renderLumeShellExports(
     throw new Error(`slot ${slotIndex} is outside configured pool size ${config.pool.size}`);
   }
 
+  const runnerGroup = config.pool.slotRunnerGroups?.[String(slotIndex)] ?? config.pool.runnerGroup;
   const values: Record<string, string> = {
     LUME_POOL_KEY: config.pool.key,
     LUME_POOL_SIZE: String(config.pool.size),
@@ -167,7 +174,7 @@ export function renderLumeShellExports(
     LUME_RECONCILE_STATE_FILE: config.host.reconcileStateFile,
     LUME_AUDIT_LOG_FILE: path.join(config.host.baseDir, "audit", `${config.pool.key}.jsonl`),
     GITHUB_ORG: config.pool.organization,
-    RUNNER_GROUP: config.pool.runnerGroup,
+    RUNNER_GROUP: runnerGroup,
     FLEET_POOL_KEY: config.pool.key,
     FLEET_PLANE: "lume",
     RUNNER_VERSION: config.pool.runnerVersion,
@@ -184,7 +191,7 @@ export function renderLumeShellExports(
       serviceName: "github-runner-fleet.lume",
       resourceAttributes: {
         "github.organization": config.pool.organization,
-        "runner.group": config.pool.runnerGroup,
+        "runner.group": runnerGroup,
         "runner.name": slot.runnerName,
         "runner.pool": config.pool.key,
         "runner.plane": "lume",
@@ -241,4 +248,14 @@ function normalizeLabels(labels: string[]): string[] {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Verify the default and every configured per-slot target before registration. */
+export function lumeRunnerGroupExpectations(config: ResolvedLumeConfig) {
+  return [...new Set([config.pool.runnerGroup, ...Object.values(config.pool.slotRunnerGroups ?? {})])]
+    .map((runnerGroup) => ({
+      poolKey: config.pool.key,
+      organization: config.pool.organization,
+      runnerGroup
+    }));
 }
