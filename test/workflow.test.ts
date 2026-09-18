@@ -4,39 +4,22 @@ import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
 const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
+const hostedOrdinaryRunner = "ubuntu-24.04";
 
 describe("CI workflow", () => {
-  test("bootstraps shell-safe Node before extended validation script jobs", () => {
+  test("runs ordinary extended validation script jobs on the pinned hosted runner", () => {
     const workflow = YAML.parse(
       fs.readFileSync(
         path.resolve(".github/workflows/extended-validation.yml"),
         "utf8"
       )
-    ) as {
-      jobs: Record<string, Record<string, unknown>>;
-    };
-
+    ) as { jobs: Record<string, Record<string, unknown>> };
     for (const jobName of ["fast-checks", "extended-checks"]) {
-      const job = workflow.jobs[jobName];
-      const steps = job.steps as Array<Record<string, unknown>>;
-      const setupNodeIndex = steps.findIndex(
-        (step) => step.uses === "./actions/setup-shell-safe-node"
-      );
-      const scriptIndex = steps.findIndex(
-        (step) =>
-          typeof step.run === "string" &&
-          step.run.includes("scripts/ci/run-")
-      );
-
-      expect(setupNodeIndex).toBeGreaterThan(-1);
-      expect(setupNodeIndex).toBeLessThan(scriptIndex);
-      expect(steps[setupNodeIndex]?.with).toMatchObject({
-        "node-version": "24.14.1"
-      });
+      expect(workflow.jobs[jobName]["runs-on"]).toBe(hostedOrdinaryRunner);
     }
   });
 
-  test("runs mutation testing in extended validation and uploads the report", () => {
+  test("runs mutation testing on the pinned hosted runner and uploads the report", () => {
     const workflow = YAML.parse(
       fs.readFileSync(
         path.resolve(".github/workflows/extended-validation.yml"),
@@ -59,12 +42,7 @@ describe("CI workflow", () => {
       (step) => step.uses === "actions/upload-artifact@v7"
     );
 
-    expect(mutationJob["runs-on"]).toEqual([
-      "self-hosted",
-      "synology",
-      "shell-only",
-      "public"
-    ]);
+    expect(mutationJob["runs-on"]).toBe(hostedOrdinaryRunner);
     expect(setupNodeStep?.with).toMatchObject({
       "node-version": "24.14.1"
     });
@@ -124,7 +102,7 @@ describe("CI workflow", () => {
     expect(gateJob.needs).toContain("drift-detect");
   });
 
-  test("keeps required trusted CI on shell-safe self-hosted runners", () => {
+  test("runs ordinary trusted CI on the pinned hosted runner", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -152,7 +130,7 @@ describe("CI workflow", () => {
       (step) => step.uses === "actions/setup-node@v7"
     );
 
-    expect(trustedJob["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(trustedJob["runs-on"]).toBe(hostedOrdinaryRunner);
     expect(pnpmStep?.with).toMatchObject({
       version: "10.32.1"
     });
@@ -228,7 +206,7 @@ describe("CI workflow", () => {
     expect(workflow.jobs.test_public_fork_pr["runs-on"]).toBe("ubuntu-latest");
   });
 
-  test("keeps PR fast checks on self-hosted runners and gates same-repo and fork paths", () => {
+  test("runs ordinary PR checks on the pinned hosted runner and gates same-repo and fork paths", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/pr-fast-ci.yml"), "utf8")
     ) as {
@@ -240,7 +218,7 @@ describe("CI workflow", () => {
       workflow.jobs["validate-secrets"]
     ];
     for (const job of selfHostedJobs) {
-      expect(job["runs-on"]).toEqual(shellSafePublicRunner);
+      expect(job["runs-on"]).toBe(hostedOrdinaryRunner);
       expect(String(job.if)).toContain(
         "github.event.pull_request.head.repo.full_name == github.repository"
       );
@@ -252,7 +230,7 @@ describe("CI workflow", () => {
       "node-version": "24.14.1"
     });
 
-    expect(workflow.jobs.changes["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(workflow.jobs.changes["runs-on"]).toBe(hostedOrdinaryRunner);
     expect(workflow.jobs["hosted-fork-fast-checks"]["runs-on"]).toBe(
       "ubuntu-latest"
     );
@@ -273,7 +251,7 @@ describe("CI workflow", () => {
         "hosted-fork-validate-secrets"
       ])
     );
-    expect(workflow.jobs["ci-gate"]["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(workflow.jobs["ci-gate"]["runs-on"]).toBe(hostedOrdinaryRunner);
   });
 
   test("classifies behavior, docs-only, and unknown PR changes fail-closed", () => {
@@ -433,7 +411,7 @@ describe("CI workflow", () => {
     const claudeJob = workflow.jobs.claude;
     const condition = String(claudeJob.if);
 
-    expect(claudeJob["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(claudeJob["runs-on"]).toBe(hostedOrdinaryRunner);
     expect(condition).toContain("github.event_name == 'workflow_dispatch'");
     expect(condition).toContain(
       "contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)"
@@ -448,7 +426,7 @@ describe("CI workflow", () => {
     expect(condition).not.toContain("NONE");
   });
 
-  test("renders the Linux Docker contract on shell-safe self-hosted Linux", () => {
+  test("renders the Linux Docker contract on the pinned hosted runner", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8")
     ) as {
@@ -461,7 +439,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Render Linux Docker runner manifests"
     );
 
-    expect(dockerJob["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(dockerJob["runs-on"]).toBe(hostedOrdinaryRunner);
     expect(String(renderStep?.run)).toContain("pnpm validate-linux-docker-config");
     expect(String(renderStep?.run)).toContain("pnpm render-linux-docker-compose");
     expect(String(renderStep?.run)).toContain(

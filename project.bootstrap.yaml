@@ -153,7 +153,7 @@ github:
     hasWiki: false
     hasDiscussions: false
 ci:
-  runnerPolicy: hybrid-safe
+  runnerPolicy: hosted-ordinary-safe
   nodeVersion: 24.14.1
   pythonVersion: "3.12"
   fastChecks:
