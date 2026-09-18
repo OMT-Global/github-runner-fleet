@@ -25,7 +25,7 @@
       "source": "bootstrap"
     },
     "project.bootstrap.yaml": {
-      "sha256": "bc1dd9a6f2dd4820cde8837aa25d87d634bdc7221e09842648820329166eb0db",
+      "sha256": "52ccd95a22cbc89d8d4f185347becef68c1918917554bbfd1c66f956d257718b",
       "source": "bootstrap"
     },
     "scripts/claude-cloud/setup.sh": {

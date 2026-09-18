@@ -7,15 +7,34 @@ const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
 const hostedOrdinaryRunner = "ubuntu-24.04";
 
 describe("CI workflow", () => {
-  test("runs ordinary extended validation script jobs on the pinned hosted runner", () => {
+  test("bootstraps pinned Node before ordinary hosted extended validation jobs", () => {
     const workflow = YAML.parse(
       fs.readFileSync(
         path.resolve(".github/workflows/extended-validation.yml"),
         "utf8"
       )
-    ) as { jobs: Record<string, Record<string, unknown>> };
+    ) as {
+      jobs: Record<string, Record<string, unknown>>;
+    };
+
     for (const jobName of ["fast-checks", "extended-checks"]) {
-      expect(workflow.jobs[jobName]["runs-on"]).toBe(hostedOrdinaryRunner);
+      const job = workflow.jobs[jobName];
+      expect(job["runs-on"]).toBe(hostedOrdinaryRunner);
+      const steps = job.steps as Array<Record<string, unknown>>;
+      const setupNodeIndex = steps.findIndex(
+        (step) => step.uses === "./actions/setup-shell-safe-node"
+      );
+      const scriptIndex = steps.findIndex(
+        (step) =>
+          typeof step.run === "string" &&
+          step.run.includes("scripts/ci/run-")
+      );
+
+      expect(setupNodeIndex).toBeGreaterThan(-1);
+      expect(setupNodeIndex).toBeLessThan(scriptIndex);
+      expect(steps[setupNodeIndex]?.with).toMatchObject({
+        "node-version": "24.14.1"
+      });
     }
   });
 
