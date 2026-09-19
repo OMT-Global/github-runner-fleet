@@ -24,11 +24,7 @@ defaults:
 jobs:
   changes:
     name: Detect Relevant Changes
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-24.04
     outputs:
       behavior: ${{ steps.filter.outputs.behavior }}
       docs: ${{ steps.filter.outputs.docs }}
@@ -93,11 +89,7 @@ jobs:
 
   fast-checks:
     name: Fast Checks
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: changes
     if: >-
@@ -122,11 +114,7 @@ jobs:
 
   validate-secrets:
     name: Validate Secrets
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     if: >-
       github.event.pull_request.draft == false &&
@@ -183,11 +171,7 @@ jobs:
 
   ci-gate:
     name: CI Gate
-    runs-on:
-      - self-hosted
-      - linux
-      - shell-only
-      - public
+    runs-on: ubuntu-24.04
     if: always()
     needs:
       - changes

@@ -37,9 +37,10 @@ This document is the runner-boundary control plane for Tier A `OMT-Global` repos
 
 ## Tier A Defaults
 
-- `bootstrap`, `github-runner-fleet`, and other bootstrap-aligned repos should route:
+- `bootstrap` and other bootstrap-aligned repos should route:
   - `pr-fast-ci` to `rg-ci`
   - `security-pr` to hosted or `rg-security`
   - `extended-validation` to repo-compatible runner classes
   - `release` to hosted or `rg-release`
+- `github-runner-fleet` routes ordinary CI jobs to `ubuntu-24.04`; its shell-safe installed-toolchain contract and operational drift detection remain on dedicated self-hosted selectors.
 - Repos with justified exceptions must record them explicitly rather than silently forking policy in workflow YAML.
