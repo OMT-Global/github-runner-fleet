@@ -69,7 +69,7 @@ jobs:
   changes:
     name: Detect Extended Validation Scope
     if: github.event_name != 'pull_request'
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-24.04
     outputs:
       behavior: ${{ steps.preset.outputs.behavior || steps.filter.outputs.behavior || 'false' }}
       docs: ${{ steps.preset.outputs.docs || steps.filter.outputs.docs || 'false' }}
@@ -155,7 +155,7 @@ jobs:
 
   fast-checks:
     name: Fast Checks
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
@@ -171,7 +171,7 @@ jobs:
 
   extended-checks:
     name: Extended Checks
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
@@ -220,7 +220,7 @@ jobs:
 
   mutation-tests:
     name: Mutation Tests
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: changes
     if: needs.changes.outputs.extended == 'true' || needs.changes.outputs.behavior == 'true' || needs.changes.outputs.unknown == 'true'
@@ -254,7 +254,7 @@ jobs:
   validate-secrets:
     name: Validate Secrets
     if: github.event_name != 'pull_request'
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -263,7 +263,7 @@ jobs:
 
   extended-validation-gate:
     name: Extended Validation Gate
-    runs-on: ['self-hosted', 'synology', 'shell-only', 'public']
+    runs-on: ubuntu-24.04
     if: ${{ always() && github.event_name != 'pull_request' }}
     needs:
       - changes
