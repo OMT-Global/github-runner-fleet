@@ -79,8 +79,8 @@ describe("security and reusable workflows", () => {
       .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
       .map((uses) => uses.split("@")[1]);
     expect(codeqlActionVersions).toEqual([
-      "cdf488f595d80d6e07e03d4674febd5ab45fa938",
-      "cdf488f595d80d6e07e03d4674febd5ab45fa938",
+      "1c5b675653bb5c22dbe9b12b556ec555138e09fd",
+      "1c5b675653bb5c22dbe9b12b556ec555138e09fd",
       "1c5b675653bb5c22dbe9b12b556ec555138e09fd"
     ]);
 
@@ -91,7 +91,6 @@ describe("security and reusable workflows", () => {
     expect(codeqlVersions).toHaveLength(3);
     expect(new Set(codeqlVersions)).toEqual(
       new Set([
-        "cdf488f595d80d6e07e03d4674febd5ab45fa938",
         "1c5b675653bb5c22dbe9b12b556ec555138e09fd"
       ])
     );
