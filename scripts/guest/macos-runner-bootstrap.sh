@@ -7,12 +7,48 @@ source "${SCRIPT_DIR}/github-runner-common.sh"
 RUNNER_CONFIGURED="false"
 
 cleanup_local_state() {
+  if [[ -f "${RUNNER_ROOT}/.runner" || -f "${RUNNER_ROOT}/.credentials" ]]; then
+    log "removing stale runner registration state so a cloned slot never reuses it"
+    audit_event stale_runner_registration_removed
+  fi
+
   rm -f \
     "${RUNNER_ROOT}/.runner" \
     "${RUNNER_ROOT}/.credentials" \
     "${RUNNER_ROOT}/.credentials_rsaparams"
   mkdir -p "${RUNNER_WORK_DIR}"
   find "${RUNNER_WORK_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+}
+
+kill_stale_runner_processes() {
+  local stale_pids
+  local pid
+  local deadline
+
+  # The bracket in [.] keeps the pattern from matching this bootstrap's own
+  # process tree; only real Runner.Listener/Runner.Worker processes match.
+  stale_pids="$(pgrep -f 'bin/Runner[.](Listener|Worker)' 2>/dev/null || true)"
+  if [[ -z "${stale_pids}" ]]; then
+    return 0
+  fi
+
+  log "killing stale runner processes inherited from the base image or a prior generation: $(printf '%s ' ${stale_pids})"
+  audit_event stale_runner_process_killed
+
+  for pid in ${stale_pids}; do
+    kill -TERM "${pid}" >/dev/null 2>&1 || true
+  done
+
+  deadline=$((SECONDS + 10))
+  for pid in ${stale_pids}; do
+    while kill -0 "${pid}" >/dev/null 2>&1 && (( SECONDS < deadline )); do
+      sleep 0.2
+    done
+    if kill -0 "${pid}" >/dev/null 2>&1; then
+      log "stale runner process ${pid} ignored SIGTERM; sending SIGKILL"
+      kill -KILL "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
 }
 
 download_runner_bundle() {
@@ -86,6 +122,7 @@ touch "${AUDIT_LOG_FILE}"
 
 export PATH="${RUNNER_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME}/.local/bin}"
 
+kill_stale_runner_processes
 prepare_runner_home
 cleanup_local_state
 

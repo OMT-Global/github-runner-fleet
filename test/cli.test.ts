@@ -1402,6 +1402,106 @@ describe("cli integration", () => {
     expect(shell.stdout).toContain("export RUNNER_LABELS='self-hosted,macOS,ARM64,private,xcode'");
   });
 
+  test("counts queued jobs for a Lume slot runner group", async () => {
+    const fixture = createCliFixture();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("/orgs/example/repos")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify([{ full_name: "example/app" }])
+          };
+        }
+        if (url.includes("/repos/example/app/actions/runs?status=queued")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                workflow_runs: [
+                  {
+                    id: 11,
+                    jobs_url: "https://api.github.com/repos/example/app/actions/runs/11/jobs"
+                  }
+                ]
+              })
+          };
+        }
+        if (url.includes("/repos/example/app/actions/runs?status=in_progress")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ workflow_runs: [] })
+          };
+        }
+        if (url.includes("/actions/runs/11/jobs")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                jobs: [
+                  {
+                    id: 5,
+                    status: "queued",
+                    labels: ["self-hosted", "macOS", "ARM64", "private", "xcode"],
+                    runner_group_name: "macos-private"
+                  }
+                ]
+              })
+          };
+        }
+        throw new Error(`unexpected fetch for ${url}`);
+      })
+    );
+
+    const text = await invokeCli([
+      "lume-queued-jobs",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--slot",
+      "1"
+    ]);
+    expect(text.error).toBeUndefined();
+    expect(text.stdout).toBe("1\n");
+
+    const json = await invokeCli([
+      "lume-queued-jobs",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--format",
+      "json"
+    ]);
+    expect(json.error).toBeUndefined();
+    expect(JSON.parse(json.stdout)).toEqual({
+      poolKey: "macos-private",
+      runnerGroup: "macos-private",
+      queuedJobs: 1
+    });
+
+    const invalidSlot = await invokeCli([
+      "lume-queued-jobs",
+      "--env",
+      fixture.envPath,
+      "--config",
+      fixture.lumeConfigPath,
+      "--slot",
+      "9"
+    ]);
+    expect(invalidSlot.error).toBeInstanceOf(Error);
+    expect(String((invalidSlot.error as Error).message)).toContain(
+      "outside configured pool size"
+    );
+  });
+
   test("renders Lume install and teardown lifecycle results in dry-run mode", async () => {
     const fixture = createCliFixture();
     const resultPath = path.join(fixture.directory, "lume-result.json");

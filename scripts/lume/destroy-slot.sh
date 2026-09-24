@@ -58,10 +58,23 @@ load_slot_env "${slot}" "${config_path}" "${env_path}"
 
 if vm_exists; then
   log "stopping ${LUME_VM_NAME}"
-  lume stop "${LUME_VM_NAME}" $(storage_args) >/dev/null 2>&1 || true
+  stop_exit=0
+  run_with_timeout "${LUME_VM_STOP_TIMEOUT_SECONDS:-120}" lume stop "${LUME_VM_NAME}" $(storage_args) >/dev/null 2>&1 || stop_exit=$?
+  if [[ "${stop_exit}" -eq 124 ]]; then
+    log "lume stop for ${LUME_VM_NAME} timed out after ${LUME_VM_STOP_TIMEOUT_SECONDS:-120}s; killing the tracked VM process so one hung VM cannot stall the pool"
+    if [[ -f "${LUME_SLOT_VM_PID_FILE}" ]]; then
+      terminate_tracked_process "${LUME_SLOT_VM_PID_FILE}" "lume run" || true
+    fi
+  fi
   sleep 2
   log "deleting ${LUME_VM_NAME}"
-  lume delete "${LUME_VM_NAME}" --force $(storage_args) >/dev/null 2>&1 || true
+  delete_exit=0
+  run_with_timeout "${LUME_VM_DELETE_TIMEOUT_SECONDS:-180}" lume delete "${LUME_VM_NAME}" --force $(storage_args) >/dev/null 2>&1 || delete_exit=$?
+  if [[ "${delete_exit}" -eq 124 ]]; then
+    log "lume delete for ${LUME_VM_NAME} timed out after ${LUME_VM_DELETE_TIMEOUT_SECONDS:-180}s; continuing so the pool keeps reconciling"
+  elif [[ "${delete_exit}" -ne 0 ]]; then
+    log "lume delete for ${LUME_VM_NAME} failed with exit ${delete_exit}"
+  fi
 fi
 
 if [[ -f "${LUME_SLOT_VM_PID_FILE}" ]]; then

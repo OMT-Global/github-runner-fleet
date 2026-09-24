@@ -317,3 +317,170 @@ terminate_tracked_process() {
   fi
   rm -f "${pid_file}"
 }
+
+# Runs a command under a wall-clock bound so one hung `lume` operation can
+# never stall slot recycling or pool reconciliation. Exits 124 on timeout
+# (SIGTERM, escalating to SIGKILL), 127 when the command cannot start, and
+# otherwise propagates the child's exit status (128+N when killed by signal N).
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+
+  python3 - "${timeout_seconds}" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout_seconds = float(sys.argv[1])
+command = sys.argv[2:]
+
+try:
+    process = subprocess.Popen(command)
+except OSError as error:
+    name = command[0] if command else "<empty>"
+    print(f"run_with_timeout could not start {name}: {error}", file=sys.stderr)
+    raise SystemExit(127)
+
+try:
+    returncode = process.wait(timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    raise SystemExit(124)
+
+raise SystemExit(returncode if returncode >= 0 else 128 - returncode)
+PY
+}
+
+# One bounded guest listener health probe. Prints a single line:
+#   listener=<alive|absent> runner_file=<yes|no> diag_age=<seconds|na>
+probe_guest_listener_health() {
+  run_with_timeout "${LUME_WATCHDOG_PROBE_TIMEOUT_SECONDS:-30}" \
+    lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout "${LUME_WATCHDOG_SSH_TIMEOUT_SECONDS:-20}" \
+    "set -a && source '${LUME_GUEST_ENV_PATH}' && set +a && bash '${LUME_GUEST_PROBE_PATH}'"
+}
+
+# Read-only count of queued jobs matching this pool, via the lume-queued-jobs CLI.
+fetch_queued_job_count() {
+  local config_path="$1"
+  local env_path="$2"
+  local slot="${3:-}"
+  local timeout_seconds="${LUME_WATCHDOG_QUEUE_TIMEOUT_SECONDS:-90}"
+  local slot_args=()
+
+  if [[ -n "${slot}" ]]; then
+    slot_args=(--slot "${slot}")
+  fi
+
+  (
+    cd "${REPO_ROOT}"
+    run_with_timeout "${timeout_seconds}" \
+      pnpm exec tsx src/cli.ts lume-queued-jobs \
+        --config "${config_path}" \
+        --env "${env_path}" \
+        "${slot_args[@]}"
+  )
+}
+
+# Watches the detached guest bootstrap session for one slot and sets
+# WATCHDOG_VERDICT to:
+#   exited       - the bootstrap session ended on its own (normal ephemeral recycle)
+#   zombie       - the listener stayed online without broker heartbeat activity
+#                  while matching jobs were queued, or past the hard staleness bound
+#   unreachable  - repeated guest health probe failures
+# Recycling the slot stays with the caller.
+watch_guest_session() {
+  local bootstrap_pid_file="$1"
+  local config_path="$2"
+  local env_path="$3"
+  local slot="${4:-}"
+
+  local interval_seconds="${LUME_WATCHDOG_INTERVAL_SECONDS:-60}"
+  local grace_seconds="${LUME_WATCHDOG_GRACE_SECONDS:-300}"
+  local stale_seconds="${LUME_WATCHDOG_STALE_SECONDS:-900}"
+  local hard_stale_seconds="${LUME_WATCHDOG_HARD_STALE_SECONDS:-3600}"
+  local max_probe_failures="${LUME_WATCHDOG_MAX_PROBE_FAILURES:-3}"
+
+  local bootstrap_pid=""
+  local probe_failures=0
+  local session_started_at="${SECONDS}"
+  local probe_line=""
+  local listener=""
+  local runner_file=""
+  local diag_age=""
+  local queued_output=""
+  local queued=""
+
+  WATCHDOG_VERDICT="exited"
+
+  while true; do
+    bootstrap_pid="$(cat "${bootstrap_pid_file}" 2>/dev/null || true)"
+    if [[ -z "${bootstrap_pid}" ]] || ! kill -0 "${bootstrap_pid}" 2>/dev/null; then
+      WATCHDOG_VERDICT="exited"
+      return 0
+    fi
+
+    sleep "${interval_seconds}"
+
+    if ! kill -0 "${bootstrap_pid}" 2>/dev/null; then
+      WATCHDOG_VERDICT="exited"
+      return 0
+    fi
+
+    if ! probe_line="$(probe_guest_listener_health)"; then
+      probe_failures=$((probe_failures + 1))
+      log "watchdog health probe failed for ${LUME_VM_NAME} (${probe_failures}/${max_probe_failures})"
+      if (( probe_failures >= max_probe_failures )); then
+        log "watchdog lost contact with ${LUME_VM_NAME}; requesting recycle"
+        WATCHDOG_VERDICT="unreachable"
+        return 0
+      fi
+      continue
+    fi
+    probe_failures=0
+
+    listener="$(sed -n 's/.*listener=\([A-Za-z]*\).*/\1/p' <<<"${probe_line}" | tail -1)"
+    runner_file="$(sed -n 's/.*runner_file=\([A-Za-z]*\).*/\1/p' <<<"${probe_line}" | tail -1)"
+    diag_age="$(sed -n 's/.*diag_age=\([0-9]*\).*/\1/p' <<<"${probe_line}" | tail -1)"
+
+    if [[ "${listener}" != "alive" ]]; then
+      # Bootstrap may still be downloading/configuring, or the ephemeral listener
+      # exited between finishing a job and tearing down its session. Only a
+      # missing listener alongside a live registration is suspicious.
+      if [[ "${runner_file}" == "yes" ]] && (( SECONDS - session_started_at > grace_seconds )); then
+        probe_failures=$((probe_failures + 1))
+        log "watchdog found no Runner.Listener on ${LUME_VM_NAME} despite an active registration (${probe_failures}/${max_probe_failures})"
+        if (( probe_failures >= max_probe_failures )); then
+          WATCHDOG_VERDICT="unreachable"
+          return 0
+        fi
+      fi
+      continue
+    fi
+
+    if [[ -z "${diag_age}" ]]; then
+      # Listener started but has not written any _diag entry yet.
+      continue
+    fi
+
+    if (( diag_age <= stale_seconds )); then
+      continue
+    fi
+
+    queued="unknown"
+    if queued_output="$(fetch_queued_job_count "${config_path}" "${env_path}" "${slot}")" && [[ "${queued_output}" =~ ^[0-9]+$ ]]; then
+      queued="${queued_output}"
+    else
+      log "watchdog could not fetch queued job count for ${LUME_VM_NAME}; relying on the hard staleness bound"
+    fi
+
+    if { [[ "${queued}" != "unknown" ]] && (( queued > 0 )); } || (( diag_age > hard_stale_seconds )); then
+      log "watchdog detected a zombie listener on ${LUME_VM_NAME}: no broker heartbeat for ${diag_age}s (queued_jobs=${queued})"
+      WATCHDOG_VERDICT="zombie"
+      return 0
+    fi
+  done
+}

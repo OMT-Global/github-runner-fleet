@@ -58,11 +58,17 @@ load_slot_env "${slot}" "${config_path}" "${env_path}"
 mkdir -p "${LUME_SLOT_DIR}" "$(dirname "${LUME_SLOT_LOG_FILE}")"
 echo $$ > "${LUME_SLOT_WORKER_PID_FILE}"
 guest_env_file=""
+bootstrap_pid=""
+bootstrap_pid_file="${LUME_SLOT_DIR}/bootstrap.pid"
+LUME_GUEST_PROBE_PATH="${LUME_GUEST_STAGE_DIR}/listener-health-probe.sh"
 
 cleanup_slot() {
   if [[ -n "${guest_env_file}" ]]; then
     rm -f "${guest_env_file}"
     guest_env_file=""
+  fi
+  if [[ -f "${bootstrap_pid_file}" ]]; then
+    terminate_tracked_process "${bootstrap_pid_file}" "lume ssh" >/dev/null 2>&1 || true
   fi
   "${SCRIPT_DIR}/destroy-slot.sh" --slot "${slot}" --config "${config_path}" --env "${env_path}" >/dev/null 2>&1 || true
 }
@@ -84,12 +90,31 @@ while true; do
   log "uploading guest bootstrap assets for ${LUME_VM_NAME}"
   upload_guest_file "${REPO_ROOT}/scripts/lib/github-runner-common.sh" "${LUME_GUEST_HELPER_PATH}"
   upload_guest_file "${REPO_ROOT}/scripts/guest/macos-runner-bootstrap.sh" "${LUME_GUEST_BOOTSTRAP_PATH}"
+  upload_guest_file "${REPO_ROOT}/scripts/guest/listener-health-probe.sh" "${LUME_GUEST_PROBE_PATH}"
   upload_env_file "${LUME_GUEST_ENV_PATH}" "${guest_env_file}"
 
   log "starting guest runner bootstrap for ${LUME_VM_NAME}"
-  lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout "${LUME_RUNNER_SESSION_TIMEOUT_SECONDS:-86400}" \
-    "set -a && source '${LUME_GUEST_ENV_PATH}' && set +a && bash '${LUME_GUEST_BOOTSTRAP_PATH}'" \
-    >> "${LUME_SLOT_LOG_FILE}" 2>&1 || true
+  bootstrap_pid="$(
+    spawn_detached \
+      "${LUME_SLOT_LOG_FILE}" \
+      lume ssh "${LUME_VM_NAME}" --user "${GUEST_USER}" --password "${GUEST_PASSWORD}" --timeout "${LUME_RUNNER_SESSION_TIMEOUT_SECONDS:-86400}" \
+      "set -a && source '${LUME_GUEST_ENV_PATH}' && set +a && bash '${LUME_GUEST_BOOTSTRAP_PATH}'"
+  )"
+  echo "${bootstrap_pid}" > "${bootstrap_pid_file}"
+
+  WATCHDOG_VERDICT="exited"
+  watch_guest_session "${bootstrap_pid_file}" "${config_path}" "${env_path}" "${slot}"
+
+  if [[ "${WATCHDOG_VERDICT}" != "exited" ]]; then
+    log "watchdog verdict for ${LUME_VM_NAME}: ${WATCHDOG_VERDICT}; forcing slot recycle"
+    if [[ "${WATCHDOG_VERDICT}" == "zombie" ]]; then
+      AUDIT_LOG_FILE="${LUME_AUDIT_LOG_FILE}" audit_event runner_zombie_recycled
+    else
+      AUDIT_LOG_FILE="${LUME_AUDIT_LOG_FILE}" audit_event runner_unreachable_recycled
+    fi
+    terminate_tracked_process "${bootstrap_pid_file}" "lume ssh" || true
+  fi
+
   collect_guest_audit "${RUNNER_ROOT}/audit.jsonl" "${LUME_AUDIT_LOG_FILE}"
 
   log "guest runner for ${LUME_VM_NAME} exited; recycling slot"

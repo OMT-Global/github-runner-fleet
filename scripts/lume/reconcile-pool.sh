@@ -122,9 +122,13 @@ NODE
     fi
 
     if [[ -n "${vm_name}" ]] && lume get "${vm_name}" --format json "${state_storage_args[@]}" >/dev/null 2>&1; then
-      lume stop "${vm_name}" "${state_storage_args[@]}" >/dev/null 2>&1 || true
+      local retire_stop_exit=0
+      run_with_timeout "${LUME_VM_STOP_TIMEOUT_SECONDS:-120}" lume stop "${vm_name}" "${state_storage_args[@]}" >/dev/null 2>&1 || retire_stop_exit=$?
+      if [[ "${retire_stop_exit}" -eq 124 ]]; then
+        log "lume stop for retired slot ${vm_name} timed out; continuing with delete so the pool keeps reconciling"
+      fi
       sleep 2
-      lume delete "${vm_name}" --force "${state_storage_args[@]}" >/dev/null 2>&1 || true
+      run_with_timeout "${LUME_VM_DELETE_TIMEOUT_SECONDS:-180}" lume delete "${vm_name}" --force "${state_storage_args[@]}" >/dev/null 2>&1 || true
     fi
 
     if [[ -n "${vm_pid_file}" && -f "${vm_pid_file}" ]]; then

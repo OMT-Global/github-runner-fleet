@@ -246,7 +246,7 @@ pnpm teardown-linux-docker-project -- --config config/linux-docker-runners.yaml 
 
 The installer path uses `ssh` and `scp` to stage `compose.yaml`, a project-local `.env`, and a generated deployment script onto `LINUX_DOCKER_HOST`, then runs `docker compose up -d` or `docker compose down` there. Keep access key-based and host-managed; do not bake long-lived GitHub credentials into the runner image.
 
-Remote commands are noninteractive and bounded. SSH connects within 15 seconds, detects an unresponsive connection after two 15-second keepalive intervals, and each SSH/SCP command has a five-minute wall-clock limit. Override the command boundary with `REMOTE_COMMAND_TIMEOUT_SECONDS`. Synology installer subprocesses default to 15 minutes via `LOCAL_INSTALL_TIMEOUT_SECONDS`. GitHub API calls use a 10-second request deadline with at most three attempts only for safe GET/DELETE operations; token POSTs are never blindly retried. Runner downloads allow 10 seconds to connect and 10 minutes total, while large Lume IPSW downloads allow 15 seconds to connect and two hours total. Lume file operations default to 60 seconds and runner sessions to 24 hours. Their `*_TIMEOUT_SECONDS` environment variables can tune those finite boundaries for slower links.
+Remote commands are noninteractive and bounded. SSH connects within 15 seconds, detects an unresponsive connection after two 15-second keepalive intervals, and each SSH/SCP command has a five-minute wall-clock limit. Override the command boundary with `REMOTE_COMMAND_TIMEOUT_SECONDS`. Synology installer subprocesses default to 15 minutes via `LOCAL_INSTALL_TIMEOUT_SECONDS`. GitHub API calls use a 10-second request deadline with at most three attempts only for safe GET/DELETE operations; token POSTs are never blindly retried. Runner downloads allow 10 seconds to connect and 10 minutes total, while large Lume IPSW downloads allow 15 seconds to connect and two hours total. Lume file operations default to 60 seconds and runner sessions to 24 hours. Lume VM stop and delete in recycle paths are timeout-guarded (120s and 180s by default) so one hung VM operation cannot stall the pool, and each Lume slot worker runs a watchdog that probes guest listener health every 60 seconds. Their `*_TIMEOUT_SECONDS` environment variables can tune those finite boundaries for slower links.
 
 Recommended workflow labels:
 
@@ -392,6 +392,8 @@ The Lume flow is:
 - run [scripts/lume/reconcile-pool.sh](scripts/lume/reconcile-pool.sh) on the host MacBook
 - let each slot clone boot, receive bootstrap assets over `lume ssh`, register one ephemeral runner in `macos-private`, run one job, and get destroyed
 
+Slot workers are supervised by a zombie-listener watchdog. A cloned slot never reuses runner registration from the base image or a prior generation: the guest bootstrap kills inherited `Runner.Listener`/`Runner.Worker` processes, removes stale `.runner`/`.credentials` state (audit events `stale_runner_process_killed` and `stale_runner_registration_removed`), and always re-runs `config.sh` with a fresh ephemeral registration token. While the bootstrap session runs, the slot worker probes the guest over `lume ssh` every `LUME_WATCHDOG_INTERVAL_SECONDS` (60s default). A listener whose `_diag` output has been silent for more than `LUME_WATCHDOG_STALE_SECONDS` (900s) while matching jobs are queued (`pnpm lume-queued-jobs`), or for more than `LUME_WATCHDOG_HARD_STALE_SECONDS` (3600s) regardless of queue visibility, is declared a zombie: the worker logs the verdict, writes a `runner_zombie_recycled` audit event, terminates the bootstrap session, and recycles the slot VM without host-side `pkill`. `LUME_WATCHDOG_MAX_PROBE_FAILURES` (3) consecutive failed probes recycle the slot as `runner_unreachable_recycled`. `lume stop`/`lume delete` in recycle paths are timeout-guarded via `LUME_VM_STOP_TIMEOUT_SECONDS` (120s) and `LUME_VM_DELETE_TIMEOUT_SECONDS` (180s); a hung stop escalates to killing the tracked `lume run` process so one poisoned VM operation cannot stall the pool.
+
 Optional `pool.slotRunnerGroups` maps one-based slot numbers to runner-group names.
 For example, `slotRunnerGroups: {"2": macos-public-trusted}` retains the pool's
 `runnerGroup` default for slot 1 while each new slot-2 registration uses the
@@ -410,6 +412,7 @@ Useful Lume commands:
 pnpm validate-lume-config -- --config config/lume-runners.yaml --env .env
 pnpm validate-lume-github -- --config config/lume-runners.yaml --env .env
 pnpm render-lume-runner-manifest -- --config config/lume-runners.yaml --env .env --slot 1
+pnpm lume-queued-jobs -- --config config/lume-runners.yaml --env .env --slot 1
 pnpm install-lume-project -- --lume-config config/lume-runners.yaml --env .env --format json
 pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env --format json
 pnpm drain-pool -- --pool macos-private --plane lume --timeout 15m --lume-config config/lume-runners.yaml --env .env

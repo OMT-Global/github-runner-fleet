@@ -231,6 +231,9 @@ export async function main(
     case "render-lume-runner-manifest":
       await renderLumeRunnerManifest(args);
       break;
+    case "lume-queued-jobs":
+      await lumeQueuedJobs(args);
+      break;
     case "install-lume-project":
       await installLumeProject(args);
       break;
@@ -2099,6 +2102,57 @@ async function renderLumeRunnerManifest(args: string[]): Promise<void> {
   process.stdout.write(`${JSON.stringify(config, null, 2)}\n`);
 }
 
+/** Read-only queued-job count used by the Lume slot watchdog to confirm a zombie listener while work is waiting. */
+async function lumeQueuedJobs(args: string[]): Promise<void> {
+  const env = loadDeploymentEnv({
+    envPath: getOption(args, "--env", ".env"),
+    requirePat: false,
+    requireGitHubAuth: true
+  });
+  const configPath = getOption(args, "--config", "config/lume-runners.yaml");
+  const config = loadLumeConfig(configPath!, env);
+  const slot = getOption(args, "--slot");
+  const format = getOption(args, "--format", "text");
+
+  if (slot) {
+    const slotIndex = Number(slot);
+    if (!config.slots.some((entry) => entry.index === slotIndex)) {
+      throw new Error(`slot ${slotIndex} is outside configured pool size ${config.pool.size}`);
+    }
+  }
+
+  const runnerGroup =
+    (slot ? config.pool.slotRunnerGroups?.[slot] : undefined) ??
+    config.pool.runnerGroup;
+  const queuedJobs = await getQueuedJobCount(
+    env.githubApiUrl,
+    await resolveGitHubAccessToken(env),
+    {
+      organization: config.pool.organization,
+      runnerGroup,
+      repositories: [],
+      labels: config.pool.labels
+    }
+  );
+
+  if (format === "json") {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          poolKey: config.pool.key,
+          runnerGroup,
+          queuedJobs
+        },
+        null,
+        2
+      )}\n`
+    );
+    return;
+  }
+
+  process.stdout.write(`${queuedJobs}\n`);
+}
+
 async function installLumeProject(args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
   const format = getLumeProjectFormat(args);
@@ -3363,6 +3417,7 @@ function printUsage(): void {
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]
   pnpm validate-lume-github [--config config/lume-runners.yaml] [--env .env]
   pnpm render-lume-runner-manifest [--config config/lume-runners.yaml] [--env .env] [--slot 1] [--format json|shell]
+  pnpm lume-queued-jobs [--config config/lume-runners.yaml] [--env .env] [--slot 1] [--format text|json]
   pnpm install-lume-project [--lume-config config/lume-runners.yaml] [--env .env] [--format text|json] [--status-output path] [--dry-run]
   pnpm teardown-lume-project [--lume-config config/lume-runners.yaml] [--env .env] [--format text|json] [--status-output path] [--drain-timeout 15m] [--dry-run]
 `);
