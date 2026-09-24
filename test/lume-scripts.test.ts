@@ -143,6 +143,8 @@ describe("Lume pool scripts", () => {
     expect(bootstrap).toContain("stale_runner_process_killed");
     expect(bootstrap).toContain("stale_runner_registration_removed");
     expect(bootstrap).toContain("pgrep -f 'bin/Runner[.](Listener|Worker)'");
+    expect(bootstrap).toContain("own process lineage");
+    expect(bootstrap).toContain("ps -o ppid= -p $$");
     const probe = read("scripts/guest/listener-health-probe.sh");
     expect(probe).toContain("pgrep -f 'bin/Runner[.]Listener'");
     expect(probe).toContain("listener=alive");

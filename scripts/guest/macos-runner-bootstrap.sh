@@ -22,25 +22,47 @@ cleanup_local_state() {
 
 kill_stale_runner_processes() {
   local stale_pids
+  local target_pids=""
   local pid
+  local ancestor_pid
+  local protected_pids=" $$ "
   local deadline
+
+  # Never target this script's own process lineage. In the guest VM the
+  # bootstrap runs under sshd, so stale Runner.Listener/Runner.Worker
+  # processes inherited from the base image are never ancestors; if this
+  # script ever executes under a live runner (for example a CI job on a
+  # runner host), the hosting Runner.Listener/Runner.Worker ARE ancestors
+  # and killing them would destroy the infrastructure running the job.
+  ancestor_pid="$(ps -o ppid= -p $$ 2>/dev/null | tr -d '[:space:]')"
+  while [[ -n "${ancestor_pid}" ]] && (( ancestor_pid > 1 )); do
+    protected_pids+="${ancestor_pid} "
+    ancestor_pid="$(ps -o ppid= -p "${ancestor_pid}" 2>/dev/null | tr -d '[:space:]')"
+  done
 
   # The bracket in [.] keeps the pattern from matching this bootstrap's own
   # process tree; only real Runner.Listener/Runner.Worker processes match.
   stale_pids="$(pgrep -f 'bin/Runner[.](Listener|Worker)' 2>/dev/null || true)"
-  if [[ -z "${stale_pids}" ]]; then
+  for pid in ${stale_pids}; do
+    if [[ "${protected_pids}" == *" ${pid} "* ]]; then
+      log "skipping runner process ${pid}: part of this script's own process lineage"
+      continue
+    fi
+    target_pids+="${pid} "
+  done
+  if [[ -z "${target_pids}" ]]; then
     return 0
   fi
 
-  log "killing stale runner processes inherited from the base image or a prior generation: $(printf '%s ' ${stale_pids})"
+  log "killing stale runner processes inherited from the base image or a prior generation: $(printf '%s ' ${target_pids})"
   audit_event stale_runner_process_killed
 
-  for pid in ${stale_pids}; do
+  for pid in ${target_pids}; do
     kill -TERM "${pid}" >/dev/null 2>&1 || true
   done
 
   deadline=$((SECONDS + 10))
-  for pid in ${stale_pids}; do
+  for pid in ${target_pids}; do
     while kill -0 "${pid}" >/dev/null 2>&1 && (( SECONDS < deadline )); do
       sleep 0.2
     done

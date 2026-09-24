@@ -116,12 +116,41 @@ describe("Lume watchdog and timeout guards", () => {
       fs.mkdirSync(path.join(runnerRoot, "bin"), { recursive: true });
       const helperCmd = path.join(runnerRoot, "bin", "Runner.Listener");
 
+      // The real pgrep would also match runner infrastructure living on the
+      // host: on GitHub-hosted runners this very test executes under
+      // bin/Runner.Listener -> bin/Runner.Worker -> step bash, and killing
+      // those destroys the runner hosting the CI job. Delegate pattern
+      // matching to the real pgrep, but report only the harness's own
+      // children so no host process can ever be targeted.
+      const stubDir = path.join(directory, "bin-stubs");
+      fs.mkdirSync(stubDir);
+      writeExecutable(path.join(stubDir, "pgrep"), [
+        "#!/bin/bash",
+        "real_pgrep=\"\"",
+        "for candidate in /usr/bin/pgrep /bin/pgrep; do",
+        "  if [[ -x \"${candidate}\" ]]; then real_pgrep=\"${candidate}\"; break; fi",
+        "done",
+        "if [[ -z \"${real_pgrep}\" ]]; then",
+        "  echo 'test pgrep stub: no real pgrep found' >&2",
+        "  exit 127",
+        "fi",
+        "\"${real_pgrep}\" \"$@\" | while read -r pid; do",
+        "  ppid=\"$(ps -o ppid= -p \"${pid}\" 2>/dev/null | tr -d '[:space:]')\"",
+        "  if [[ -n \"${HARNESS_PID:-}\" && \"${ppid}\" == \"${HARNESS_PID}\" ]]; then",
+        "    printf '%s\\n' \"${pid}\"",
+        "  fi",
+        "done",
+        "exit 0"
+      ]);
+
       const result = runBash(
         [
           'source "scripts/lib/github-runner-common.sh"',
           "log() { printf '%s\\n' \"$*\" >&2; }",
           "audit_event() { printf 'audit=%s\\n' \"$1\"; }",
           "eval \"$(sed -n '/^kill_stale_runner_processes() {/,/^}/p' scripts/guest/macos-runner-bootstrap.sh)\"",
+          "export HARNESS_PID=$$",
+          "export PATH=\"${STUB_DIR}:${PATH}\"",
           "bash -c 'exec -a \"${HELPER_CMD}\" sleep 30' &",
           "stale_pid=$!",
           "sleep 0.3",
@@ -130,7 +159,7 @@ describe("Lume watchdog and timeout guards", () => {
           "kill \"${stale_pid}\" >/dev/null 2>&1 || true",
           "wait 2>/dev/null || true"
         ],
-        { HELPER_CMD: helperCmd }
+        { HELPER_CMD: helperCmd, STUB_DIR: stubDir }
       );
 
       expect(result.status).toBe(0);
