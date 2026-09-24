@@ -24,6 +24,7 @@
     "install-lume-project": "tsx src/cli.ts install-lume-project",
     "install-windows-project": "tsx src/cli.ts install-windows-project",
     "lint": "tsc --noEmit -p tsconfig.json",
+    "lume-queued-jobs": "tsx src/cli.ts lume-queued-jobs",
     "render-linux-docker-compose": "tsx src/cli.ts render-linux-docker-compose",
     "render-linux-docker-project-manifest": "tsx src/cli.ts render-linux-docker-project-manifest",
     "render-windows-compose": "tsx src/cli.ts render-windows-compose",
