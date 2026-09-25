@@ -58,7 +58,7 @@
     "validate-image": "tsx src/cli.ts validate-image"
   },
   "dependencies": {
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.3",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
