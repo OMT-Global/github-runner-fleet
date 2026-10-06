@@ -27,7 +27,7 @@ Use this checklist after the first bootstrap render or whenever `project.bootstr
 
 ## Runner Policy
 
-- Ordinary CI jobs use `ubuntu-24.04`. The shell-safe installed-toolchain contract and operational drift detection retain their dedicated self-hosted capability selectors.
+- Ordinary CI jobs use `ubuntu-24.04`. The opt-in installed-toolchain contract retains its dedicated self-hosted selector; API-only drift detection uses hosted Ubuntu 24.04.
 - Docker, service-container, browser, and `container:` workloads require a dedicated compatible runner class.
 - Keep PR checks cheap. Add heavy validation to `scripts/ci/run-extended-validation.sh` instead of the PR lane.
 
