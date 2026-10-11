@@ -97,12 +97,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Compare desired and actual runner pool state"
     );
 
-    expect(driftJob["runs-on"]).toEqual([
-      "self-hosted",
-      "synology",
-      "shell-only",
-      "public"
-    ]);
+    expect(driftJob["runs-on"]).toBe("ubuntu-24.04");
     expect(driftJob.if).toBe(
       "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
     );
