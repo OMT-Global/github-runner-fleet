@@ -23,6 +23,7 @@ pools:
       - OMT-Global/omt-corner-cave
       - OMT-Global/omt-global-structure
       - OMT-Global/omtcornercave.org
+      - OMT-Global/openclaw-control-plane
       - OMT-Global/openclaw-ouro
       - OMT-Global/pocket-parade
       - OMT-Global/Why-fi
