@@ -13,9 +13,9 @@ function expectCodeqlPins(rgSecuritySteps: WorkflowStep[]) {
     .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
     .map((uses) => uses.split("@")[1]);
   expect(codeqlActionVersions).toEqual([
-    "24c54180a607b1449ed407dd24f251e4e9147c8d",
-    "24c54180a607b1449ed407dd24f251e4e9147c8d",
-    "24c54180a607b1449ed407dd24f251e4e9147c8d"
+    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee",
+    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee",
+    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
   ]);
 
   const codeqlSteps = rgSecuritySteps.filter((step): step is { uses: string } =>
@@ -25,7 +25,7 @@ function expectCodeqlPins(rgSecuritySteps: WorkflowStep[]) {
   expect(codeqlVersions).toHaveLength(3);
   expect(new Set(codeqlVersions)).toEqual(
     new Set([
-      "24c54180a607b1449ed407dd24f251e4e9147c8d"
+      "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
     ])
   );
   expect(codeqlSteps.map((step) => step.uses?.split("@")[0])).toEqual([
@@ -50,9 +50,9 @@ describe("security and reusable workflows", () => {
       } else if (mutation === "missing") {
         steps.splice(1, 1);
       } else if (mutation === "mixed") {
-        steps[1].uses = steps[1].uses!.replace(/@.*/, "@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2");
+        steps[1].uses = steps[1].uses!.replace(/@.*/, "@24c54180a607b1449ed407dd24f251e4e9147c8d");
       } else if (mutation === "tag") {
-        for (const step of steps) step.uses = step.uses!.replace(/@.*/, "@v4.38.3");
+        for (const step of steps) step.uses = step.uses!.replace(/@.*/, "@v4.39.0");
       } else {
         steps[1].uses = steps[0].uses;
       }
