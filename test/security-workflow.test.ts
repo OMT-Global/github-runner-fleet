@@ -5,7 +5,61 @@ import { describe, expect, test } from "vitest";
 
 const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
 
+type WorkflowStep = { uses?: string };
+
+function expectCodeqlPins(rgSecuritySteps: WorkflowStep[]) {
+  const codeqlActionVersions = rgSecuritySteps
+    .map((step) => step.uses)
+    .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
+    .map((uses) => uses.split("@")[1]);
+  expect(codeqlActionVersions).toEqual([
+    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee",
+    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee",
+    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+  ]);
+
+  const codeqlSteps = rgSecuritySteps.filter((step): step is { uses: string } =>
+    step.uses?.startsWith("github/codeql-action/") ?? false
+  );
+  const codeqlVersions = codeqlSteps.map((step) => step.uses.split("@")[1]);
+  expect(codeqlVersions).toHaveLength(3);
+  expect(new Set(codeqlVersions)).toEqual(
+    new Set([
+      "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+    ])
+  );
+  expect(codeqlSteps.map((step) => step.uses?.split("@")[0])).toEqual([
+    "github/codeql-action/init",
+    "github/codeql-action/analyze",
+    "github/codeql-action/upload-sarif"
+  ]);
+}
+
 describe("security and reusable workflows", () => {
+  test.each(["wrong", "missing", "mixed", "tag", "duplicate"])(
+    "rejects %s CodeQL subaction pins",
+    (mutation) => {
+      const workflow = YAML.parse(
+        fs.readFileSync(path.resolve(".github/workflows/rg-security.yml"), "utf8")
+      );
+      const steps = (workflow.jobs.security.steps as WorkflowStep[]).filter(
+        (step) => step.uses?.startsWith("github/codeql-action/")
+      );
+      if (mutation === "wrong") {
+        for (const step of steps) step.uses = step.uses!.replace(/@.*/, "@" + "0".repeat(40));
+      } else if (mutation === "missing") {
+        steps.splice(1, 1);
+      } else if (mutation === "mixed") {
+        steps[1].uses = steps[1].uses!.replace(/@.*/, "@24c54180a607b1449ed407dd24f251e4e9147c8d");
+      } else if (mutation === "tag") {
+        for (const step of steps) step.uses = step.uses!.replace(/@.*/, "@v4.39.0");
+      } else {
+        steps[1].uses = steps[0].uses;
+      }
+      expect(() => expectCodeqlPins(steps)).toThrow();
+    }
+  );
+
   test("keeps security scans on GitHub-hosted runners with Security tab upload", () => {
     const workflow = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/security.yml"), "utf8")
@@ -45,7 +99,7 @@ describe("security and reusable workflows", () => {
     });
     expect(workflow.jobs.scorecard["runs-on"]).toBe("ubuntu-latest");
     expect(String(JSON.stringify(workflow))).toContain(
-      "ossf/scorecard-action@v2.4.4"
+      "ossf/scorecard-action@v2.5.0"
     );
     expect(String(JSON.stringify(workflow))).toContain("publish_results");
   });
@@ -73,27 +127,7 @@ describe("security and reusable workflows", () => {
     for (const job of Object.values(rgSecurity.jobs)) {
       expect(job["runs-on"]).toBe("ubuntu-24.04");
     }
-    const rgSecuritySteps = rgSecurity.jobs.security.steps as Array<{ uses?: string }>;
-    const codeqlActionVersions = rgSecuritySteps
-      .map((step) => step.uses)
-      .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
-      .map((uses) => uses.split("@")[1]);
-    expect(codeqlActionVersions).toEqual([
-      "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2",
-      "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2",
-      "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
-    ]);
-
-    const codeqlSteps = rgSecurity.jobs.security.steps.filter((step: { uses?: string }) =>
-      step.uses?.startsWith("github/codeql-action/")
-    );
-    const codeqlVersions = codeqlSteps.map((step: { uses: string }) => step.uses.split("@")[1]);
-    expect(codeqlVersions).toHaveLength(3);
-    expect(new Set(codeqlVersions)).toEqual(
-      new Set([
-        "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
-      ])
-    );
+    expectCodeqlPins(rgSecurity.jobs.security.steps as WorkflowStep[]);
 
     const rgRelease = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/rg-release.yml"), "utf8")
