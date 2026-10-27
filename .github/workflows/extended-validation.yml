@@ -266,6 +266,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: ${{ always() && github.event_name != 'pull_request' }}
     needs:
+      - bootstrap-drift
       - changes
       - fast-checks
       - extended-checks
@@ -275,7 +276,12 @@ jobs:
     steps:
       - name: Check extended validation jobs
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEHAVIOR_CHANGED: ${{ needs.changes.outputs.behavior }}
+          UNKNOWN_CHANGED: ${{ needs.changes.outputs.unknown }}
+          EXTENDED_CHANGED: ${{ needs.changes.outputs.extended }}
           RESULTS: >-
+            bootstrap-drift=${{ needs.bootstrap-drift.result }}
             changes=${{ needs.changes.result }}
             fast-checks=${{ needs.fast-checks.result }}
             extended-checks=${{ needs.extended-checks.result }}
@@ -283,15 +289,64 @@ jobs:
             mutation-tests=${{ needs.mutation-tests.result }}
             validate-secrets=${{ needs.validate-secrets.result }}
         run: |
+          set -euo pipefail
           failed=0
-          for entry in $RESULTS; do
+          declare -A results=()
+          for entry in ${RESULTS:-}; do
             job="${entry%%=*}"
             status="${entry##*=}"
-            if [[ "$status" == "success" || "$status" == "skipped" ]]; then
+            case "$job" in
+              bootstrap-drift|changes|fast-checks|extended-checks|drift-detect|mutation-tests|validate-secrets) ;;
+              *) echo "FAIL unexpected result: $entry"; failed=1; continue ;;
+            esac
+            if [[ "$entry" != "$job=$status" || -n "${results[$job]+present}" ]]; then
+              echo "FAIL duplicate or malformed result: $entry"
+              failed=1
+              continue
+            fi
+            results["$job"]="$status"
+          done
+          expect_status() {
+            local job="$1" expected="$2" status
+            status="${results[$job]:-missing}"
+            if [[ "$status" == "$expected" ]]; then
               echo "OK   $job => $status"
             else
-              echo "FAIL $job => $status"
+              echo "FAIL $job => $status (expected $expected)"
+              failed=1
+            fi
+          }
+          # These jobs are unconditional on every event that can run this gate.
+          expect_status bootstrap-drift success
+          expect_status changes success
+          expect_status validate-secrets success
+          for flag in "${BEHAVIOR_CHANGED:-}" "${UNKNOWN_CHANGED:-}" "${EXTENDED_CHANGED:-}"; do
+            if [[ "$flag" != "true" && "$flag" != "false" ]]; then
+              echo "FAIL missing or invalid change classification: $flag"
               failed=1
             fi
           done
+          case "${EVENT_NAME:-}" in
+            schedule|workflow_dispatch)
+              # The classifier explicitly requests the full suite on these events.
+              if [[ "${BEHAVIOR_CHANGED:-}" != "true" && "${UNKNOWN_CHANGED:-}" != "true" ]]; then
+                echo "FAIL scheduled/manual classification must request the full suite"
+                failed=1
+              fi
+              expect_status drift-detect success
+              ;;
+            push) expect_status drift-detect skipped ;;
+            *) echo "FAIL unsupported or missing event: ${EVENT_NAME:-missing}"; failed=1 ;;
+          esac
+          fast_status=skipped
+          extended_status=skipped
+          if [[ "${BEHAVIOR_CHANGED:-}" == "true" || "${UNKNOWN_CHANGED:-}" == "true" ]]; then
+            fast_status=success
+          fi
+          if [[ "${EXTENDED_CHANGED:-}" == "true" || "${BEHAVIOR_CHANGED:-}" == "true" || "${UNKNOWN_CHANGED:-}" == "true" ]]; then
+            extended_status=success
+          fi
+          expect_status fast-checks "$fast_status"
+          expect_status extended-checks "$extended_status"
+          expect_status mutation-tests "$extended_status"
           exit "$failed"
