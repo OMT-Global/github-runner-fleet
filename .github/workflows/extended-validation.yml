@@ -62,7 +62,7 @@ jobs:
       - name: Require an empty managed-file plan
         env:
           BOOTSTRAP_CLI: ${{ github.workspace }}/.bootstrap-control-plane/dist/cli.js
-          GH_TOKEN: ${{ secrets.RUNNER_FLEET_GITHUB_PAT || github.token }}
+          GH_TOKEN: ${{ secrets.RUNNER_FLEET_GOVERNANCE_READ_PAT || github.token }}
           VERIFY_GITHUB_GOVERNANCE: ${{ github.event_name != 'pull_request' }}
         run: bash scripts/ci/check-bootstrap-drift.sh
 
