@@ -42,13 +42,16 @@ describe("separate Bootstrap governance credential binding", () => {
     expect(Object.keys(globalEnv).sort()).toEqual(["NODE_VERSION", "PYTHON_VERSION"]);
   });
 
-  test("retains the checker's two fail-fast reads and explicit governance opt-in", () => {
+  test("retains both REST reads then one read-only GraphQL query and explicit governance opt-in", () => {
     const checker = fs.readFileSync("scripts/ci/check-bootstrap-drift.sh", "utf8");
     const shell = (body: string) => "$" + "{" + body + "}";
-    expect(checker.split(String.fromCharCode(10)).filter((line) => line.startsWith("gh api "))).toEqual([
+    expect(checker.split(String.fromCharCode(10)).filter((line) => line.startsWith("gh api ")).slice(0, 2)).toEqual([
       'gh api "repos/' + shell("GITHUB_REPOSITORY") + '" > "' + shell("repo_file") + '"',
       'gh api "repos/' + shell("GITHUB_REPOSITORY") + '/branches/' + shell("default_branch") + '/protection" > "' + shell("protection_file") + '"'
     ]);
+    const requests = checker.split(String.fromCharCode(10)).filter((line) => line.startsWith("gh api "));
+    expect(requests).toHaveLength(3);
+    expect(requests[2]).toBe("gh api graphql -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { nameWithOwner autoMergeAllowed deleteBranchOnMerge mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed } }' -f owner=\"${GITHUB_REPOSITORY%%/*}\" -f name=\"${GITHUB_REPOSITORY#*/}\" > \"${graphql_file}\"");
     expect(checker).toContain("set -Eeuo pipefail");
     expect(checker).toContain('if [[ "' + shell("VERIFY_GITHUB_GOVERNANCE:-false") + '" != "true" ]]; then');
     expect(checker).toContain('change.type !== "unchanged"');
