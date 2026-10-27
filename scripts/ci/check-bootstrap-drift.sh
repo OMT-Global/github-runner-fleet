@@ -73,8 +73,10 @@ process.stdout.write(JSON.stringify({
 }));
 NODE
 
+printf 'GitHub governance GET repos/%s\n' "${GITHUB_REPOSITORY}"
 gh api "repos/${GITHUB_REPOSITORY}" > "${repo_file}"
 default_branch="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).defaultBranch)' "${expected_file}")"
+printf 'GitHub governance GET repos/%s/branches/%s/protection\n' "${GITHUB_REPOSITORY}" "${default_branch}"
 gh api "repos/${GITHUB_REPOSITORY}/branches/${default_branch}/protection" > "${protection_file}"
 
 node --input-type=module - "${expected_file}" "${repo_file}" "${protection_file}" <<'NODE'
