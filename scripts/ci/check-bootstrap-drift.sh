@@ -9,7 +9,8 @@ home_dir="$(mktemp -d)"
 expected_file="$(mktemp)"
 repo_file="$(mktemp)"
 protection_file="$(mktemp)"
-trap 'rm -f "${plan_file}" "${expected_file}" "${repo_file}" "${protection_file}"; rm -rf "${home_dir}"' EXIT
+graphql_file="$(mktemp)"
+trap 'rm -f "${plan_file}" "${expected_file}" "${repo_file}" "${protection_file}" "${graphql_file}"; rm -rf "${home_dir}"' EXIT
 
 # Managed-file drift is local; the aggregate CLI plan also queries GitHub.
 # Keep governance API reads in the explicit verification block below.
@@ -73,24 +74,48 @@ process.stdout.write(JSON.stringify({
 }));
 NODE
 
+printf 'GitHub governance GET repos/%s\n' "${GITHUB_REPOSITORY}"
 gh api "repos/${GITHUB_REPOSITORY}" > "${repo_file}"
 default_branch="$(node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).defaultBranch)' "${expected_file}")"
+printf 'GitHub governance GET repos/%s/branches/%s/protection\n' "${GITHUB_REPOSITORY}" "${default_branch}"
 gh api "repos/${GITHUB_REPOSITORY}/branches/${default_branch}/protection" > "${protection_file}"
 
-node --input-type=module - "${expected_file}" "${repo_file}" "${protection_file}" <<'NODE'
+printf 'GitHub governance GraphQL repository settings repos/%s\n' "${GITHUB_REPOSITORY}"
+gh api graphql -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { nameWithOwner autoMergeAllowed deleteBranchOnMerge mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed } }' -f owner="${GITHUB_REPOSITORY%%/*}" -f name="${GITHUB_REPOSITORY#*/}" > "${graphql_file}"
+
+node --input-type=module - "${expected_file}" "${repo_file}" "${protection_file}" "${graphql_file}" "${GITHUB_REPOSITORY}" <<'NODE'
 import fs from "node:fs";
 
-const [expectedPath, repoPath, protectionPath] = process.argv.slice(2);
+const [expectedPath, repoPath, protectionPath, graphqlPath, repository] = process.argv.slice(2);
 const expected = JSON.parse(fs.readFileSync(expectedPath, "utf8"));
 const repo = JSON.parse(fs.readFileSync(repoPath, "utf8"));
 const protection = JSON.parse(fs.readFileSync(protectionPath, "utf8"));
+function unreadableSettings() {
+  console.error("bootstrap GitHub governance repository settings are unreadable");
+  process.exit(1);
+}
+let graphql;
+try {
+  graphql = JSON.parse(fs.readFileSync(graphqlPath, "utf8"));
+} catch {
+  unreadableSettings();
+}
+if (!graphql || typeof graphql !== "object" || Array.isArray(graphql)) unreadableSettings();
+const invalidErrors = Object.hasOwn(graphql, "errors") && (!Array.isArray(graphql.errors) || graphql.errors.length > 0);
+const settings = graphql.data?.repository;
+const settingFields = ["autoMergeAllowed", "deleteBranchOnMerge", "mergeCommitAllowed", "squashMergeAllowed", "rebaseMergeAllowed"];
+const wrongRepository = settings?.nameWithOwner !== repository;
+if (invalidErrors || !settings || typeof settings !== "object" || Array.isArray(settings) || wrongRepository ||
+    settingFields.some((field) => typeof settings[field] !== "boolean")) {
+  unreadableSettings();
+}
 const actual = {
   defaultBranch: repo.default_branch,
-  autoMerge: repo.allow_auto_merge,
-  deleteBranchOnMerge: repo.delete_branch_on_merge,
-  allowMergeCommit: repo.allow_merge_commit,
-  allowSquashMerge: repo.allow_squash_merge,
-  allowRebaseMerge: repo.allow_rebase_merge,
+  autoMerge: settings.autoMergeAllowed,
+  deleteBranchOnMerge: settings.deleteBranchOnMerge,
+  allowMergeCommit: settings.mergeCommitAllowed,
+  allowSquashMerge: settings.squashMergeAllowed,
+  allowRebaseMerge: settings.rebaseMergeAllowed,
   enforceLinearHistory: protection.required_linear_history?.enabled ?? false,
   requiredApprovals: protection.required_pull_request_reviews?.required_approving_review_count ?? 0,
   dismissStaleReviews: protection.required_pull_request_reviews?.dismiss_stale_reviews ?? false,
