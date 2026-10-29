@@ -41,7 +41,7 @@ describe("runner version helpers", () => {
   });
 
   test("reads the canonical disabled-update runner version", () => {
-    expect(readCanonicalRunnerVersion()).toBe("2.337.0");
+    expect(readCanonicalRunnerVersion()).toBe("2.338.0");
   });
 
   test("computes whole days since the latest runner release", () => {
