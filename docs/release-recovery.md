@@ -21,7 +21,12 @@ reusable-release smoke caller.
    does not rebuild, replace, re-sign, or re-attest the digest. A release without its final
    image is inconsistent and cannot authorize a replacement image.
 3. Build only the candidate. Sign the index and its platform digests, attach the
-   SBOM and emit GitHub Actions SLSA v1 provenance. Signing/SBOM retries are bounded
+   complete SPDX SBOM with Cosign 3.1.4 and a Rekor v2 signing configuration derived
+   from verified Sigstore TUF metadata, and emit GitHub Actions SLSA v1 provenance.
+   The signing configuration retains the default certificate/identity/timestamp
+   services, permits only Rekor v2 logs, and fails closed if v2 or timestamping is
+   unavailable. This avoids sending a large DSSE envelope to Rekor v1; the full
+   signed SBOM remains attached to the immutable image and its timestamp is verified. Signing/SBOM retries are bounded
    to three attempts, with each command bounded to five minutes and retained diagnostics.
 4. Verify the index signature, SBOM and SLSA attestation. The successfully verified
    SLSA statement must bind both the image digest and this exact `main` source SHA.

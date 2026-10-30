@@ -81,6 +81,30 @@ jobs:
           fi
 
       - uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      - name: Resolve SBOM signing config from verified TUF metadata
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_LOG_DIR"
+          cosign signing-config create --with-default-rekor-v2 --out "$RELEASE_LOG_DIR/sbom-signing-config.json"
+          node --input-type=module <<'EOF'
+          import fs from "node:fs";
+          import path from "node:path";
+          const file = path.join(process.env.RELEASE_LOG_DIR, "sbom-signing-config.json");
+          const config = JSON.parse(fs.readFileSync(file, "utf8"));
+          const logs = (config.rekorTlogUrls ?? []).filter((service) => service.majorApiVersion === 2);
+          if (logs.length === 0 || !config.tsaUrls?.length || !config.tsaConfig?.selector) {
+            throw new Error("TUF signing config must provide Rekor v2 and signed timestamps");
+          }
+          for (const service of [...logs, ...config.tsaUrls]) {
+            if (new URL(service.url).protocol !== "https:") throw new Error("Sigstore services must use HTTPS");
+          }
+          // Full SPDX stays in the signed registry bundle; never fall back to sending it to Rekor v1.
+          config.rekorTlogUrls = logs;
+          fs.writeFileSync(file, JSON.stringify(config));
+          EOF
 
       - id: release_meta
         run: |
@@ -178,6 +202,7 @@ jobs:
         if: ${{ steps.release_state.outputs.publish_required == 'true' }}
         run: |
           bash scripts/retry-release-command.sh attest-sbom cosign attest --yes \
+            --signing-config "$RELEASE_LOG_DIR/sbom-signing-config.json" \
             --predicate /tmp/github-runner-fleet.spdx.json \
             --type spdxjson \
             "${{ steps.release_meta.outputs.image_repo }}@${{ steps.image_digest.outputs.digest }}"
@@ -200,7 +225,7 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "${subject}" 2>&1 | tee /tmp/cosign-signature-verify.log
           timeout 5m cosign verify-attestation \
-            --type spdxjson \
+            --type spdxjson --use-signed-timestamps \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "${subject}" 2>&1 | tee /tmp/cosign-sbom-verify.log
