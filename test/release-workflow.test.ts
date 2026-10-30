@@ -197,6 +197,13 @@ describe("release workflow", () => {
     expect(promoteIndex).toBeGreaterThan(verifyIndex);
     const runtimeIndices = steps.flatMap((step, index) => String(step.run).includes("Runner.Listener --version") ? [index] : []);
     expect(runtimeIndices).toHaveLength(2);
+    const clearReferenceIndex = steps.findIndex(
+      (step) => step.name === "Clear local digest reference between platform probes"
+    );
+    expect(clearReferenceIndex).toBeGreaterThan(runtimeIndices[0]);
+    expect(clearReferenceIndex).toBeLessThan(runtimeIndices[1]);
+    expect(steps[clearReferenceIndex].if).toBeUndefined();
+    expect(steps[clearReferenceIndex]["continue-on-error"]).toBeUndefined();
     for (const index of runtimeIndices) {
       expect(index).toBeLessThan(promoteIndex);
       expect(index).toBeGreaterThan(verifyIndex);
