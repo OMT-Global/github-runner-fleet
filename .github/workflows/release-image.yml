@@ -216,25 +216,42 @@ jobs:
           push-to-registry: true
 
       - name: Verify image signature and attestations
+        timeout-minutes: 17
         run: |
           set -euo pipefail
           mkdir -p "$RELEASE_LOG_DIR"
           subject="${{ steps.release_meta.outputs.image_repo }}@${{ steps.image_digest.outputs.digest }}"
-          timeout 5m cosign verify \
+          verify() {
+            local name="$1" status
+            shift
+            printf 'Verifying %s...\n' "$name"
+            # Full attestations can be tens of MB; keep them off the Actions console.
+            if timeout --kill-after=10s 5m "$@" \
+              > "$RELEASE_LOG_DIR/verified-$name.json" \
+              2> "$RELEASE_LOG_DIR/$name-stderr.log"; then
+              printf 'Verified %s.\n' "$name"
+            else
+              status=$?
+              printf 'Verification %s failed (exit %s); see diagnostic artifact.\n' "$name" "$status" >&2
+              return "$status"
+            fi
+          }
+          verify signature cosign verify \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${subject}" 2>&1 | tee /tmp/cosign-signature-verify.log
-          timeout 5m cosign verify-attestation \
+            "${subject}"
+          verify sbom cosign verify-attestation \
             --type spdxjson --use-signed-timestamps \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${subject}" 2>&1 | tee /tmp/cosign-sbom-verify.log
-          timeout 5m cosign verify-attestation \
+            "${subject}"
+          verify provenance cosign verify-attestation \
             --type slsaprovenance1 \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/release-image.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "${subject}" > "$RELEASE_LOG_DIR/verified-provenance.json" 2> "$RELEASE_LOG_DIR/provenance-stderr.log"
+            "${subject}"
           node scripts/release-guard.mjs source "$RELEASE_LOG_DIR/verified-provenance.json" "${{ steps.image_digest.outputs.digest }}"
+          printf 'Verified signature, complete SBOM and reviewed-source provenance.\n'
 
       - run: |
           timeout 5m docker run --rm --platform linux/amd64 --env EXPECTED_RUNNER_VERSION="$(cat .runner-version)" --entrypoint /bin/bash "${{ steps.release_meta.outputs.image_repo }}@${{ steps.image_digest.outputs.digest }}" -lc \
@@ -283,7 +300,8 @@ jobs:
             --generate-notes
 
       - name: Preserve verification diagnostics
-        if: ${{ failure() }}
+        if: ${{ always() }}
+        timeout-minutes: 3
         uses: actions/upload-artifact@v7
         with:
           name: release-verification-diagnostics-${{ github.run_attempt }}
