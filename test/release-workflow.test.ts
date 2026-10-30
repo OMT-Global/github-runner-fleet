@@ -188,9 +188,10 @@ describe("release workflow", () => {
     const promoteIndex = steps.findIndex(
       (step) => step.name === "Promote verified digest to final tag"
     );
-    expect(String(steps[verifyIndex]?.run)).toContain("timeout 5m cosign verify");
+    expect(String(steps[verifyIndex]?.run)).toContain('timeout --kill-after=10s 5m "$@"');
+    expect(String(steps[verifyIndex]?.run)).toContain("verify signature cosign verify");
     expect(String(steps[verifyIndex]?.run)).toContain(
-      "timeout 5m cosign verify-attestation"
+      "verify sbom cosign verify-attestation"
     );
     expect(perPlatformSignIndex).toBeLessThan(promoteIndex);
     expect(promoteIndex).toBeGreaterThan(verifyIndex);
@@ -212,7 +213,7 @@ describe("release workflow", () => {
       steps.some(
         (step) =>
           step.name === "Preserve verification diagnostics" &&
-          step.if === "${{ failure() }}" &&
+          step.if === "${{ always() }}" &&
           step.uses === "actions/upload-artifact@v7"
       )
     ).toBe(true);
