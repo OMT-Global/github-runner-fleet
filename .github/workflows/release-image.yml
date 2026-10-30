@@ -257,6 +257,11 @@ jobs:
           timeout 5m docker run --rm --platform linux/amd64 --env EXPECTED_RUNNER_VERSION="$(cat .runner-version)" --entrypoint /bin/bash "${{ steps.release_meta.outputs.image_repo }}@${{ steps.image_digest.outputs.digest }}" -lc \
             'set -euo pipefail; test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "$EXPECTED_RUNNER_VERSION" && test "$(cat /.runner-version)" = "$EXPECTED_RUNNER_VERSION" && command -v pgrep && pgrep --version && docker --version && node --version && python3 --version && terraform version'
 
+      - name: Clear local digest reference between platform probes
+        # Classic Docker stores one platform per digest reference (moby/moby#43188).
+        # Remove only this job's local reference; both probes retain the verified index.
+        run: docker image rm "${{ steps.release_meta.outputs.image_repo }}@${{ steps.image_digest.outputs.digest }}"
+
       - run: |
           timeout 5m docker run --rm --platform linux/arm64 --env EXPECTED_RUNNER_VERSION="$(cat .runner-version)" --entrypoint /bin/bash "${{ steps.release_meta.outputs.image_repo }}@${{ steps.image_digest.outputs.digest }}" -lc \
             'set -euo pipefail; test "$(cd /actions-runner && ./bin/Runner.Listener --version)" = "$EXPECTED_RUNNER_VERSION" && test "$(cat /.runner-version)" = "$EXPECTED_RUNNER_VERSION" && command -v pgrep && pgrep --version && docker --version && node --version && python3 --version && terraform version'
