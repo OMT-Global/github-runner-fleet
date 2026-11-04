@@ -13,9 +13,9 @@ function expectCodeqlPins(rgSecuritySteps: WorkflowStep[]) {
     .filter((uses): uses is string => uses?.startsWith("github/codeql-action/") ?? false)
     .map((uses) => uses.split("@")[1]);
   expect(codeqlActionVersions).toEqual([
-    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee",
-    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee",
-    "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+    "9b3254085494b55a0f7c4c2b3d2d52cc712ce370",
+    "9b3254085494b55a0f7c4c2b3d2d52cc712ce370",
+    "9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
   ]);
 
   const codeqlSteps = rgSecuritySteps.filter((step): step is { uses: string } =>
@@ -25,7 +25,7 @@ function expectCodeqlPins(rgSecuritySteps: WorkflowStep[]) {
   expect(codeqlVersions).toHaveLength(3);
   expect(new Set(codeqlVersions)).toEqual(
     new Set([
-      "6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+      "9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
     ])
   );
   expect(codeqlSteps.map((step) => step.uses?.split("@")[0])).toEqual([
