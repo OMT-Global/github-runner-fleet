@@ -80,7 +80,7 @@ jobs:
             exit 1
           fi
 
-      - uses: sigstore/cosign-installer@v4.1.2
+      - uses: sigstore/cosign-installer@v4.1.3
         with:
           cosign-release: v3.1.4
 
