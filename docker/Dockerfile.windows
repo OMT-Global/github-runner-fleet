@@ -5,6 +5,7 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2022
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]
 
 COPY .runner-version C:/.runner-version
+COPY .runner-checksums C:/.runner-checksums
 
 ENV RUNNER_SOURCE_HOME="C:\\actions-runner" `
     RUNNER_TEMP="C:\\github-runner-temp" `
@@ -23,7 +24,11 @@ WORKDIR C:\\actions-runner
 RUN $runnerVersion = (Get-Content C:\.runner-version -Raw).Trim(); `
     $runnerZip = 'actions-runner-win-x64-' + $runnerVersion + '.zip'; `
     $runnerUrl = 'https://github.com/actions/runner/releases/download/v' + $runnerVersion + '/' + $runnerZip; `
+    $expectedSha256 = @(Get-Content C:\.runner-checksums | ForEach-Object { $parts = $_.Trim() -split '\s+'; if ($parts.Count -eq 2 -and $parts[1] -eq $runnerZip) { $parts[0].ToLowerInvariant() } }); `
+    if ($expectedSha256.Count -ne 1) { throw ('.runner-checksums must list exactly one digest for ' + $runnerZip) }; `
     Invoke-WebRequest -Uri $runnerUrl -OutFile $runnerZip; `
+    $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $runnerZip).Hash.ToLowerInvariant(); `
+    if ($actualSha256 -ne $expectedSha256[0]) { Remove-Item $runnerZip; throw ('SHA-256 mismatch for ' + $runnerZip + ': got ' + $actualSha256) }; `
     Expand-Archive -Path $runnerZip -DestinationPath $env:RUNNER_SOURCE_HOME; `
     Remove-Item $runnerZip
 

@@ -73,12 +73,38 @@ kill_stale_runner_processes() {
   done
 }
 
+runner_file_sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    sha256sum "$1" | awk '{print $1}'
+  fi
+}
+
+expected_runner_sha256() {
+  local expected
+  expected="$(printf '%s' "${RUNNER_SHA256:-}" | tr '[:upper:]' '[:lower:]')"
+  if [[ ! "${expected}" =~ ^[0-9a-f]{64}$ ]]; then
+    log "RUNNER_SHA256 must be the 64-character SHA-256 of the runner archive; refusing to install an unverified runner" >&2
+    return 1
+  fi
+  printf '%s\n' "${expected}"
+}
+
 download_runner_bundle() {
   local asset_name="actions-runner-osx-arm64-${RUNNER_VERSION}.tar.gz"
   local archive_path="${RUNNER_ROOT}/${asset_name}"
   local download_url="${RUNNER_DOWNLOAD_URL:-https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${asset_name}}"
+  local expected_sha256
+  local actual_sha256
 
+  expected_sha256="$(expected_runner_sha256)"
   mkdir -p "${RUNNER_ROOT}"
+
+  if [[ -f "${archive_path}" && "$(runner_file_sha256 "${archive_path}")" != "${expected_sha256}" ]]; then
+    log "discarding cached ${asset_name}: SHA-256 does not match RUNNER_SHA256"
+    rm -f "${archive_path}"
+  fi
 
   if [[ ! -f "${archive_path}" ]]; then
     curl -fsSL \
@@ -88,6 +114,14 @@ download_runner_bundle() {
       -o "${archive_path}" "${download_url}"
   fi
 
+  actual_sha256="$(runner_file_sha256 "${archive_path}")"
+  if [[ "${actual_sha256}" != "${expected_sha256}" ]]; then
+    rm -f "${archive_path}"
+    log "SHA-256 mismatch for ${asset_name}: expected ${expected_sha256}, got ${actual_sha256}"
+    audit_event runner_archive_checksum_mismatch
+    return 1
+  fi
+
   rm -rf "${RUNNER_ROOT}/bin" "${RUNNER_ROOT}/externals"
   find "${RUNNER_ROOT}" -mindepth 1 -maxdepth 1 \
     ! -name "${asset_name}" \
@@ -95,12 +129,17 @@ download_runner_bundle() {
     -exec rm -rf {} +
   tar -xzf "${archive_path}" -C "${RUNNER_ROOT}"
   printf '%s\n' "${RUNNER_VERSION}" > "${RUNNER_ROOT}/.runner-version"
+  printf '%s\n' "${expected_sha256}" > "${RUNNER_ROOT}/.runner-sha256"
 }
 
 prepare_runner_home() {
   local work_link="${RUNNER_ROOT}/_work"
 
-  if [[ ! -x "${RUNNER_ROOT}/config.sh" ]] || [[ ! -f "${RUNNER_ROOT}/.runner-version" ]] || [[ "$(cat "${RUNNER_ROOT}/.runner-version")" != "${RUNNER_VERSION}" ]]; then
+  if [[ ! -x "${RUNNER_ROOT}/config.sh" ]] \
+    || [[ ! -f "${RUNNER_ROOT}/.runner-version" ]] \
+    || [[ "$(cat "${RUNNER_ROOT}/.runner-version")" != "${RUNNER_VERSION}" ]] \
+    || [[ ! -f "${RUNNER_ROOT}/.runner-sha256" ]] \
+    || [[ "$(cat "${RUNNER_ROOT}/.runner-sha256")" != "$(expected_runner_sha256)" ]]; then
     download_runner_bundle
   fi
 
@@ -137,6 +176,7 @@ require_env RUNNER_NAME
 require_env RUNNER_ROOT
 require_env RUNNER_WORK_DIR
 require_env RUNNER_VERSION
+require_env RUNNER_SHA256
 
 : "${AUDIT_LOG_FILE:=${RUNNER_ROOT}/audit.jsonl}"
 mkdir -p "$(dirname "${AUDIT_LOG_FILE}")"
