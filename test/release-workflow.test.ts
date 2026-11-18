@@ -47,17 +47,17 @@ describe("release workflow", () => {
       default: true
     });
 
-    expect(steps.some((step) => step.uses === "docker/setup-qemu-action@v4")).toBe(
+    expect(steps.some((step) => step.uses === "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1")).toBe(
       true
     );
-    expect(steps.some((step) => step.uses === "docker/setup-buildx-action@v4")).toBe(
+    expect(steps.some((step) => step.uses === "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069")).toBe(
       true
     );
-    expect(steps.some((step) => step.uses === "docker/login-action@v4.7.0")).toBe(true);
+    expect(steps.some((step) => step.uses === "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6")).toBe(true);
     expect(
-      steps.some((step) => step.uses === "sigstore/cosign-installer@v4.1.2")
+      steps.some((step) => step.uses === "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6")
     ).toBe(true);
-    expect(steps.some((step) => step.uses === "anchore/sbom-action@v0")).toBe(true);
+    expect(steps.some((step) => step.uses === "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610")).toBe(true);
     expect(
       steps.some((step) => step.uses === "actions/attest-build-provenance@v4")
     ).toBe(true);
@@ -243,5 +243,24 @@ describe("release workflow", () => {
           step.run.includes("verification completed without mutation")
       )
     ).toBe(true);
+  });
+});
+
+describe("release workflow supply chain", () => {
+  test("pins every third-party action in the privileged release workflow to a commit SHA", () => {
+    const raw = fs.readFileSync(path.resolve(".github/workflows/release-image.yml"), "utf8");
+    const uses = [...raw.matchAll(/^\s*(?:-\s+)?uses:\s*(\S+)(.*)$/gm)].map((match) => ({
+      ref: match[1],
+      trailer: match[2].trim()
+    }));
+    const thirdParty = uses.filter(
+      ({ ref }) => !ref.startsWith("./") && !ref.startsWith("actions/")
+    );
+
+    expect(thirdParty.length).toBeGreaterThanOrEqual(6);
+    for (const { ref, trailer } of thirdParty) {
+      expect(ref, `${ref} must be pinned to a full commit SHA`).toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/);
+      expect(trailer, `${ref} needs a "# vX.Y.Z" comment for Dependabot`).toMatch(/^# v\d+\.\d+\.\d+$/);
+    }
   });
 });
