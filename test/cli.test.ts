@@ -1732,17 +1732,26 @@ describe("cli integration", () => {
     const fixture = createCliFixture();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-11T17:45:55Z"));
+    const latestRelease = {
+      tag_name: "v2.336.0",
+      published_at: "2026-07-20T17:45:55Z",
+      html_url: "https://github.com/actions/runner/releases/tag/v2.336.0"
+    };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
+      vi.fn(async (url: string) => ({
         ok: true,
         status: 200,
         text: async () =>
-          JSON.stringify({
-            tag_name: "v2.336.0",
-            published_at: "2026-07-20T17:45:55Z",
-            html_url: "https://github.com/actions/runner/releases/tag/v2.336.0"
-          })
+          JSON.stringify(
+            String(url).includes("/releases?")
+              ? [
+                  latestRelease,
+                  { tag_name: "v2.336.0-rc.1", published_at: "2026-07-01T00:00:00Z", prerelease: true },
+                  { tag_name: "v2.335.1", published_at: "2026-06-09T01:32:05Z" }
+                ]
+              : latestRelease
+          )
       }))
     );
 
@@ -1764,7 +1773,29 @@ describe("cli integration", () => {
         outdated: true,
         blocked: true,
         failAfterDays: 21,
-        publishedAt: "2026-07-20T17:45:55Z"
+        publishedAt: "2026-07-20T17:45:55Z",
+        supersededBy: "2.336.0",
+        ageDays: 22,
+        daysUntilCutoff: 8
+      })
+    );
+
+    const behindTwoReleases = await invokeCli([
+      "check-runner-version",
+      "--env",
+      fixture.envPath,
+      "--current",
+      "2.334.0",
+      "--fail-after-days",
+      "21"
+    ]);
+    expect(behindTwoReleases.exitCode).toBe(1);
+    expect(JSON.parse(behindTwoReleases.stdout)).toEqual(
+      expect.objectContaining({
+        latest: "2.336.0",
+        supersededBy: "2.335.1",
+        ageDays: 63,
+        blocked: true
       })
     );
 
