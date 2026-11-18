@@ -53,7 +53,7 @@ if [[ -n "${RUNNER_VERSION:-}" && "${RUNNER_VERSION#v}" != "${CANONICAL_RUNNER_V
   exit 1
 fi
 RUNNER_VERSION="${CANONICAL_RUNNER_VERSION}"
-: "${NODE_VERSION:=18.20.8}"
+: "${NODE_VERSION:=24.22.3}"
 : "${TERRAFORM_VERSION:=1.6.6}"
 
 if [[ -n "${PUSH_FLAG}" && "${PLATFORM_WAS_SET}" -eq 0 ]]; then

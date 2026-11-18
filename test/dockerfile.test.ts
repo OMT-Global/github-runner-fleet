@@ -23,7 +23,9 @@ describe("Dockerfile packaging", () => {
     expect(dockerfile).not.toContain("ARG RUNNER_VERSION");
     expect(dockerfile).toContain("COPY .runner-version /.runner-version");
     expect(dockerfile).toContain('runner_version="$(cat /.runner-version)"');
-    expect(dockerfile).toContain("ARG NODE_VERSION=18.20.8");
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.22.3");
+    expect(dockerfile).not.toContain("/opt/node18");
+    expect(dockerfile).toContain('tar -xJf "${node_archive}" -C /opt/node --strip-components=1');
     expect(dockerfile).toContain("ARG TERRAFORM_VERSION=1.6.6");
     expect(dockerfile).toContain("RUNNER_TEMP=/tmp/github-runner-temp");
     expect(dockerfile).toContain("RUNNER_TOOL_CACHE=/opt/hostedtoolcache");

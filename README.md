@@ -90,7 +90,7 @@ flowchart LR
 
 - A custom multi-arch runner image based on the official `actions/runner` tarballs
 - Built-in shell-job baseline tooling:
-  - Node.js `18.20.8`
+  - Node.js `24.22.3` (LTS)
   - Python `3.12`
   - Terraform `1.6.6`
   - Docker CLI for the dedicated Linux Docker plane
@@ -369,8 +369,8 @@ Use that action on self-hosted Synology runners where `actions/setup-node` would
 
 The shell-only runner image directly supports these job profiles without Docker or service containers:
 
-- Node `18` plus `npm` with `actions/cache`
-- Node `24` when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
+- Node `24` (LTS) plus `npm` with `actions/cache`
+- Other Node lines when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
 - Python `3.12` plus `pip` with `actions/cache`
 - `actions/setup-python@v6` when `python-version: '3.12'`
 - Terraform `1.6.6` plus plugin-cache directories under `RUNNER_TEMP`
