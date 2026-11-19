@@ -19,7 +19,7 @@ describe("Dockerfile packaging", () => {
       "utf8"
     );
 
-    expect(dockerfile).toContain("FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm");
+    expect(dockerfile).toContain("FROM --platform=$TARGETPLATFORM python:3.15-slim-bookworm");
     expect(dockerfile).not.toContain("ARG RUNNER_VERSION");
     expect(dockerfile).toContain("COPY .runner-version .runner-checksums /");
     expect(dockerfile).toContain('runner_version="$(cat /.runner-version)"');

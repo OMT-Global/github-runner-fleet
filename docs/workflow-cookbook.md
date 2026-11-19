@@ -7,7 +7,7 @@ This guide is for downstream repositories that want to consume the runner contra
 | Job class | Synology shell-only pool | Linux Docker pool | Windows Docker pool | Lume macOS pool | GitHub-hosted runners | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | Node install, lint, test, build | Yes | Yes | Case-by-case | Usually unnecessary | Yes | On Synology, use `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node` instead of `actions/setup-node`. |
-| Python 3.12 lint/test | Yes | Yes | Case-by-case | Optional | Yes | `actions/setup-python@v6` with `python-version: '3.12'` resolves locally on the Synology image. Other Python versions should stay hosted unless you control the full toolchain. |
+| Python 3.15 lint/test | Yes | Yes | Case-by-case | Optional | Yes | `actions/setup-python@v6` with `python-version: '3.15'` resolves locally on the Synology image. Other Python versions should stay hosted unless you control the full toolchain. |
 | Terraform fmt/validate/init without cloud sidecars | Yes | Yes | Case-by-case | Optional | Yes | Keep plugin cache under `RUNNER_TEMP` or another writable container-local path. |
 | Docs checks, markdown lint, shell validation | Yes | Yes | Case-by-case | Optional | Yes | Good fit for the shell-only pool when the job only needs baked-in CLI tools. |
 | Release image builds, Buildx, QEMU, registry publish | No | Yes | No | No | Yes | Use Linux Docker for trusted private workloads; keep untrusted or public fork builds hosted. |
@@ -176,7 +176,7 @@ jobs:
 
 Use this pattern whenever the repository is public or accepts outside contributions.
 
-## Recipe: Python 3.12 on shell-safe self-hosted Linux
+## Recipe: Python 3.15 on shell-safe self-hosted Linux
 
 Use this when the job only needs the built-in Python toolchain shipped in the runner image.
 
@@ -198,7 +198,7 @@ jobs:
       - run: mkdir -p "$RUNNER_TEMP" "$RUNNER_TOOL_CACHE"
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.15'
       - run: python --version
       - run: python -m pip install -r requirements-dev.txt
       - run: pytest

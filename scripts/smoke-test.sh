@@ -124,7 +124,7 @@ verify_python_toolcache() {
       test -L "${python_cache_root}/${python_arch}"
       test -f "${python_cache_root}/${python_arch}.complete"
       test "$(readlink -f "${python_cache_root}/${python_arch}")" = "/usr/local"
-      python3.12 --version
+      python3.15 --version
       python --version
     '
 }

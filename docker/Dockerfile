@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm
+FROM --platform=$TARGETPLATFORM python:3.15-slim-bookworm
 
 ARG TARGETARCH
 ARG NODE_VERSION=24.22.3
