@@ -19,14 +19,23 @@ describe("Dockerfile packaging", () => {
       "utf8"
     );
 
-    expect(dockerfile).toContain("FROM --platform=$TARGETPLATFORM python:3.15-slim-bookworm");
+    expect(dockerfile).toContain("FROM --platform=$TARGETPLATFORM python:3.15-slim-trixie");
     expect(dockerfile).not.toContain("ARG RUNNER_VERSION");
     expect(dockerfile).toContain("COPY .runner-version .runner-checksums /");
     expect(dockerfile).toContain('runner_version="$(cat /.runner-version)"');
-    expect(dockerfile).toContain("ARG NODE_VERSION=24.22.3");
+    expect(dockerfile).toContain("ARG NODE_VERSION=26.13.1");
+    expect(dockerfile).toContain("ARG COREPACK_VERSION=0.36.0");
+    expect(dockerfile).toContain('npm install --global --no-fund --no-audit --no-update-notifier "corepack@\${COREPACK_VERSION}"');
+    expect(dockerfile.indexOf("corepack --version")).toBeGreaterThan(dockerfile.indexOf('"corepack@\${COREPACK_VERSION}"'));
     expect(dockerfile).not.toContain("/opt/node18");
     expect(dockerfile).toContain('tar -xJf "${node_archive}" -C /opt/node --strip-components=1');
-    expect(dockerfile).toContain("ARG TERRAFORM_VERSION=1.6.6");
+    expect(dockerfile).toContain("ARG TERRAFORM_VERSION=1.17.2");
+    expect(dockerfile).toContain("ARG GO_VERSION=1.27.4");
+    expect(dockerfile).toMatch(/^ARG GO_SHA256_AMD64=[0-9a-f]{64}$/m);
+    expect(dockerfile).toMatch(/^ARG GO_SHA256_ARM64=[0-9a-f]{64}$/m);
+    expect(dockerfile).toContain(`printf '%s  %s\\n' "\${go_sha256}" "\${go_archive}" | sha256sum -c -`);
+    expect(dockerfile).not.toContain("golang-go");
+    expect(dockerfile).not.toMatch(/download\.docker\.com\/linux\/debian bookworm/);
     expect(dockerfile).toContain("RUNNER_TEMP=/tmp/github-runner-temp");
     expect(dockerfile).toContain("RUNNER_TOOL_CACHE=/opt/hostedtoolcache");
     expect(dockerfile).toContain("AGENT_TOOLSDIRECTORY=/opt/hostedtoolcache");

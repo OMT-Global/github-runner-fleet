@@ -1,10 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-FROM --platform=$TARGETPLATFORM python:3.15-slim-bookworm
+FROM --platform=$TARGETPLATFORM python:3.15-slim-trixie
 
 ARG TARGETARCH
-ARG NODE_VERSION=24.22.3
-ARG TERRAFORM_VERSION=1.6.6
+ARG NODE_VERSION=26.13.1
+# Node.js 25+ no longer bundles corepack; install it from npm, pinned.
+ARG COREPACK_VERSION=0.36.0
+ARG TERRAFORM_VERSION=1.17.2
+ARG GO_VERSION=1.27.4
+# Pinned digests from go.dev/dl for GO_VERSION; override all three together.
+ARG GO_SHA256_AMD64=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+ARG GO_SHA256_ARM64=3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
 
 COPY .runner-version .runner-checksums /
 
@@ -33,13 +39,12 @@ RUN apt-get update \
       unzip \
       xz-utils \
       zstd \
-      golang-go \
     && rm -rf /var/lib/apt/lists/*
 
 RUN install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "${VERSION_CODENAME}") stable" > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
@@ -49,8 +54,8 @@ RUN useradd --create-home --home-dir /home/runner --shell /bin/bash runner \
     && chown -R runner:runner /home/runner "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node
 
 RUN case "${TARGETARCH}" in \
-      amd64) node_arch="x64"; terraform_arch="amd64"; python_arch="x64" ;; \
-      arm64) node_arch="arm64"; terraform_arch="arm64"; python_arch="arm64" ;; \
+      amd64) node_arch="x64"; terraform_arch="amd64"; python_arch="x64"; go_arch="amd64"; go_sha256="${GO_SHA256_AMD64}" ;; \
+      arm64) node_arch="arm64"; terraform_arch="arm64"; python_arch="arm64"; go_arch="arm64"; go_sha256="${GO_SHA256_ARM64}" ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && python_version="$(python3 -c 'import platform; print(platform.python_version())')" \
@@ -69,13 +74,22 @@ RUN case "${TARGETARCH}" in \
     && ln -sf /opt/node/bin/node /usr/local/bin/node \
     && ln -sf /opt/node/bin/npm /usr/local/bin/npm \
     && ln -sf /opt/node/bin/npx /usr/local/bin/npx \
+    && npm install --global --no-fund --no-audit --no-update-notifier "corepack@${COREPACK_VERSION}" \
+    && corepack --version \
     && rm -f "${node_archive}" SHASUMS256.txt \
     && terraform_archive="terraform_${TERRAFORM_VERSION}_linux_${terraform_arch}.zip" \
     && curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${terraform_archive}" \
     && curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_SHA256SUMS" \
     && grep " ${terraform_archive}\$" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" | sha256sum -c - \
     && unzip -q "${terraform_archive}" -d /usr/local/bin \
-    && rm -f "${terraform_archive}" "terraform_${TERRAFORM_VERSION}_SHA256SUMS"
+    && rm -f "${terraform_archive}" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" \
+    && go_archive="go${GO_VERSION}.linux-${go_arch}.tar.gz" \
+    && curl -fsSLO "https://dl.google.com/go/${go_archive}" \
+    && printf '%s  %s\n' "${go_sha256}" "${go_archive}" | sha256sum -c - \
+    && tar -xzf "${go_archive}" -C /usr/local --no-same-owner \
+    && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && rm -f "${go_archive}"
 
 WORKDIR ${RUNNER_SOURCE_HOME}
 

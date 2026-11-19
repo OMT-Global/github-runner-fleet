@@ -160,7 +160,7 @@ jobs:
           npm config get cache
           cat > .tmp/ci-shell-safe/terraform/main.tf <<'EOF'
           terraform {
-            required_version = "= 1.6.6"
+            required_version = "= 1.17.2"
           }
           EOF
           terraform -chdir=.tmp/ci-shell-safe/terraform init -backend=false
