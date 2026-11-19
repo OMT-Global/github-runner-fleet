@@ -90,9 +90,10 @@ flowchart LR
 
 - A custom multi-arch runner image based on the official `actions/runner` tarballs
 - Built-in shell-job baseline tooling:
-  - Node.js `24.22.3` (LTS)
+  - Node.js `26.13.1` (LTS)
   - Python `3.15`
-  - Terraform `1.6.6`
+  - Terraform `1.17.2`
+  - Go `1.27.4`
   - Docker CLI for the dedicated Linux Docker plane
   - `git`, `bash`, `tar`, `zstd`, and `procps`
 - No Docker socket mounts on the Synology shell-only plane
@@ -369,16 +370,16 @@ Use that action on self-hosted Synology runners where `actions/setup-node` would
 
 The shell-only runner image directly supports these job profiles without Docker or service containers:
 
-- Node `24` (LTS) plus `npm` with `actions/cache`
+- Node `26` (LTS) plus `npm` with `actions/cache`
 - Other Node lines when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
 - Python `3.15` plus `pip` with `actions/cache`
 - `actions/setup-python@v6` when `python-version: '3.15'`
-- Terraform `1.6.6` plus plugin-cache directories under `RUNNER_TEMP`
+- Terraform `1.17.2` plus plugin-cache directories under `RUNNER_TEMP`
 - Bash/docs validation jobs that only need the standard CLI toolchain
 
 For Python projects, the runner image already carries Python `3.15` and exposes that exact interpreter through `RUNNER_TOOL_CACHE`, so `actions/setup-python@v6` with `python-version: '3.15'` resolves locally on these runners instead of attempting a distro-specific download. Repos that only need `3.15` can stay on the shell-only pool. Repos with Python version matrices should keep the non-`3.15` lanes on GitHub-hosted runners and only route the built-in `3.15` lane to self-hosted runners.
 
-The Linux image also includes the Debian Go toolchain, `gcc`, `pkg-config`, and `libsqlite3-dev` for supported CGO workloads. The release smoke test compiles a SQLite-linked CGO fixture as the unprivileged `runner` user on the target platform. Projects requiring other native libraries should install or provide those dependencies explicitly rather than assuming the runner image contains arbitrary build packages.
+The Linux image is based on Debian 13 (trixie) and also includes the upstream Go `1.27.4` toolchain (checksum-pinned), `gcc`, `pkg-config`, and `libsqlite3-dev` for supported CGO workloads. The release smoke test compiles a SQLite-linked CGO fixture as the unprivileged `runner` user on the target platform. Projects requiring other native libraries should install or provide those dependencies explicitly rather than assuming the runner image contains arbitrary build packages.
 
 For OpenClaw Ouro style workflows, the Node/npm validators, docs checks, Python `3.15` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain belong on Synology. `container:`, `services:`, browser, and Docker-daemon jobs belong on the Linux Docker plane. macOS-native lanes belong on Lume.
 
@@ -546,6 +547,6 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - Run a public-repo shell workflow without secrets
 - Run a self-hosted workflow that uses `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@<ref>`
 - Run a self-hosted workflow that uses `actions/setup-python@v6` with `python-version: '3.15'`
-- Verify `python3 --version` reports `3.15.x` and `terraform version` reports `1.6.6`
+- Verify `python3 --version` reports `3.15.x` and `terraform version` reports `1.17.2`
 - Confirm each job de-registers the runner and the service restarts cleanly
 - Confirm there is no Docker socket mount in the rendered compose file
