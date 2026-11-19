@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { normalizeRunnerVersion } from "./runner-version.js";
+import { normalizeRunnerVersion, type RunnerReleaseSummary } from "./runner-version.js";
 import { emitRunnerTokenFetchDurationSeconds } from "./metrics.js";
 
 export interface RunnerTokenRequest {
@@ -436,6 +436,42 @@ export async function fetchRunnerToken(
   }
 
   return payload.token;
+}
+
+export async function fetchRunnerReleases(
+  apiUrl = "https://api.github.com",
+  token?: string,
+  fetchImpl: FetchLike = fetch as FetchLike,
+  perPage = 50
+): Promise<RunnerReleaseSummary[]> {
+  const response = await githubRequest(
+    `${trimApiUrl(apiUrl)}/repos/actions/runner/releases?per_page=${perPage}`,
+    {
+      method: "GET",
+      headers: buildGitHubApiHeaders(token)
+    },
+    fetchImpl
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`GitHub runner releases lookup failed with ${response.status}: ${body}`);
+  }
+  const payload = JSON.parse(body) as unknown;
+  if (!Array.isArray(payload)) {
+    throw new Error("GitHub runner releases response was not a list");
+  }
+  return payload.flatMap((entry: Record<string, unknown>) =>
+    typeof entry?.tag_name === "string"
+      ? [
+          {
+            version: normalizeRunnerVersion(entry.tag_name),
+            publishedAt: typeof entry.published_at === "string" ? entry.published_at : undefined,
+            prerelease: entry.prerelease === true,
+            draft: entry.draft === true
+          }
+        ]
+      : []
+  );
 }
 
 export async function fetchLatestRunnerRelease(

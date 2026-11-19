@@ -8,15 +8,25 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: runner-version-freshness
+  cancel-in-progress: false
+
 jobs:
   freshness:
     name: runner-version-freshness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      TRACKING_LABEL: runner-freshness
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -26,7 +36,49 @@ jobs:
         with:
           version: 10.32.1
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Fail before the disabled-update cutoff
-        run: pnpm check-runner-version -- --fail-after-days 21
+        id: check
+        run: |
+          set -o pipefail
+          pnpm --silent check-runner-version -- --fail-after-days 21 | tee "${RUNNER_TEMP}/freshness.json"
+
+      - name: Open or update the tracking issue
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/freshness.json"
+          if jq -e . "${report}" >/dev/null 2>&1; then
+            summary="$(jq -r '"Deployed runner \(.current) has been superseded by \(.supersededBy // .latest) for \(.ageDays // "an unknown number of") days (latest \(.latest)). GitHub stops routing jobs to disabled-update runners \(if .daysUntilCutoff == null then "30 days after a newer release" elif .daysUntilCutoff > 0 then "in \(.daysUntilCutoff) days" else "already — the cutoff passed \(-.daysUntilCutoff) days ago" end)."' "${report}")"
+            details="$(printf '```json\n%s\n```' "$(cat "${report}")")"
+          else
+            summary="The freshness check failed before it could report (release lookup error)."
+            details=""
+          fi
+          body="$(printf '%s\n\nUpdate `.runner-version` and `.runner-checksums` (`pnpm runner-release-manifest -- --checksums`), then roll every plane.\n\nRun: %s\n\n%s' "${summary}" "${RUN_URL}" "${details}")"
+          gh label create "${TRACKING_LABEL}" --repo "${GITHUB_REPOSITORY}" --color B60205 \
+            --description "Actions Runner client is nearing or past GitHub's update cutoff" --force >/dev/null
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --label "${TRACKING_LABEL}" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body "${body}"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --label "${TRACKING_LABEL}" \
+              --title "Actions Runner client must be updated before GitHub's cutoff" --body "${body}"
+          fi
+
+      - name: Close the tracking issue once fresh
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh issue list --repo "${GITHUB_REPOSITORY}" --label "${TRACKING_LABEL}" --state open --json number --jq '.[].number' \
+            | while read -r number; do
+                gh issue close "${number}" --repo "${GITHUB_REPOSITORY}" --reason completed \
+                  --comment "Runner freshness check passes again: ${RUN_URL}"
+              done

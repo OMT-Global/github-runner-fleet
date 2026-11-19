@@ -49,6 +49,78 @@ export function runnerReleaseAgeDays(
   );
 }
 
+/** GitHub stops routing jobs to a disabled-update runner this many days after a newer release ships. */
+export const GITHUB_DISABLED_UPDATE_WINDOW_DAYS = 30;
+
+export interface RunnerReleaseSummary {
+  version: string;
+  publishedAt?: string;
+  prerelease?: boolean;
+  draft?: boolean;
+}
+
+export interface RunnerFreshness extends RunnerVersionStatus {
+  /** Oldest stable release newer than `current`: the one that started GitHub's update clock. */
+  supersededBy?: string;
+  supersededAt?: string;
+  ageDays?: number;
+  daysUntilCutoff?: number;
+}
+
+/**
+ * Measures how long `current` has been superseded, the way GitHub's
+ * disabled-update policy does: from the first stable release newer than the
+ * deployed client, not from the latest release. Drafts and prereleases never
+ * start the clock.
+ */
+export function assessRunnerFreshness(
+  current: string,
+  releases: RunnerReleaseSummary[],
+  now = new Date()
+): RunnerFreshness {
+  const stable = releases.filter(
+    (release) =>
+      !release.draft &&
+      !release.prerelease &&
+      /^\d+\.\d+\.\d+$/.test(normalizeRunnerVersion(release.version))
+  );
+  if (stable.length === 0) {
+    throw new Error("GitHub returned no stable actions/runner releases");
+  }
+  const latest = stable.reduce((best, release) =>
+    compareRunnerVersions(release.version, best.version) > 0 ? release : best
+  );
+  const status = summarizeRunnerVersion(current, latest.version);
+  if (!status.outdated) {
+    return status;
+  }
+
+  const newer = stable.filter(
+    (release) => compareRunnerVersions(release.version, status.current) > 0
+  );
+  const dated = newer.filter((release) => release.publishedAt);
+  const first =
+    dated.length === newer.length
+      ? dated.reduce((earliest, release) =>
+          Date.parse(release.publishedAt!) < Date.parse(earliest.publishedAt!) ? release : earliest
+        )
+      : newer.reduce((lowest, release) =>
+          compareRunnerVersions(release.version, lowest.version) < 0 ? release : lowest
+        );
+  const ageDays = runnerReleaseAgeDays(
+    dated.length === newer.length ? first.publishedAt : undefined,
+    now
+  );
+  return {
+    ...status,
+    supersededBy: normalizeRunnerVersion(first.version),
+    supersededAt: first.publishedAt,
+    ageDays,
+    daysUntilCutoff:
+      ageDays === undefined ? undefined : GITHUB_DISABLED_UPDATE_WINDOW_DAYS - ageDays
+  };
+}
+
 export function compareRunnerVersions(a: string, b: string): number {
   const aParts = normalizeRunnerVersion(a).split(".").map(Number);
   const bParts = normalizeRunnerVersion(b).split(".").map(Number);

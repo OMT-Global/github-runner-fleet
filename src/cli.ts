@@ -79,6 +79,7 @@ import {
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
   fetchLatestRunnerRelease,
+  fetchRunnerReleases,
   fetchRunnerToken,
   getQueuedJobCount,
   resolveGitHubAccessToken,
@@ -86,9 +87,9 @@ import {
   verifyRunnerGroups
 } from "./lib/github.js";
 import {
+  assessRunnerFreshness,
   buildRunnerDownloadUrl,
   formatRunnerChecksums,
-  runnerReleaseAgeDays,
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
 import {
@@ -1944,25 +1945,25 @@ async function checkRunnerVersion(args: string[]): Promise<void> {
     requirePat: false
   });
   const currentVersion = getOption(args, "--current", env.runnerVersion) ?? env.runnerVersion;
-  const release = await fetchLatestRunnerRelease(env.githubApiUrl, env.githubPat);
-  const status = summarizeRunnerVersion(currentVersion, release.version);
   const failAfterDays = parseNonNegativeInteger(
     getOption(args, "--fail-after-days", "21")!,
     "--fail-after-days"
   );
-  const ageDays = runnerReleaseAgeDays(release.publishedAt);
+  const releases = await fetchRunnerReleases(env.githubApiUrl, env.githubPat);
+  const freshness = assessRunnerFreshness(currentVersion, releases);
+  const latest = releases.find((release) => release.version === freshness.latest);
   const blocked =
-    status.outdated && (ageDays === undefined || ageDays >= failAfterDays);
+    freshness.outdated &&
+    (freshness.ageDays === undefined || freshness.ageDays >= failAfterDays);
 
   process.stdout.write(
     `${JSON.stringify(
       {
-        ...status,
-        ageDays,
+        ...freshness,
         failAfterDays,
         blocked,
-        publishedAt: release.publishedAt,
-        htmlUrl: release.htmlUrl
+        publishedAt: latest?.publishedAt,
+        htmlUrl: `https://github.com/actions/runner/releases/tag/v${freshness.latest}`
       },
       null,
       2
