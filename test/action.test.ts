@@ -16,7 +16,7 @@ describe("setup-shell-safe-node action", () => {
     };
 
     expect(action.runs.using).toBe("composite");
-    expect(action.inputs["node-version"]?.default).toBe("24.14.1");
+    expect(action.inputs["node-version"]?.default).toBe("26.13.1");
 
     const installStep = action.runs.steps.find(
       (step) => step.name === "Install Node.js"

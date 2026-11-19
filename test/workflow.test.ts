@@ -33,7 +33,7 @@ describe("CI workflow", () => {
       expect(setupNodeIndex).toBeGreaterThan(-1);
       expect(setupNodeIndex).toBeLessThan(scriptIndex);
       expect(steps[setupNodeIndex]?.with).toMatchObject({
-        "node-version": "24.14.1"
+        "node-version": "26.13.1"
       });
     }
   });
@@ -63,7 +63,7 @@ describe("CI workflow", () => {
 
     expect(mutationJob["runs-on"]).toBe(hostedOrdinaryRunner);
     expect(setupNodeStep?.with).toMatchObject({
-      "node-version": "24.14.1"
+      "node-version": "26.13.1"
     });
     expect(String(mutationStep?.run)).toContain("pnpm mutation-test");
     expect(artifactStep).toMatchObject({
@@ -102,7 +102,7 @@ describe("CI workflow", () => {
       "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
     );
     expect(setupNodeStep?.with).toMatchObject({
-      "node-version": "24.14.1"
+      "node-version": "26.13.1"
     });
     expect(detectStep?.env).toMatchObject({
       GITHUB_PAT: "${{ secrets.RUNNER_FLEET_GITHUB_PAT }}",
@@ -149,13 +149,13 @@ describe("CI workflow", () => {
       version: "10.32.1"
     });
     expect(setupNodeStep?.with).toMatchObject({
-      "node-version": "24.14.1"
+      "node-version": "26.13.1"
     });
     expect(linuxDockerSetupNodeStep?.with).toMatchObject({
-      "node-version": "24.14.1"
+      "node-version": "26.13.1"
     });
     expect(forkSetupNodeStep?.with).toMatchObject({
-      "node-version": "24"
+      "node-version": "26"
     });
     expect(setupNodeIndex).toBeLessThan(steps.indexOf(pnpmStep ?? {}));
   });
@@ -241,7 +241,7 @@ describe("CI workflow", () => {
       workflow.jobs["fast-checks"].steps as Array<Record<string, unknown>>
     ).find((step) => step.uses === "./actions/setup-shell-safe-node");
     expect(fastCheckSetupNodeStep?.with).toMatchObject({
-      "node-version": "24.14.1"
+      "node-version": "26.13.1"
     });
 
     expect(workflow.jobs.changes["runs-on"]).toBe(hostedOrdinaryRunner);
@@ -378,7 +378,7 @@ describe("CI workflow", () => {
     };
 
     expect(bootstrap.archetype.packageManager).toBe("pnpm");
-    expect(bootstrap.ci.nodeVersion).toBe("24.14.1");
+    expect(bootstrap.ci.nodeVersion).toBe("26.13.1");
     expect(bootstrap.ci.fastChecks).toEqual([
       "lint",
       "test",
