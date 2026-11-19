@@ -5,7 +5,7 @@
   "regenerationCommand": "bootstrap apply repo --manifest ./project.bootstrap.yaml",
   "managedFiles": {
     ".devcontainer/devcontainer.json": {
-      "sha256": "a97b390a31517a18ccd192fe7463ee70de416f1611a29bd5531b71062d56323f",
+      "sha256": "2499f8035aabcd3c3e47b95b6a50ab1b705dac894093e2840bc30f722e56805b",
       "source": "bootstrap"
     },
     ".githooks/pre-commit": {
@@ -25,7 +25,7 @@
       "source": "bootstrap"
     },
     "project.bootstrap.yaml": {
-      "sha256": "52ccd95a22cbc89d8d4f185347becef68c1918917554bbfd1c66f956d257718b",
+      "sha256": "2e3d7bffeb7afa04146ac143fd7567ca501030907b7ab36c6d59c3d80bb4c082",
       "source": "bootstrap"
     },
     "scripts/claude-cloud/setup.sh": {
