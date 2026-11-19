@@ -109,7 +109,7 @@ jobs:
           version: 10.32.1
       - uses: OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main
         with:
-          node-version: 24.14.1
+          node-version: 26.13.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test
@@ -152,7 +152,7 @@ jobs:
           version: 10.32.1
       - uses: OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main
         with:
-          node-version: 24.14.1
+          node-version: 26.13.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test

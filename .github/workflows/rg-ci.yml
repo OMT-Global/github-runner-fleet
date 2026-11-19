@@ -15,7 +15,7 @@ on:
         description: Exact Node.js version.
         required: false
         type: string
-        default: "24.14.1"
+        default: "26.13.1"
       package-manager-version:
         description: pnpm version.
         required: false

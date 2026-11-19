@@ -5,7 +5,7 @@ inputs:
   node-version:
     description: Exact Node.js version to install.
     required: false
-    default: 24.14.1
+    default: 26.13.1
 
 runs:
   using: composite

@@ -13,8 +13,8 @@ permissions:
   pull-requests: read
 
 env:
-  NODE_VERSION: '24.14.1'
-  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '26.13.1'
+  PYTHON_VERSION: '3.15'
   SHELL: /bin/bash
 
 defaults:
@@ -103,7 +103,7 @@ jobs:
 
       - uses: ./actions/setup-shell-safe-node
         with:
-          node-version: 24.14.1
+          node-version: 26.13.1
 
       - uses: pnpm/action-setup@v6
         with:
@@ -143,7 +143,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
 
       - uses: pnpm/action-setup@v6
         with:

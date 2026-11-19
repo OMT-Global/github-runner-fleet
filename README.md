@@ -362,7 +362,7 @@ For Node projects on shell-only runners, use the bundled action instead of `acti
 ```yaml
 - uses: OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@main
   with:
-    node-version: 24.14.1
+    node-version: 26.13.1
 ```
 
 Use that action on self-hosted Synology runners where `actions/setup-node` would otherwise fail while extracting tool archives. Keep `actions/setup-node` on GitHub-hosted jobs.
