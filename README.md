@@ -90,7 +90,7 @@ flowchart LR
 
 - A custom multi-arch runner image based on the official `actions/runner` tarballs
 - Built-in shell-job baseline tooling:
-  - Node.js `18.20.8`
+  - Node.js `24.22.3` (LTS)
   - Python `3.12`
   - Terraform `1.6.6`
   - Docker CLI for the dedicated Linux Docker plane
@@ -369,8 +369,8 @@ Use that action on self-hosted Synology runners where `actions/setup-node` would
 
 The shell-only runner image directly supports these job profiles without Docker or service containers:
 
-- Node `18` plus `npm` with `actions/cache`
-- Node `24` when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
+- Node `24` (LTS) plus `npm` with `actions/cache`
+- Other Node lines when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
 - Python `3.12` plus `pip` with `actions/cache`
 - `actions/setup-python@v6` when `python-version: '3.12'`
 - Terraform `1.6.6` plus plugin-cache directories under `RUNNER_TEMP`
@@ -426,7 +426,7 @@ bash scripts/lume/install-launch-agent.sh
 sudo bash scripts/lume/install-system-launch-daemons.sh --disable-user-lume-agent
 ```
 
-Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. The default runner build comes from `.runner-version`; an explicit `RUNNER_VERSION` is intended only for controlled compatibility testing.
+Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. The default runner build comes from `.runner-version`; an explicit `RUNNER_VERSION` is intended only for controlled compatibility testing. The host passes the guest the archive's SHA-256 from `.runner-checksums`, and the guest refuses to install a runner whose archive (fresh or cached) does not match. A per-pool `runnerVersion` that the manifest does not cover must also set `RUNNER_SHA256`.
 
 The launchd installers publish a source-independent controller runtime under `~/Library/Application Support/github-runner-fleet/controller/current` and point the Lume pool job at that path. Runtime `.env` remains beside that controller at `~/Library/Application Support/github-runner-fleet/controller/.env`, is mode `0600`, and is preserved when the source checkout moves or the installer is rerun. Override the runtime root with `GITHUB_RUNNER_FLEET_RUNTIME_ROOT` if this Mac needs a different stable location.
 
@@ -478,6 +478,7 @@ pnpm install-lume-project -- --lume-config config/lume-runners.yaml --env .env
 pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
+pnpm runner-release-manifest -- --env .env --checksums   # .runner-checksums lines from GitHub's asset digests
 pnpm smoke-test
 ```
 

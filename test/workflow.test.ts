@@ -400,19 +400,39 @@ describe("CI workflow", () => {
       )
     ) as {
       on: Record<string, unknown>;
-      jobs: Record<string, { "runs-on": string; steps: Array<Record<string, unknown>> }>;
+      permissions: Record<string, string>;
+      jobs: Record<
+        string,
+        {
+          "runs-on": string;
+          permissions: Record<string, string>;
+          steps: Array<Record<string, unknown>>;
+        }
+      >;
     };
+    const job = workflow.jobs.freshness;
+    const step = (name: string) => job.steps.find((candidate) => candidate.name === name);
 
     expect(workflow.on).toHaveProperty("schedule");
     expect(workflow.on).toHaveProperty("workflow_dispatch");
-    expect(workflow.jobs.freshness["runs-on"]).toBe("ubuntu-latest");
-    expect(
-      workflow.jobs.freshness.steps.some(
-        (step) =>
-          step.name === "Fail before the disabled-update cutoff" &&
-          step.run === "pnpm check-runner-version -- --fail-after-days 21"
-      )
-    ).toBe(true);
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(job["runs-on"]).toBe("ubuntu-24.04");
+    expect(job.permissions).toEqual({ contents: "read", issues: "write" });
+    expect(job.steps[0]).toMatchObject({
+      uses: "actions/checkout@v7",
+      with: { "persist-credentials": false }
+    });
+    expect(job.steps.some((candidate) => candidate.run === "pnpm install --frozen-lockfile --ignore-scripts")).toBe(true);
+    expect(String(step("Fail before the disabled-update cutoff")?.run)).toContain(
+      "pnpm --silent check-runner-version -- --fail-after-days 21 | tee"
+    );
+    expect(step("Open or update the tracking issue")?.if).toBe(
+      "failure() && steps.check.outcome == 'failure'"
+    );
+    const alert = String(step("Open or update the tracking issue")?.run);
+    expect(alert).toContain('--label "${TRACKING_LABEL}" --state open');
+    expect(alert).toContain('gh issue comment "${existing}"');
+    expect(step("Close the tracking issue once fresh")?.if).toBe("success()");
   });
 
   test("restricts Claude comment triggers to trusted repository actors", () => {

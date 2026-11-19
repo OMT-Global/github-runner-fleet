@@ -5,8 +5,13 @@ explicit workflow dispatch from `main`. Release publication, image promotion and
 any rollout require their own operator authorization; #229 is not completed by
 this source change. The separate access and live-pool issues stay open.
 
-The canonical Actions Runner version is `.runner-version`. A build packages this
-file into `dist` so the compiled reader does not depend on a source checkout.
+The canonical Actions Runner version is `.runner-version`. `.runner-checksums`
+holds the SHA-256 of every runner archive the fleet deploys for that version; the
+Linux and Windows images and the Lume guest verify the download against it and
+fail closed. To bump the runner, update `.runner-version` and append the output of
+`pnpm runner-release-manifest -- --checksums`; CI fails if any deployed asset of
+the canonical version lacks a digest. A build packages both files into `dist` so
+the compiled reader does not depend on a source checkout.
 An explicit environment override still wins: this change deliberately does not
 clear the stale protected example override or expand permissions on the standalone
 reusable-release smoke caller.

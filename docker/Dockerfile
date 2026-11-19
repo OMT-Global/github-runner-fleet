@@ -3,10 +3,10 @@
 FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm
 
 ARG TARGETARCH
-ARG NODE_VERSION=18.20.8
+ARG NODE_VERSION=24.22.3
 ARG TERRAFORM_VERSION=1.6.6
 
-COPY .runner-version /.runner-version
+COPY .runner-version .runner-checksums /
 
 ENV DEBIAN_FRONTEND=noninteractive \
     SHELL=/bin/bash \
@@ -45,8 +45,8 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --home-dir /home/runner --shell /bin/bash runner \
-    && mkdir -p "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node18 \
-    && chown -R runner:runner /home/runner "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node18
+    && mkdir -p "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node \
+    && chown -R runner:runner /home/runner "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node
 
 RUN case "${TARGETARCH}" in \
       amd64) node_arch="x64"; terraform_arch="amd64"; python_arch="x64" ;; \
@@ -64,11 +64,11 @@ RUN case "${TARGETARCH}" in \
     && curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}" \
     && curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" \
     && grep " ${node_archive}\$" SHASUMS256.txt | sha256sum -c - \
-    && tar -xJf "${node_archive}" -C /opt/node18 --strip-components=1 --no-same-owner \
-    && ln -sf /opt/node18/bin/corepack /usr/local/bin/corepack \
-    && ln -sf /opt/node18/bin/node /usr/local/bin/node \
-    && ln -sf /opt/node18/bin/npm /usr/local/bin/npm \
-    && ln -sf /opt/node18/bin/npx /usr/local/bin/npx \
+    && tar -xJf "${node_archive}" -C /opt/node --strip-components=1 --no-same-owner \
+    && ln -sf /opt/node/bin/corepack /usr/local/bin/corepack \
+    && ln -sf /opt/node/bin/node /usr/local/bin/node \
+    && ln -sf /opt/node/bin/npm /usr/local/bin/npm \
+    && ln -sf /opt/node/bin/npx /usr/local/bin/npx \
     && rm -f "${node_archive}" SHASUMS256.txt \
     && terraform_archive="terraform_${TERRAFORM_VERSION}_linux_${terraform_arch}.zip" \
     && curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${terraform_archive}" \
@@ -85,11 +85,15 @@ RUN case "${TARGETARCH}" in \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && runner_version="$(cat /.runner-version)" \
+    && runner_asset="actions-runner-linux-${runner_arch}-${runner_version}.tar.gz" \
     && curl -fsSL \
-      -o runner.tar.gz \
-      "https://github.com/actions/runner/releases/download/v${runner_version}/actions-runner-linux-${runner_arch}-${runner_version}.tar.gz" \
-    && tar -xzf runner.tar.gz \
-    && rm runner.tar.gz \
+      -o "${runner_asset}" \
+      "https://github.com/actions/runner/releases/download/v${runner_version}/${runner_asset}" \
+    && awk -v asset="${runner_asset}" '$2 == asset' /.runner-checksums > runner.sha256 \
+    && test "$(wc -l < runner.sha256)" -eq 1 \
+    && sha256sum -c runner.sha256 \
+    && tar -xzf "${runner_asset}" \
+    && rm "${runner_asset}" runner.sha256 \
     && ./bin/installdependencies.sh \
     && chown -R runner:runner ${RUNNER_SOURCE_HOME} /home/runner
 

@@ -1,0 +1,17 @@
+# SHA-256 digests for the actions/runner release assets this fleet deploys.
+# Format: sha256sum(1) lines, "<64-hex-digest>  <asset-file-name>".
+# Source of truth: the `digest` field GitHub publishes for each release asset.
+# Regenerate with `pnpm runner-release-manifest -- --checksums` and keep an
+# entry for every asset of the version in .runner-version.
+
+# v2.338.2 (2026-10-26)
+baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40  actions-runner-linux-x64-2.338.2.tar.gz
+670adb2f268fe21dcbb58b3db0e0aa9d5b3bddfe2c651481336e561ff86de945  actions-runner-linux-arm64-2.338.2.tar.gz
+25a065af409ffa317ab4d5a3b614dd15fc9c40f2172bc1b35a1b1258e919a388  actions-runner-osx-arm64-2.338.2.tar.gz
+a1f17aa987fc8158bc7521d284912267a0d01b7c2c4684b33c86783b5e8221cc  actions-runner-win-x64-2.338.2.zip
+
+# v2.338.0 (2026-10-06)
+af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32  actions-runner-linux-x64-2.338.0.tar.gz
+628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f041b  actions-runner-linux-arm64-2.338.0.tar.gz
+df4cebda25c86a886ed204e49fee63f5c2e7cec5f447b5c98440a826bbdf9df2  actions-runner-osx-arm64-2.338.0.tar.gz
+f48e0750a21812bca5f82de5f7f5aeae71abee647fab5a582f1742d07eba455f  actions-runner-win-x64-2.338.0.zip
