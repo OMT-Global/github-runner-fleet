@@ -79,6 +79,7 @@ import {
   fetchOrganizationRunnerGroups,
   fetchOrganizationRunners,
   fetchLatestRunnerRelease,
+  fetchRunnerReleases,
   fetchRunnerToken,
   getQueuedJobCount,
   resolveGitHubAccessToken,
@@ -86,8 +87,9 @@ import {
   verifyRunnerGroups
 } from "./lib/github.js";
 import {
+  assessRunnerFreshness,
   buildRunnerDownloadUrl,
-  runnerReleaseAgeDays,
+  formatRunnerChecksums,
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
 import {
@@ -1943,25 +1945,25 @@ async function checkRunnerVersion(args: string[]): Promise<void> {
     requirePat: false
   });
   const currentVersion = getOption(args, "--current", env.runnerVersion) ?? env.runnerVersion;
-  const release = await fetchLatestRunnerRelease(env.githubApiUrl, env.githubPat);
-  const status = summarizeRunnerVersion(currentVersion, release.version);
   const failAfterDays = parseNonNegativeInteger(
     getOption(args, "--fail-after-days", "21")!,
     "--fail-after-days"
   );
-  const ageDays = runnerReleaseAgeDays(release.publishedAt);
+  const releases = await fetchRunnerReleases(env.githubApiUrl, env.githubPat);
+  const freshness = assessRunnerFreshness(currentVersion, releases);
+  const latest = releases.find((release) => release.version === freshness.latest);
   const blocked =
-    status.outdated && (ageDays === undefined || ageDays >= failAfterDays);
+    freshness.outdated &&
+    (freshness.ageDays === undefined || freshness.ageDays >= failAfterDays);
 
   process.stdout.write(
     `${JSON.stringify(
       {
-        ...status,
-        ageDays,
+        ...freshness,
         failAfterDays,
         blocked,
-        publishedAt: release.publishedAt,
-        htmlUrl: release.htmlUrl
+        publishedAt: latest?.publishedAt,
+        htmlUrl: `https://github.com/actions/runner/releases/tag/v${freshness.latest}`
       },
       null,
       2
@@ -1980,6 +1982,14 @@ async function runnerReleaseManifest(args: string[]): Promise<void> {
   const currentVersion = getOption(args, "--current", env.runnerVersion) ?? env.runnerVersion;
   const release = await fetchLatestRunnerRelease(env.githubApiUrl, env.githubPat);
   const status = summarizeRunnerVersion(currentVersion, release.version);
+
+  if (args.includes("--checksums")) {
+    process.stdout.write(
+      `# ${release.tagName}${release.publishedAt ? ` (${release.publishedAt.slice(0, 10)})` : ""}\n` +
+        formatRunnerChecksums(release.version, release.assets)
+    );
+    return;
+  }
 
   process.stdout.write(
     `${JSON.stringify(
@@ -3413,7 +3423,7 @@ function printUsage(): void {
   pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--status-output .tmp/synology-status.json] [--dry-run] [--python python3]
   pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--status-output .tmp/synology-status.json] [--dry-run] [--drain] [--drain-timeout 15m] [--python python3]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
-  pnpm runner-release-manifest [--current 2.333.0] [--env .env]
+  pnpm runner-release-manifest [--current 2.333.0] [--env .env] [--checksums]
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]
   pnpm validate-lume-github [--config config/lume-runners.yaml] [--env .env]
   pnpm render-lume-runner-manifest [--config config/lume-runners.yaml] [--env .env] [--slot 1] [--format json|shell]
