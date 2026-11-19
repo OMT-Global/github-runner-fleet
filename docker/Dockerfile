@@ -3,7 +3,7 @@
 FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm
 
 ARG TARGETARCH
-ARG NODE_VERSION=18.20.8
+ARG NODE_VERSION=24.22.3
 ARG TERRAFORM_VERSION=1.6.6
 
 COPY .runner-version .runner-checksums /
@@ -45,8 +45,8 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --home-dir /home/runner --shell /bin/bash runner \
-    && mkdir -p "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node18 \
-    && chown -R runner:runner /home/runner "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node18
+    && mkdir -p "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node \
+    && chown -R runner:runner /home/runner "${RUNNER_TOOL_CACHE}" "${RUNNER_TEMP}" /opt/node
 
 RUN case "${TARGETARCH}" in \
       amd64) node_arch="x64"; terraform_arch="amd64"; python_arch="x64" ;; \
@@ -64,11 +64,11 @@ RUN case "${TARGETARCH}" in \
     && curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}" \
     && curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" \
     && grep " ${node_archive}\$" SHASUMS256.txt | sha256sum -c - \
-    && tar -xJf "${node_archive}" -C /opt/node18 --strip-components=1 --no-same-owner \
-    && ln -sf /opt/node18/bin/corepack /usr/local/bin/corepack \
-    && ln -sf /opt/node18/bin/node /usr/local/bin/node \
-    && ln -sf /opt/node18/bin/npm /usr/local/bin/npm \
-    && ln -sf /opt/node18/bin/npx /usr/local/bin/npx \
+    && tar -xJf "${node_archive}" -C /opt/node --strip-components=1 --no-same-owner \
+    && ln -sf /opt/node/bin/corepack /usr/local/bin/corepack \
+    && ln -sf /opt/node/bin/node /usr/local/bin/node \
+    && ln -sf /opt/node/bin/npm /usr/local/bin/npm \
+    && ln -sf /opt/node/bin/npx /usr/local/bin/npx \
     && rm -f "${node_archive}" SHASUMS256.txt \
     && terraform_archive="terraform_${TERRAFORM_VERSION}_linux_${terraform_arch}.zip" \
     && curl -fsSLO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${terraform_archive}" \
