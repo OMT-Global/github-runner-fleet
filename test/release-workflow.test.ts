@@ -55,7 +55,7 @@ describe("release workflow", () => {
     );
     expect(steps.some((step) => step.uses === "docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550")).toBe(true);
     expect(
-      steps.some((step) => step.uses === "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6")
+      steps.some((step) => step.uses === "sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532")
     ).toBe(true);
     expect(steps.some((step) => step.uses === "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610")).toBe(true);
     expect(
