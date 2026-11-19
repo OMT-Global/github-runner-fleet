@@ -11,7 +11,7 @@ Use it alongside `pnpm doctor`, `pnpm synology-status`, `pnpm linux-docker-statu
 
 | Runner class | Default labels | Best for | Keep off this class |
 | --- | --- | --- | --- |
-| Synology shell-safe | `self-hosted`, `linux`, `shell-only`, `private` or `public`, `synology` | bash/docs jobs, JS actions, Node validation, Python `3.12`, Terraform CLI, lightweight smoke checks | `container:` jobs, service containers, Docker daemon/Buildx, Kind, Playwright, browser-heavy lanes, distro-package-heavy setup |
+| Synology shell-safe | `self-hosted`, `linux`, `shell-only`, `private` or `public`, `synology` | bash/docs jobs, JS actions, Node validation, Python `3.15`, Terraform CLI, lightweight smoke checks | `container:` jobs, service containers, Docker daemon/Buildx, Kind, Playwright, browser-heavy lanes, distro-package-heavy setup |
 | Linux Docker | `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, `private` or `public` | shell-safe overflow, legacy Synology-labeled jobs, native Linux jobs, `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native lanes, snowflake long-lived hosts |
 | Lume macOS | `self-hosted`, `macOS`, `ARM64`, `private`, plus pool-specific labels like `xcode` | Xcode builds, Swift tests, macOS-native tooling, host-accurate Apple platform lanes | Linux container workloads, Docker-focused Linux integration, long-lived hand-managed VMs |
 | GitHub-hosted fallback | `ubuntu-latest`, `macos-latest`, or other hosted images | incompatible workloads, public fork PRs, and anything that still depends on GitHub-hosted image breadth | steady-state private-repo workloads that already fit one of the self-hosted classes |
@@ -42,7 +42,7 @@ Use these rules in order:
 | Job pattern | Recommended placement | Notes |
 | --- | --- | --- |
 | `pnpm lint`, `pnpm test`, docs validation, shell scripts | Shared shell-safe Linux | Prefer the repo's shell-safe Node setup action where needed |
-| Python `3.12` lint/test | Shared shell-safe Linux | Route non-`3.12` matrix lanes elsewhere |
+| Python `3.15` lint/test | Shared shell-safe Linux | Route non-`3.15` matrix lanes elsewhere |
 | Terraform validate/plan without Docker sidecars | Shared shell-safe Linux | Keep plugin cache under runner temp |
 | Xcode build/test, SwiftPM macOS tooling | Lume macOS | Keep labels explicit, for example `xcode` |
 | `container:` jobs | Linux Docker | Use `runs-on: [self-hosted, linux, docker-capable, private]` |
@@ -93,7 +93,7 @@ runs-on: ubuntu-latest
 ## Migration Checklist For A Private Repo
 
 1. Split the workflow by workload type instead of trying to move everything at once.
-2. Move shell-safe Node, Python `3.12`, Terraform, and docs lanes to the shared shell-safe Linux label set first.
+2. Move shell-safe Node, Python `3.15`, Terraform, and docs lanes to the shared shell-safe Linux label set first.
 3. Move macOS-native lanes to Lume when you need real Apple hosts.
 4. Move Docker/container/service lanes to the Linux Docker plane once the dedicated host is provisioned.
 5. Run `pnpm doctor -- full --env .env` before provisioning or changing pool assignments.

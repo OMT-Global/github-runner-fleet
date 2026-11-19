@@ -145,7 +145,7 @@ jobs:
           zstd --version | head -n 1
           node --version
           npm --version
-          python3.12 --version
+          python3.15 --version
           python --version
           terraform version
       - name: Verify cache-aware commands
@@ -153,7 +153,7 @@ jobs:
           npm_config_cache: ${{ github.workspace }}/.tmp/ci-shell-safe/npm
           PIP_CACHE_DIR: ${{ github.workspace }}/.tmp/ci-shell-safe/pip
         run: |
-          python3.12 -m venv .venv-contract
+          python3.15 -m venv .venv-contract
           source .venv-contract/bin/activate
           python -m pip install --upgrade pip setuptools wheel
           python -m pip cache dir

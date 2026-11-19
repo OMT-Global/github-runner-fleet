@@ -201,9 +201,9 @@ describe("CI workflow", () => {
       "${{ env.TF_PLUGIN_CACHE_DIR }}"
     );
     expect(String(verifyToolchainStep?.run)).toContain("node --version");
-    expect(String(verifyToolchainStep?.run)).toContain("python3.12 --version");
+    expect(String(verifyToolchainStep?.run)).toContain("python3.15 --version");
     expect(String(verifyToolchainStep?.run)).toContain("terraform version");
-    expect(String(verifyCacheStep?.run)).toContain("python3.12 -m venv .venv-contract");
+    expect(String(verifyCacheStep?.run)).toContain("python3.15 -m venv .venv-contract");
     expect(String(verifyCacheStep?.run)).toContain("npm config get cache");
     expect(String(verifyCacheStep?.run)).toContain(
       "terraform -chdir=.tmp/ci-shell-safe/terraform init -backend=false"

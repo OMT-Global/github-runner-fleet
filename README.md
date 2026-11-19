@@ -45,7 +45,7 @@ The roadmap doc keeps the operator view short; the GitHub issues are the executi
 
 | Plane | Runtime | Best For | Explicitly Not For |
 | --- | --- | --- | --- |
-| Synology Linux pools | Ephemeral containers built from a multi-arch runner image | shell jobs, JS actions, Python `3.12`, Terraform, docs and validation work | Docker socket jobs, `container:` jobs, service containers, privileged workloads |
+| Synology Linux pools | Ephemeral containers built from a multi-arch runner image | shell jobs, JS actions, Python `3.15`, Terraform, docs and validation work | Docker socket jobs, `container:` jobs, service containers, privileged workloads |
 | Linux Docker pool | Ephemeral runner containers on a dedicated Linux Docker host | `container:` jobs, service containers, Docker daemon workflows, Buildx, Kind, heavier Linux integration | untrusted public fork PRs, macOS-native jobs, turning Synology into a Docker host |
 | Windows Docker template (experimental) | Unreleased example configuration for a separately managed Windows Docker host | configuration rendering and controlled lab evaluation | production workloads, release-backed installs, or any assumption that the example image is published by this project |
 | Lume macOS pool | Ephemeral VM clones from a sealed macOS base image | macOS-native build and test lanes that need a real macOS host | long-lived snowflake VMs, secrets baked into the base image, ad hoc manual drift |
@@ -76,7 +76,7 @@ flowchart LR
 | Job Type | Synology shell-only pool | Linux Docker pool | Windows Docker pool | Lume macOS pool | GitHub-hosted still recommended |
 | --- | --- | --- | --- | --- | --- |
 | Node/npm validation | Yes | Yes | Yes | Yes | Optional |
-| Python `3.12` workflows | Yes | Yes | Case-by-case | Yes | Optional |
+| Python `3.15` workflows | Yes | Yes | Case-by-case | Yes | Optional |
 | Terraform CLI validation | Yes | Yes | Case-by-case | Yes | Optional |
 | Docs and shell scripts | Yes | Yes | Case-by-case | Yes | Optional |
 | macOS-native build/test lanes | No | No | No | Yes | Optional |
@@ -91,7 +91,7 @@ flowchart LR
 - A custom multi-arch runner image based on the official `actions/runner` tarballs
 - Built-in shell-job baseline tooling:
   - Node.js `24.22.3` (LTS)
-  - Python `3.12`
+  - Python `3.15`
   - Terraform `1.6.6`
   - Docker CLI for the dedicated Linux Docker plane
   - `git`, `bash`, `tar`, `zstd`, and `procps`
@@ -105,7 +105,7 @@ flowchart LR
   - `linux-docker-private`
 - The sample config starts with four private runner slots and two public runner slots.
 
-The Synology shell-only class supports shell jobs, JavaScript actions, composite actions, the bundled shell-safe Node setup action, built-in Python `3.12` workflows, local `actions/setup-python@v6` resolution for Python `3.12`, and Terraform CLI workflows. Docker-based actions, `container:` jobs, and service containers belong on the dedicated Linux Docker plane instead.
+The Synology shell-only class supports shell jobs, JavaScript actions, composite actions, the bundled shell-safe Node setup action, built-in Python `3.15` workflows, local `actions/setup-python@v6` resolution for Python `3.15`, and Terraform CLI workflows. Docker-based actions, `container:` jobs, and service containers belong on the dedicated Linux Docker plane instead.
 
 ## Repo Layout
 
@@ -371,16 +371,16 @@ The shell-only runner image directly supports these job profiles without Docker 
 
 - Node `24` (LTS) plus `npm` with `actions/cache`
 - Other Node lines when bootstrapped through `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node`
-- Python `3.12` plus `pip` with `actions/cache`
-- `actions/setup-python@v6` when `python-version: '3.12'`
+- Python `3.15` plus `pip` with `actions/cache`
+- `actions/setup-python@v6` when `python-version: '3.15'`
 - Terraform `1.6.6` plus plugin-cache directories under `RUNNER_TEMP`
 - Bash/docs validation jobs that only need the standard CLI toolchain
 
-For Python projects, the runner image already carries Python `3.12` and exposes that exact interpreter through `RUNNER_TOOL_CACHE`, so `actions/setup-python@v6` with `python-version: '3.12'` resolves locally on these runners instead of attempting a distro-specific download. Repos that only need `3.12` can stay on the shell-only pool. Repos with Python version matrices should keep the non-`3.12` lanes on GitHub-hosted runners and only route the built-in `3.12` lane to self-hosted runners.
+For Python projects, the runner image already carries Python `3.15` and exposes that exact interpreter through `RUNNER_TOOL_CACHE`, so `actions/setup-python@v6` with `python-version: '3.15'` resolves locally on these runners instead of attempting a distro-specific download. Repos that only need `3.15` can stay on the shell-only pool. Repos with Python version matrices should keep the non-`3.15` lanes on GitHub-hosted runners and only route the built-in `3.15` lane to self-hosted runners.
 
 The Linux image also includes the Debian Go toolchain, `gcc`, `pkg-config`, and `libsqlite3-dev` for supported CGO workloads. The release smoke test compiles a SQLite-linked CGO fixture as the unprivileged `runner` user on the target platform. Projects requiring other native libraries should install or provide those dependencies explicitly rather than assuming the runner image contains arbitrary build packages.
 
-For OpenClaw Ouro style workflows, the Node/npm validators, docs checks, Python `3.12` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain belong on Synology. `container:`, `services:`, browser, and Docker-daemon jobs belong on the Linux Docker plane. macOS-native lanes belong on Lume.
+For OpenClaw Ouro style workflows, the Node/npm validators, docs checks, Python `3.15` linting, Terraform validation, and smoke scripts that stay within bash plus the baked-in toolchain belong on Synology. `container:`, `services:`, browser, and Docker-daemon jobs belong on the Linux Docker plane. macOS-native lanes belong on Lume.
 
 ## Lume macOS Pool
 
@@ -503,7 +503,7 @@ pnpm smoke-test
 The smoke test:
 
 - builds the local runner image
-- verifies the built-in Python `3.12` tool-cache entry resolves to the baked-in interpreter
+- verifies the built-in Python `3.15` tool-cache entry resolves to the baked-in interpreter
 - starts a mock GitHub token API on an isolated Docker network
 - mounts stubbed `config.sh` and `run.sh` files into `/actions-runner` as the read-only runner source
 - verifies registration token fetch, runner config flags, run invocation, remove token fetch, and cleanup for both the normal runner-user mode and the Synology-style root-fallback mode
@@ -545,7 +545,7 @@ SMOKE_KEEP_ARTIFACTS=1 pnpm smoke-test
 - Run a private-repo `container:` or `services:` workflow on the Linux Docker plane
 - Run a public-repo shell workflow without secrets
 - Run a self-hosted workflow that uses `OMT-Global/github-runner-fleet/actions/setup-shell-safe-node@<ref>`
-- Run a self-hosted workflow that uses `actions/setup-python@v6` with `python-version: '3.12'`
-- Verify `python3 --version` reports `3.12.x` and `terraform version` reports `1.6.6`
+- Run a self-hosted workflow that uses `actions/setup-python@v6` with `python-version: '3.15'`
+- Verify `python3 --version` reports `3.15.x` and `terraform version` reports `1.6.6`
 - Confirm each job de-registers the runner and the service restarts cleanly
 - Confirm there is no Docker socket mount in the rendered compose file
