@@ -8,11 +8,17 @@ export interface RunnerTokenRequest {
   headers: Record<string, string>;
 }
 
+export interface GitHubReleaseAsset {
+  name: string;
+  digest?: string;
+}
+
 export interface GitHubRelease {
   version: string;
   tagName: string;
   publishedAt?: string;
   htmlUrl?: string;
+  assets: GitHubReleaseAsset[];
 }
 
 export interface GitHubRunnerGroup {
@@ -457,6 +463,7 @@ export async function fetchLatestRunnerRelease(
     tag_name?: string;
     published_at?: string;
     html_url?: string;
+    assets?: Array<{ name?: unknown; digest?: unknown }>;
   };
 
   if (!payload.tag_name) {
@@ -467,8 +474,19 @@ export async function fetchLatestRunnerRelease(
     version: normalizeRunnerVersion(payload.tag_name),
     tagName: payload.tag_name,
     publishedAt: payload.published_at,
-    htmlUrl: payload.html_url
+    htmlUrl: payload.html_url,
+    assets: parseReleaseAssets(payload.assets)
   };
+}
+
+function parseReleaseAssets(
+  assets: Array<{ name?: unknown; digest?: unknown }> | undefined
+): GitHubReleaseAsset[] {
+  return (assets ?? []).flatMap((asset) =>
+    typeof asset.name === "string"
+      ? [{ name: asset.name, digest: typeof asset.digest === "string" ? asset.digest : undefined }]
+      : []
+  );
 }
 
 export async function fetchOrganizationRunnerGroups(

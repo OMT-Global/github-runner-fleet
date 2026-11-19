@@ -87,6 +87,7 @@ import {
 } from "./lib/github.js";
 import {
   buildRunnerDownloadUrl,
+  formatRunnerChecksums,
   runnerReleaseAgeDays,
   summarizeRunnerVersion
 } from "./lib/runner-version.js";
@@ -1981,6 +1982,14 @@ async function runnerReleaseManifest(args: string[]): Promise<void> {
   const release = await fetchLatestRunnerRelease(env.githubApiUrl, env.githubPat);
   const status = summarizeRunnerVersion(currentVersion, release.version);
 
+  if (args.includes("--checksums")) {
+    process.stdout.write(
+      `# ${release.tagName}${release.publishedAt ? ` (${release.publishedAt.slice(0, 10)})` : ""}\n` +
+        formatRunnerChecksums(release.version, release.assets)
+    );
+    return;
+  }
+
   process.stdout.write(
     `${JSON.stringify(
       {
@@ -3413,7 +3422,7 @@ function printUsage(): void {
   pnpm install-synology-project [--config config/pools.yaml] [--env .env] [--status-output .tmp/synology-status.json] [--dry-run] [--python python3]
   pnpm teardown-synology-project [--config config/pools.yaml] [--env .env] [--status-output .tmp/synology-status.json] [--dry-run] [--drain] [--drain-timeout 15m] [--python python3]
   pnpm check-runner-version [--current 2.333.0] [--env .env]
-  pnpm runner-release-manifest [--current 2.333.0] [--env .env]
+  pnpm runner-release-manifest [--current 2.333.0] [--env .env] [--checksums]
   pnpm validate-lume-config [--config config/lume-runners.yaml] [--env .env]
   pnpm validate-lume-github [--config config/lume-runners.yaml] [--env .env]
   pnpm render-lume-runner-manifest [--config config/lume-runners.yaml] [--env .env] [--slot 1] [--format json|shell]
