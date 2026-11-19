@@ -146,6 +146,14 @@ upload_env_file() {
     "mkdir -p '$(dirname "${destination_path}")' && printf '%s' '${content}' | base64 -D > '${destination_path}' && chmod 0600 '${destination_path}'"
 }
 
+runner_asset_sha256() {
+  local asset_name="$1"
+  local checksums_path="${2:-${REPO_ROOT}/.runner-checksums}"
+
+  [[ -f "${checksums_path}" ]] || return 0
+  awk -v asset="${asset_name}" '$2 == asset { print $1; exit }' "${checksums_path}"
+}
+
 render_guest_runner_env() {
   local env_path="$1"
   local temp_env
@@ -157,14 +165,24 @@ render_guest_runner_env() {
   local runner_root="${RUNNER_ROOT}"
   local runner_version="${RUNNER_VERSION}"
   local runner_work_dir="${RUNNER_WORK_DIR}"
+  local runner_sha256_override="${RUNNER_SHA256:-}"
 
   temp_env="$(mktemp)"
   runner_path="${RUNNER_PATH:-$(default_guest_runner_path)}"
-  (
+  if ! (
     set -a
     # shellcheck disable=SC1090
     source "${env_path}"
     set +a
+
+    runner_sha256="${runner_sha256_override:-${RUNNER_SHA256:-}}"
+    if [[ -z "${runner_sha256}" ]]; then
+      runner_sha256="$(runner_asset_sha256 "actions-runner-osx-arm64-${runner_version}.tar.gz")"
+    fi
+    if [[ ! "${runner_sha256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+      log "no SHA-256 for actions-runner-osx-arm64-${runner_version}.tar.gz in ${REPO_ROOT}/.runner-checksums; add it or set RUNNER_SHA256" >&2
+      exit 1
+    fi
 
     cat <<EOF
 GITHUB_PAT=${GITHUB_PAT}
@@ -181,10 +199,14 @@ RUNNER_ROOT=${runner_root}
 RUNNER_WORK_DIR=${runner_work_dir}
 RUNNER_PATH=${runner_path}
 RUNNER_VERSION=${runner_version}
+RUNNER_SHA256=${runner_sha256}
 RUNNER_DOWNLOAD_URL=${runner_download_url}
 AUDIT_LOG_FILE=${runner_root}/audit.jsonl
 EOF
-  ) > "${temp_env}"
+  ) > "${temp_env}"; then
+    rm -f "${temp_env}"
+    return 1
+  fi
 
   printf '%s\n' "${temp_env}"
 }

@@ -426,7 +426,7 @@ bash scripts/lume/install-launch-agent.sh
 sudo bash scripts/lume/install-system-launch-daemons.sh --disable-user-lume-agent
 ```
 
-Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. The default runner build comes from `.runner-version`; an explicit `RUNNER_VERSION` is intended only for controlled compatibility testing.
+Keep the Lume runner env file outside git and locked down with `chmod 600`. The host controller reads that file and copies it into each guest VM just before starting the guest bootstrap. Do not bake GitHub credentials into the base VM image. The default runner build comes from `.runner-version`; an explicit `RUNNER_VERSION` is intended only for controlled compatibility testing. The host passes the guest the archive's SHA-256 from `.runner-checksums`, and the guest refuses to install a runner whose archive (fresh or cached) does not match. A per-pool `runnerVersion` that the manifest does not cover must also set `RUNNER_SHA256`.
 
 The launchd installers publish a source-independent controller runtime under `~/Library/Application Support/github-runner-fleet/controller/current` and point the Lume pool job at that path. Runtime `.env` remains beside that controller at `~/Library/Application Support/github-runner-fleet/controller/.env`, is mode `0600`, and is preserved when the source checkout moves or the installer is rerun. Override the runtime root with `GITHUB_RUNNER_FLEET_RUNTIME_ROOT` if this Mac needs a different stable location.
 
@@ -478,6 +478,7 @@ pnpm install-lume-project -- --lume-config config/lume-runners.yaml --env .env
 pnpm teardown-lume-project -- --lume-config config/lume-runners.yaml --env .env
 pnpm check-runner-version -- --env .env
 pnpm runner-release-manifest -- --env .env
+pnpm runner-release-manifest -- --env .env --checksums   # .runner-checksums lines from GitHub's asset digests
 pnpm smoke-test
 ```
 
