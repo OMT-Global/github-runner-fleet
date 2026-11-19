@@ -48,7 +48,7 @@ Container jobs:
 ```yaml
 runs-on: [self-hosted, linux, docker-capable, private]
 container:
-  image: node:24-bookworm
+  image: node:26-trixie
 steps:
   - uses: actions/checkout@v6
   - run: node --version
