@@ -7,6 +7,12 @@ updates:
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
+    groups:
+      # CodeQL refuses to run with mixed init/analyze/upload-sarif versions,
+      # and the rg-security contract test enforces one shared pin.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
