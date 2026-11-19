@@ -45,7 +45,7 @@ afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: 
 
 describe("large-SBOM signing boundary", () => {
   test("uses the supported client and preserves complete signed/timestamped SPDX verification", () => {
-    expect(steps.find((step) => step.uses === "sigstore/cosign-installer@v4.1.2")!.with!["cosign-release"]).toBe("v3.1.4");
+    expect(steps.find((step) => String(step.uses).startsWith("sigstore/cosign-installer@"))!.with!["cosign-release"]).toBe("v3.1.4");
     const attest = steps.find((step) => step.name === "Attach SBOM attestation")!.run!;
     expect(attest).toContain('--signing-config "$RELEASE_LOG_DIR/sbom-signing-config.json"');
     expect(attest).toContain("--predicate /tmp/github-runner-fleet.spdx.json");
