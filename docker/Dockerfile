@@ -6,7 +6,7 @@ ARG TARGETARCH
 ARG NODE_VERSION=24.22.3
 ARG TERRAFORM_VERSION=1.6.6
 
-COPY .runner-version /.runner-version
+COPY .runner-version .runner-checksums /
 
 ENV DEBIAN_FRONTEND=noninteractive \
     SHELL=/bin/bash \
@@ -85,11 +85,15 @@ RUN case "${TARGETARCH}" in \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && runner_version="$(cat /.runner-version)" \
+    && runner_asset="actions-runner-linux-${runner_arch}-${runner_version}.tar.gz" \
     && curl -fsSL \
-      -o runner.tar.gz \
-      "https://github.com/actions/runner/releases/download/v${runner_version}/actions-runner-linux-${runner_arch}-${runner_version}.tar.gz" \
-    && tar -xzf runner.tar.gz \
-    && rm runner.tar.gz \
+      -o "${runner_asset}" \
+      "https://github.com/actions/runner/releases/download/v${runner_version}/${runner_asset}" \
+    && awk -v asset="${runner_asset}" '$2 == asset' /.runner-checksums > runner.sha256 \
+    && test "$(wc -l < runner.sha256)" -eq 1 \
+    && sha256sum -c runner.sha256 \
+    && tar -xzf "${runner_asset}" \
+    && rm "${runner_asset}" runner.sha256 \
     && ./bin/installdependencies.sh \
     && chown -R runner:runner ${RUNNER_SOURCE_HOME} /home/runner
 

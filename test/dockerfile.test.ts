@@ -21,7 +21,7 @@ describe("Dockerfile packaging", () => {
 
     expect(dockerfile).toContain("FROM --platform=$TARGETPLATFORM python:3.12-slim-bookworm");
     expect(dockerfile).not.toContain("ARG RUNNER_VERSION");
-    expect(dockerfile).toContain("COPY .runner-version /.runner-version");
+    expect(dockerfile).toContain("COPY .runner-version .runner-checksums /");
     expect(dockerfile).toContain('runner_version="$(cat /.runner-version)"');
     expect(dockerfile).toContain("ARG NODE_VERSION=24.22.3");
     expect(dockerfile).not.toContain("/opt/node18");

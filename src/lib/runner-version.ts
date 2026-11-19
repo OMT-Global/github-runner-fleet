@@ -49,6 +49,78 @@ export function runnerReleaseAgeDays(
   );
 }
 
+/** GitHub stops routing jobs to a disabled-update runner this many days after a newer release ships. */
+export const GITHUB_DISABLED_UPDATE_WINDOW_DAYS = 30;
+
+export interface RunnerReleaseSummary {
+  version: string;
+  publishedAt?: string;
+  prerelease?: boolean;
+  draft?: boolean;
+}
+
+export interface RunnerFreshness extends RunnerVersionStatus {
+  /** Oldest stable release newer than `current`: the one that started GitHub's update clock. */
+  supersededBy?: string;
+  supersededAt?: string;
+  ageDays?: number;
+  daysUntilCutoff?: number;
+}
+
+/**
+ * Measures how long `current` has been superseded, the way GitHub's
+ * disabled-update policy does: from the first stable release newer than the
+ * deployed client, not from the latest release. Drafts and prereleases never
+ * start the clock.
+ */
+export function assessRunnerFreshness(
+  current: string,
+  releases: RunnerReleaseSummary[],
+  now = new Date()
+): RunnerFreshness {
+  const stable = releases.filter(
+    (release) =>
+      !release.draft &&
+      !release.prerelease &&
+      /^\d+\.\d+\.\d+$/.test(normalizeRunnerVersion(release.version))
+  );
+  if (stable.length === 0) {
+    throw new Error("GitHub returned no stable actions/runner releases");
+  }
+  const latest = stable.reduce((best, release) =>
+    compareRunnerVersions(release.version, best.version) > 0 ? release : best
+  );
+  const status = summarizeRunnerVersion(current, latest.version);
+  if (!status.outdated) {
+    return status;
+  }
+
+  const newer = stable.filter(
+    (release) => compareRunnerVersions(release.version, status.current) > 0
+  );
+  const dated = newer.filter((release) => release.publishedAt);
+  const first =
+    dated.length === newer.length
+      ? dated.reduce((earliest, release) =>
+          Date.parse(release.publishedAt!) < Date.parse(earliest.publishedAt!) ? release : earliest
+        )
+      : newer.reduce((lowest, release) =>
+          compareRunnerVersions(release.version, lowest.version) < 0 ? release : lowest
+        );
+  const ageDays = runnerReleaseAgeDays(
+    dated.length === newer.length ? first.publishedAt : undefined,
+    now
+  );
+  return {
+    ...status,
+    supersededBy: normalizeRunnerVersion(first.version),
+    supersededAt: first.publishedAt,
+    ageDays,
+    daysUntilCutoff:
+      ageDays === undefined ? undefined : GITHUB_DISABLED_UPDATE_WINDOW_DAYS - ageDays
+  };
+}
+
 export function compareRunnerVersions(a: string, b: string): number {
   const aParts = normalizeRunnerVersion(a).split(".").map(Number);
   const bParts = normalizeRunnerVersion(b).split(".").map(Number);
@@ -96,4 +168,86 @@ export function summarizeRunnerVersion(
     latest: normalizedLatest,
     outdated: compareRunnerVersions(normalizedCurrent, normalizedLatest) < 0
   };
+}
+
+const DEFAULT_RUNNER_CHECKSUMS_FILE = fileURLToPath(
+  new URL("../../.runner-checksums", import.meta.url)
+);
+
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Every Actions Runner release asset the fleet deploys: the Linux image
+ * (amd64/arm64), the Lume macOS guest (osx-arm64) and the Windows image.
+ */
+export function deployedRunnerAssetNames(version: string): string[] {
+  const normalized = normalizeRunnerVersion(version);
+  return [
+    `actions-runner-linux-x64-${normalized}.tar.gz`,
+    `actions-runner-linux-arm64-${normalized}.tar.gz`,
+    `actions-runner-osx-arm64-${normalized}.tar.gz`,
+    `actions-runner-win-x64-${normalized}.zip`
+  ];
+}
+
+export function parseRunnerChecksums(text: string, source = ".runner-checksums"): Map<string, string> {
+  const checksums = new Map<string, string>();
+  text.split(/\r?\n/).forEach((rawLine, index) => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      return;
+    }
+    const match = /^([0-9a-fA-F]{64}) {2}(\S+)$/.exec(line);
+    if (!match) {
+      throw new Error(`${source}:${index + 1} is not a "<sha256>  <asset>" line`);
+    }
+    const digest = match[1].toLowerCase();
+    const asset = match[2];
+    const existing = checksums.get(asset);
+    if (existing && existing !== digest) {
+      throw new Error(`${source}:${index + 1} lists a conflicting digest for ${asset}`);
+    }
+    checksums.set(asset, digest);
+  });
+  return checksums;
+}
+
+export function readRunnerChecksums(
+  filePath = DEFAULT_RUNNER_CHECKSUMS_FILE
+): Map<string, string> {
+  return parseRunnerChecksums(fs.readFileSync(filePath, "utf8"), filePath);
+}
+
+export function missingRunnerChecksums(
+  version: string,
+  checksums: Map<string, string>
+): string[] {
+  return deployedRunnerAssetNames(version).filter((asset) => !checksums.has(asset));
+}
+
+/**
+ * Normalizes a GitHub release-asset `digest` ("sha256:<hex>") to bare hex.
+ * Returns undefined when the digest is absent or not SHA-256.
+ */
+export function releaseAssetSha256(digest: string | undefined): string | undefined {
+  if (!digest?.startsWith("sha256:")) {
+    return undefined;
+  }
+  const hex = digest.slice("sha256:".length).toLowerCase();
+  return SHA256_PATTERN.test(hex) ? hex : undefined;
+}
+
+export function formatRunnerChecksums(
+  version: string,
+  assets: Array<{ name: string; digest?: string }>
+): string {
+  const byName = new Map(assets.map((asset) => [asset.name, releaseAssetSha256(asset.digest)]));
+  const lines = deployedRunnerAssetNames(version).map((name) => {
+    const digest = byName.get(name);
+    if (!digest) {
+      throw new Error(`release v${normalizeRunnerVersion(version)} has no SHA-256 digest for ${name}`);
+    }
+    return `${digest}  ${name}`;
+  });
+  return `${lines.join("\n")}\n`;
 }
