@@ -69,7 +69,7 @@ runs-on: [self-hosted, linux, shell-only, private]
 Public shell-safe repos:
 
 ```yaml
-runs-on: [self-hosted, linux, shell-only, public]
+runs-on: ubuntu-24.04
 ```
 
 macOS-native lanes:

@@ -14,15 +14,15 @@ This plane exists for private-repo workflows that need real Linux Docker semanti
 
 - NAS-only operational jobs that should not run on the Linux Docker host
 - Lume for macOS-native jobs
-- GitHub-hosted runners for public fork PR trust boundaries or broad hosted image convenience
+- GitHub-hosted runners for public repositories or broad hosted image convenience
 
 ## Default Contract
 
-- Runner groups: `linux-docker-private`, `linux-docker-public`
-- Labels: `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, and `private` or `public`
+- Runner group: `linux-docker-private`
+- Labels: `self-hosted`, `linux`, `shell-only`, `synology`, `docker-capable`, and `private`
 - Execution model: one job per runner, ephemeral registration, short-lived GitHub tokens, dedicated Docker host
 
-Keep `linux-docker-public.allowedRepositories` aligned with the public Synology pool so `runs-on: [self-hosted, linux, shell-only, public]` can land on either Linux runner class.
+Use GitHub-hosted runners for every public repository job.
 
 ## Operator Commands
 

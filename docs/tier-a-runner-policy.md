@@ -9,7 +9,7 @@ This document is the runner-boundary control plane for Tier A `OMT-Global` repos
 - Fast PR gates and deterministic shell-safe validation
 - No deploy credentials
 - No production network reachability
-- Public repos may use this only if the runner class is ephemeral and public-safe
+- Public repositories use GitHub-hosted runners, including trusted branch and release jobs
 
 ### `rg-security`
 
@@ -28,12 +28,12 @@ This document is the runner-boundary control plane for Tier A `OMT-Global` repos
 
 ## Workload Rules
 
-- Shell-safe Linux-class runners carry `linux`, `shell-only`, and `private` or `public` labels so default shell-safe jobs can land on any eligible Synology or Linux pool.
+- Shell-safe Linux-class runners carry `linux`, `shell-only`, and the `private` label so default shell-safe jobs can land on any eligible Synology or Linux pool.
 - Private Linux runners also carry the `synology` compatibility label so existing private Synology-labeled shell jobs can overflow onto Linux capacity.
 - Do not treat `synology` as a hard NAS pin after this compatibility rollout.
 - Linux Docker runners retain the `docker-capable` plane label for `container:`, service-container, Docker daemon, Buildx, and similar workloads.
 - Lume macOS runners are for native macOS/Xcode jobs.
-- GitHub-hosted remains the default for public untrusted PRs unless the self-hosted class is explicitly hardened for that trust level.
+- All public repository jobs run on GitHub-hosted runners. Keep public repository access disabled on self-hosted runner groups.
 
 ## Tier A Defaults
 
@@ -42,5 +42,5 @@ This document is the runner-boundary control plane for Tier A `OMT-Global` repos
   - `security-pr` to hosted or `rg-security`
   - `extended-validation` to repo-compatible runner classes
   - `release` to hosted or `rg-release`
-- `github-runner-fleet` routes ordinary CI jobs to `ubuntu-24.04`; its shell-safe installed-toolchain contract and operational drift detection remain on dedicated self-hosted selectors.
+- `github-runner-fleet` routes ordinary CI jobs to `ubuntu-24.04`; its opt-in shell-safe installed-toolchain contract is restricted to private repositories. Operational drift detection uses hosted Ubuntu.
 - Repos with justified exceptions must record them explicitly rather than silently forking policy in workflow YAML.

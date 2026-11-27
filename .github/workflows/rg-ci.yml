@@ -1,13 +1,13 @@
 # Reusable rg-ci workflow.
 # Required secrets: none.
-# Inputs: runner-class selects hosted (default, safe for forks) or the public shell-only fleet.
+# Inputs: runner-class accepts hosted and the legacy shell-safe-public alias; both use GitHub-hosted runners.
 name: rg-ci
 
 on:
   workflow_call:
     inputs:
       runner-class:
-        description: "Execution boundary: hosted or shell-safe-public."
+        description: "GitHub-hosted execution; shell-safe-public is accepted for compatibility."
         required: false
         type: string
         default: hosted
@@ -71,34 +71,16 @@ jobs:
     name: rg-ci shell-safe public
     needs: validate-inputs
     if: inputs.runner-class == 'shell-safe-public'
-    runs-on: [self-hosted, linux, shell-only, public]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - name: Install shell-safe Node
-        env:
-          NODE_VERSION: ${{ inputs.node-version }}
-        run: |
-          set -euo pipefail
-          case "$(uname -m)" in
-            x86_64) node_arch=x64 ;;
-            aarch64|arm64) node_arch=arm64 ;;
-            *) echo "unsupported architecture: $(uname -m)" >&2; exit 2 ;;
-          esac
-          runner_temp="${RUNNER_TEMP:-/tmp/github-runner-temp}"
-          archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"
-          install_dir="${runner_temp}/node-${NODE_VERSION}-${node_arch}"
-          mkdir -p "${runner_temp}" "${install_dir}"
-          curl --fail --silent --show-error --location --connect-timeout 10 --max-time 120 \
-            "https://nodejs.org/dist/v${NODE_VERSION}/${archive}" --output "${runner_temp}/${archive}"
-          tar -xJf "${runner_temp}/${archive}" --strip-components=1 --no-same-owner -C "${install_dir}"
-          echo "${install_dir}/bin" >> "${GITHUB_PATH}"
-      - name: Enable pnpm
-        env:
-          PNPM_VERSION: ${{ inputs.package-manager-version }}
-        run: |
-          corepack enable
-          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ inputs.node-version }}
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: ${{ inputs.package-manager-version }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test

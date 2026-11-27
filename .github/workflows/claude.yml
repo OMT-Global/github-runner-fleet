@@ -78,7 +78,7 @@ jobs:
             Use CLAUDE.md and docs/bootstrap/onboarding.md as repo policy context.
             Keep required PR status checks aligned with CI Gate.
             Preserve the split fast and extended validation model.
-            Shell-safe jobs may use `[self-hosted, synology, shell-only, public]`.
+            Public repository jobs must use GitHub-hosted runners.
             Docker, service-container, browser, and `container:` jobs stay on GitHub-hosted runners.
             Prefer the smallest safe change and add tests for behavior changes.
 
