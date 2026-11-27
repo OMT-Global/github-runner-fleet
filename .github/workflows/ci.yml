@@ -106,13 +106,14 @@ jobs:
   shell_safe_contract_trusted:
     name: shell-safe contract
     if: >-
+      github.event.repository.private == true &&
       vars.SHELL_SAFE_CONTRACT_ENABLED == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on:
       - self-hosted
       - synology
       - shell-only
-      - public
+      - private
     env:
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache

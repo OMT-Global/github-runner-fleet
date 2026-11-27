@@ -99,12 +99,10 @@ flowchart LR
 - No Docker socket mounts on the Synology shell-only plane
 - No privileged containers
 - No host-network mode
-- Two organization runner pools by default:
-  - `synology-private`
-  - `synology-public`
+- One Synology organization runner pool by default: `synology-private`.
 - One Linux Docker pool by default:
   - `linux-docker-private`
-- The sample config starts with four private runner slots and two public runner slots.
+- The sample Synology config starts with four private runner slots. All public repository jobs use GitHub-hosted runners.
 
 The Synology shell-only class supports shell jobs, JavaScript actions, composite actions, the bundled shell-safe Node setup action, built-in Python `3.15` workflows, local `actions/setup-python@v6` resolution for Python `3.15`, and Terraform CLI workflows. Docker-based actions, `container:` jobs, and service containers belong on the dedicated Linux Docker plane instead.
 
@@ -354,7 +352,7 @@ The command can target `synology`, `linux-docker`, or `both`. It always forces i
 Recommended workflow labels:
 
 - Private repos: `runs-on: [self-hosted, synology, shell-only, private]`
-- Public repos: `runs-on: [self-hosted, synology, shell-only, public]`
+- Public repos: use GitHub-hosted runners, such as `runs-on: ubuntu-24.04`.
 
 ## Reusable Setup Actions
 
@@ -446,9 +444,9 @@ The Lume base-VM provisioner installs the checksum-pinned Sparkle release tools 
 - Keep resource limits enabled in `config/pools.yaml`.
 - Prefer memory-only limits on Synology. Only set `resources.cpus` or `resources.pidsLimit` if you have verified your NAS kernel supports Docker CPU CFS quotas and PID cgroup limits.
 - Do not add Compose `init: true` for these services. The image already uses `tini`, and double-init setups on Synology produce noisy subreaper warnings.
-- For public pools, use DSM firewall rules to reduce unnecessary LAN reachability.
+- Do not enable public repository access on self-hosted runner groups.
 - Keep the Docker socket restricted to the dedicated Linux Docker host. Do not mount it into the Synology shell-only plane.
-- Keep external fork pull requests on GitHub-hosted runners; self-hosted runner groups are for trusted same-repository or explicitly allowed private workflows.
+- Keep all public repository jobs on GitHub-hosted runners. Self-hosted runner groups are for trusted private workflows.
 - Treat Docker-capable runner groups as host-control boundaries because they mount the Docker socket or Windows named pipe.
 - Keep `LUME_GUEST_PASSWORD` out of git and rotate the base VM guest credential when rebuilding or resealing Lume images.
 

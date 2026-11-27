@@ -28,9 +28,8 @@ describe("reusable workflow consumer contract", () => {
     expect(security.jobs.security["runs-on"]).toBe("ubuntu-24.04");
     expect(release.jobs.release["runs-on"]).toBe("ubuntu-24.04");
     expect(ci.jobs.hosted["runs-on"]).toBe("ubuntu-24.04");
-    expect(ci.jobs["shell-safe-public"]["runs-on"]).toEqual([
-      "self-hosted", "linux", "shell-only", "public"
-    ]);
+    expect(ci.jobs["shell-safe-public"]["runs-on"]).toBe("ubuntu-24.04");
+    expect(ci.jobs["shell-safe-public"].steps).toEqual(ci.jobs.hosted.steps);
   });
 
   test("calls all three workflows from a real smoke caller", () => {

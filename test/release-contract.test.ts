@@ -4,6 +4,19 @@ import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
 describe("release contract", () => {
+  test.each(["pools.yaml", "linux-docker-runners.yaml"])(
+    "ships only private self-hosted pools in %s",
+    (file) => {
+      const config = YAML.parse(fs.readFileSync(path.resolve("config", file), "utf8")) as {
+        pools: Array<{ visibility: string; allowedRepositories?: string[] }>;
+      };
+      expect(config.pools.length).toBeGreaterThan(0);
+      expect(config.pools.every((pool) => pool.visibility === "private")).toBe(true);
+      const allowed = config.pools.flatMap((pool) => pool.allowedRepositories ?? []);
+      expect(allowed.map((repo) => repo.toLowerCase())).not.toContain("omt-global/github-runner-fleet");
+    }
+  );
+
   test("keeps the package version aligned with the configured image tag", () => {
     const packageJson = JSON.parse(
       fs.readFileSync(path.resolve("package.json"), "utf8")

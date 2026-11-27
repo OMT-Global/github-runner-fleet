@@ -21,7 +21,7 @@ This guide is for downstream repositories that want to consume the runner contra
 
 Use these rules when deciding where a workflow job should run:
 
-- Use `runs-on: [self-hosted, linux, shell-only, public]` for trusted public shell-safe jobs that can run with the baked-in Linux toolchain.
+- Use GitHub-hosted runners for all public repository jobs, including trusted branches, tags and releases.
 - Use `runs-on: [self-hosted, linux, shell-only, private]` for trusted private shell-safe jobs that can run on either Synology or Linux Docker.
 - Use `runs-on: [self-hosted, synology, shell-only, private]` when preserving existing Synology-labeled private jobs and allowing Linux Docker overflow.
 - Use `runs-on: [self-hosted, linux, docker-capable, private]` for trusted private Linux jobs that need Docker, `container:`, or service containers.
@@ -66,9 +66,7 @@ jobs:
       image-ref: ghcr.io/omt-global/example:${{ github.ref_name }}
 ```
 
-`rg-security` and `rg-release` always use GitHub-hosted runners. `rg-ci` defaults
-to hosted execution so fork pull requests do not reach self-hosted capacity; set
-`runner-class: shell-safe-public` only in a trusted caller job. Reference an exact
+`rg-security`, `rg-release`, and `rg-ci` use GitHub-hosted runners in this source version. Leave `runner-class` at its `hosted` default, especially when calling an older published ref. The revised `rg-ci` accepts `shell-safe-public` only as a compatibility alias for hosted execution. Reference an exact
 published release tag. The `v0.2.3` contract becomes consumable after its verified
 release is published; do not point consumers at a branch or a moving compatibility
 tag.
@@ -79,7 +77,7 @@ workflow dependency remains immutable between reviewed updates.
 
 ## Recipe: trusted Node job on the Synology shell-only pool
 
-Use this when the repo is trusted and the job only needs Node plus standard shell tooling.
+Use this only in a private repository for trusted code that needs Node and standard shell tooling.
 
 ```yaml
 name: shell-safe node ci
@@ -96,7 +94,7 @@ jobs:
       - self-hosted
       - linux
       - shell-only
-      - public
+      - private
     env:
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
@@ -122,7 +120,7 @@ Why this pattern exists:
 
 ## Recipe: trusted jobs on self-hosted, fork PRs on GitHub-hosted
 
-This is the default split when a repo wants self-hosted speed for trusted code but safe isolation for public forks.
+This is an optional split for private repositories. In a public repository, use the hosted runner for every job.
 
 ```yaml
 name: split trust ci
@@ -139,7 +137,7 @@ jobs:
       - self-hosted
       - linux
       - shell-only
-      - public
+      - private
     env:
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
@@ -174,7 +172,7 @@ jobs:
       - run: pnpm test
 ```
 
-Use this pattern whenever the repository is public or accepts outside contributions.
+In private repositories use the hosted lane for untrusted code. Do not use this split in a public repository.
 
 ## Recipe: Python 3.15 on shell-safe self-hosted Linux
 
@@ -188,7 +186,7 @@ jobs:
       - self-hosted
       - linux
       - shell-only
-      - public
+      - private
     env:
       RUNNER_TEMP: /tmp/github-runner-temp
       RUNNER_TOOL_CACHE: /opt/hostedtoolcache
@@ -218,7 +216,7 @@ jobs:
       - self-hosted
       - linux
       - shell-only
-      - public
+      - private
     env:
       RUNNER_TEMP: /tmp/github-runner-temp
       TF_PLUGIN_CACHE_DIR: /tmp/github-runner-temp/terraform-plugin-cache

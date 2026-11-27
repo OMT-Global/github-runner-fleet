@@ -31,7 +31,8 @@ describe("workflow cookbook docs", () => {
     expect(cookbook).toContain("- self-hosted");
     expect(cookbook).toContain("- linux");
     expect(cookbook).toContain("- shell-only");
-    expect(cookbook).toContain("- public");
+    expect(cookbook).not.toContain("      - public\n");
+    expect(cookbook).toContain("GitHub-hosted runners for all public repository jobs");
   });
 });
 

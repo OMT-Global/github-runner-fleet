@@ -53,38 +53,3 @@ pools:
     #     service.namespace: github-runner-fleet
     resources:
       memory: 2g
-  - key: synology-public
-    visibility: public
-    organization: omt-global
-    runnerGroup: synology-public
-    repositoryAccess: selected
-    allowedRepositories:
-      - omt-global/.github
-      - omt-global/acmeos.org
-      - omt-global/apw-cli
-      - omt-global/axiomlang
-      - omt-global/bootstrap
-      - omt-global/Flapline
-      - omt-global/flow
-      - omt-global/gh-attest
-      - omt-global/github-runner-fleet
-      - omt-global/home-tv-channel-list
-      - omt-global/icloud-cli
-      - omt-global/jmcte.me
-      - omt-global/machete
-      - omt-global/mailplus-intelligence
-      - omt-global/omt-assist.org
-    labels:
-      - synology
-      - shell-only
-      - public
-    size: 4
-    scaling:
-      min: 1
-      max: 4
-      queueThreshold: 3
-      cooldownSeconds: 120
-    architecture: auto
-    runnerRoot: ${SYNOLOGY_RUNNER_BASE_DIR}/pools/synology-public
-    resources:
-      memory: 1g

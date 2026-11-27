@@ -3,7 +3,6 @@ import path from "node:path";
 import YAML from "yaml";
 import { describe, expect, test } from "vitest";
 
-const shellSafePublicRunner = ["self-hosted", "linux", "shell-only", "public"];
 
 type WorkflowStep = { uses?: string };
 
@@ -116,7 +115,7 @@ describe("security and reusable workflows", () => {
     const rgCi = YAML.parse(
       fs.readFileSync(path.resolve(".github/workflows/rg-ci.yml"), "utf8")
     ) as { jobs: Record<string, Record<string, unknown>> };
-    expect(rgCi.jobs["shell-safe-public"]["runs-on"]).toEqual(shellSafePublicRunner);
+    expect(rgCi.jobs["shell-safe-public"]["runs-on"]).toBe("ubuntu-24.04");
     expect(rgCi.jobs.hosted["runs-on"]).toBe("ubuntu-24.04");
 
     const rgSecurity = YAML.parse(

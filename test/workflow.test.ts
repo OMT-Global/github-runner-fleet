@@ -177,6 +177,7 @@ describe("CI workflow", () => {
       (step) => step.name === "Verify cache-aware commands"
     );
 
+    expect(contractJob.if).toContain("github.event.repository.private == true &&");
     expect(contractJob.if).toContain(
       "vars.SHELL_SAFE_CONTRACT_ENABLED == 'true'"
     );
@@ -184,7 +185,7 @@ describe("CI workflow", () => {
       "self-hosted",
       "synology",
       "shell-only",
-      "public"
+      "private"
     ]);
     expect(contractJob.env).toMatchObject({
       RUNNER_TEMP: "/tmp/github-runner-temp",
